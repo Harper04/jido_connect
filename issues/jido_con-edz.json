@@ -2,13 +2,14 @@
   "assignee": "Mike Hostetler",
   "blocked_by": [],
   "blocks": [],
+  "closed_at": "2026-10-12T14:42:20Z",
   "created": "2026-10-12T14:04:05Z",
   "description": "Prepare one-entry Decimal 3.1.1 to 3.1.2 lock updates for main and the release/2.0 and release/3.0 compatibility lines. Validate each line, open separate PRs, and merge only after clean CI. Preserve all other dependency entries.",
   "id": "jido_con-edz",
   "labels": [],
   "priority": 1,
-  "status": "in_progress",
+  "status": "closed",
   "title": "Update Decimal locks for CVE-2026-97853",
   "type": "task",
-  "updated_at": "2026-10-12T14:04:43Z"
+  "updated_at": "2026-10-12T14:42:20Z"
 }
