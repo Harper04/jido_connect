@@ -1,0 +1,15 @@
+{
+  "assignee": "",
+  "blocked_by": [],
+  "blocks": [],
+  "created": "2026-10-27T23:35:10Z",
+  "description": "Audit and update dependencies on main. Keep the change limited to dependency files. Run dependency audit and mix quality. Commit and push the tested result.",
+  "id": "jido_con-6e2.3",
+  "labels": [],
+  "parent": "jido_con-6e2",
+  "priority": 2,
+  "status": "open",
+  "title": "Update Jido Harness dependencies",
+  "type": "task",
+  "updated_at": "2026-10-27T23:35:10Z"
+}
