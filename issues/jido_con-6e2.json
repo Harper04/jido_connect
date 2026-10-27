@@ -2,6 +2,7 @@
   "assignee": "",
   "blocked_by": [],
   "blocks": [],
+  "closed_at": "2026-10-27T23:55:18Z",
   "created": "2026-10-27T23:35:06Z",
   "description": "Audit and update dependencies for Jido Connect v2, Jido Connect v3, and Jido Harness main. Keep package compatibility lines separate. Sequence: audit each line, update dependency files, run line-specific checks, then push the tested result. Graph: connect-v2 --\u003e verify-v2; connect-v3 --\u003e verify-v3; harness-main --\u003e verify-harness.",
   "id": "jido_con-6e2",
@@ -13,7 +14,7 @@
     }
   ],
   "priority": 2,
-  "status": "open",
+  "status": "closed",
   "title": "Audit and update integration dependencies",
   "type": "epic",
   "updated_at": "2026-10-27T23:55:18Z"
