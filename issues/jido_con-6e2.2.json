@@ -11,11 +11,15 @@
     {
       "text": "Scope expanded by the maintainer on 2026-10-27: fully migrate the v3 compatibility line from ExMCP to ArborMCP, including code and tests.",
       "timestamp": "2026-10-27T23:39:48Z"
+    },
+    {
+      "text": "Completed in signed commit 342ef547. Pull request: https://github.com/agentjido/jido_connect/pull/107. mix quality, demo checks, hex.audit, and hex.outdated passed.",
+      "timestamp": "2026-10-27T23:55:15Z"
     }
   ],
   "priority": 2,
   "status": "in_progress",
   "title": "Update Jido Connect v3 dependencies",
   "type": "task",
-  "updated_at": "2026-10-27T23:39:48Z"
+  "updated_at": "2026-10-27T23:55:15Z"
 }
