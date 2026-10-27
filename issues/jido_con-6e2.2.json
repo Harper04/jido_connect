@@ -1,0 +1,15 @@
+{
+  "assignee": "",
+  "blocked_by": [],
+  "blocks": [],
+  "created": "2026-10-27T23:35:10Z",
+  "description": "Audit and update dependencies on release/3.0. Keep Jido, Action, and Signal on v3. Update docs/v3_status.md as required. Run dependency audit and full required checks. Commit and push a branch for the v3 compatibility line.",
+  "id": "jido_con-6e2.2",
+  "labels": [],
+  "parent": "jido_con-6e2",
+  "priority": 2,
+  "status": "open",
+  "title": "Update Jido Connect v3 dependencies",
+  "type": "task",
+  "updated_at": "2026-10-27T23:35:10Z"
+}
