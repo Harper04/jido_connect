@@ -7,9 +7,15 @@
   "id": "jido_con-6e2.2",
   "labels": [],
   "parent": "jido_con-6e2",
+  "comments": [
+    {
+      "text": "Scope expanded by the maintainer on 2026-10-27: fully migrate the v3 compatibility line from ExMCP to ArborMCP, including code and tests.",
+      "timestamp": "2026-10-27T23:39:48Z"
+    }
+  ],
   "priority": 2,
   "status": "in_progress",
   "title": "Update Jido Connect v3 dependencies",
   "type": "task",
-  "updated_at": "2026-10-27T23:35:31Z"
+  "updated_at": "2026-10-27T23:39:48Z"
 }
