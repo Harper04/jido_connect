@@ -30,20 +30,32 @@ defmodule Jido.Connect.Nextcloud.CatalogPacks do
                      "nextcloud.share.get",
                      "nextcloud.share.create",
                      "nextcloud.share.update",
-                     "nextcloud.share.delete",
                      "nextcloud.sharees.search"
                    ]
+
+  @sharing_destructive_tools @sharing_tools ++
+                               [
+                                 "nextcloud.share.delete"
+                               ]
 
   @office_tools @files_readonly_tools ++
                   [
                     "nextcloud.office.launch_token.get"
                   ]
 
-  @full_tools Enum.uniq(@files_destructive_tools ++ @sharing_tools ++ @office_tools)
+  @full_tools Enum.uniq(@files_destructive_tools ++ @sharing_destructive_tools ++ @office_tools)
 
   @doc "Returns all built-in Nextcloud catalog packs."
   def all do
-    [files_readonly(), files_write(), files_destructive(), sharing(), office(), full()]
+    [
+      files_readonly(),
+      files_write(),
+      files_destructive(),
+      sharing(),
+      sharing_destructive(),
+      office(),
+      full()
+    ]
   end
 
   @doc "Read-only Nextcloud files and Office capability metadata."
@@ -68,6 +80,7 @@ defmodule Jido.Connect.Nextcloud.CatalogPacks do
       allowed_tools: @files_write_tools,
       metadata: %{
         package: :jido_connect_nextcloud,
+        risk: :write,
         excludes: ["nextcloud.node.delete", "nextcloud.share.delete"]
       }
     })
@@ -90,10 +103,22 @@ defmodule Jido.Connect.Nextcloud.CatalogPacks do
     Pack.new!(%{
       id: :nextcloud_sharing,
       label: "Nextcloud sharing",
-      description: "Nextcloud file sharing, share lookup, and sharee search tools.",
+      description: "Nextcloud file sharing, share lookup, and sharee search without delete.",
       filters: %{provider: :nextcloud},
       allowed_tools: @sharing_tools,
-      metadata: %{package: :jido_connect_nextcloud, risk: :external_write}
+      metadata: %{package: :jido_connect_nextcloud, risk: :write}
+    })
+  end
+
+  @doc "Nextcloud OCS sharing pack including share deletion."
+  def sharing_destructive do
+    Pack.new!(%{
+      id: :nextcloud_sharing_destructive,
+      label: "Nextcloud sharing destructive",
+      description: "Nextcloud file sharing, lookup, update, and delete tools.",
+      filters: %{provider: :nextcloud},
+      allowed_tools: @sharing_destructive_tools,
+      metadata: %{package: :jido_connect_nextcloud, risk: :destructive}
     })
   end
 
@@ -105,7 +130,7 @@ defmodule Jido.Connect.Nextcloud.CatalogPacks do
       description: "Nextcloud Office capability and richdocuments external-app launch tools.",
       filters: %{provider: :nextcloud},
       allowed_tools: @office_tools,
-      metadata: %{package: :jido_connect_nextcloud, risk: :external_write}
+      metadata: %{package: :jido_connect_nextcloud, risk: :write}
     })
   end
 

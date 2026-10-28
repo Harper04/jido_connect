@@ -68,17 +68,15 @@ dedupe is based on Gmail `history_id`.
 
 ## Catalog Packs
 
-- `:google_gmail_metadata` includes read-only profile, label list, message, thread,
-  history, received-message poll, and mailbox-changed webhook metadata tools.
+- `:google_gmail_metadata` includes read-only profile, label list, message,
+  thread, and history tools.
 - `:google_gmail_triage` adds watch lifecycle, label get, attachment get, label
-  creation and update, message/thread label mutation, and reversible
-  trash/untrash workflows. It intentionally excludes send, draft, and permanent
-  delete tools.
+  creation and update, message/thread label mutation, and untrash workflows. It
+  excludes send, draft, trash, and permanent delete tools.
 - `:google_gmail_send` adds message send and non-destructive draft workflows
-  plus webhook metadata. It intentionally excludes label mutation, attachment,
-  and delete tools.
-- `:google_gmail_destructive` exposes explicit draft, label, message, and
-  thread delete or trash operations behind destructive action metadata.
+  and excludes label mutation, attachment, and delete tools.
+- `:google_gmail_destructive` exposes trash and explicit draft, label, message,
+  and thread delete operations behind destructive action metadata.
 
 ```elixir
 Jido.Connect.Catalog.search_tools("gmail",

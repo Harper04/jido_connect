@@ -22,18 +22,22 @@ defmodule Jido.Connect.Google.Sheets.CatalogPacks do
                     "google.sheets.spreadsheet.create",
                     "google.sheets.values.update",
                     "google.sheets.values.append",
-                    "google.sheets.values.clear",
                     "google.sheets.values.batch_update",
                     "google.sheets.values.batch_update_by_data_filter",
-                    "google.sheets.values.batch_clear",
-                    "google.sheets.values.batch_clear_by_data_filter",
                     "google.sheets.sheet.add",
-                    "google.sheets.sheet.delete",
                     "google.sheets.sheet.rename"
                   ]
 
+  @destructive_tools @writer_tools ++
+                       [
+                         "google.sheets.values.clear",
+                         "google.sheets.values.batch_clear",
+                         "google.sheets.values.batch_clear_by_data_filter",
+                         "google.sheets.sheet.delete"
+                       ]
+
   @doc "Returns all built-in Google Sheets catalog packs."
-  def all, do: [readonly(), writer()]
+  def all, do: [readonly(), writer(), destructive()]
 
   @doc "Read-only spreadsheet metadata and values pack."
   def readonly do
@@ -55,7 +59,33 @@ defmodule Jido.Connect.Google.Sheets.CatalogPacks do
       description: "Read and safely mutate Sheets values and tabs. Excludes raw batchUpdate.",
       filters: %{provider: :google_sheets},
       allowed_tools: @writer_tools,
-      metadata: %{package: :jido_connect_google_sheets, excludes: ["google.sheets.batch_update"]}
+      metadata: %{
+        package: :jido_connect_google_sheets,
+        risk: :write,
+        excludes: [
+          "google.sheets.batch_update",
+          "google.sheets.values.clear",
+          "google.sheets.values.batch_clear",
+          "google.sheets.values.batch_clear_by_data_filter",
+          "google.sheets.sheet.delete"
+        ]
+      }
+    })
+  end
+
+  @doc "Google Sheets destructive pack for value clearing and sheet deletion."
+  def destructive do
+    Pack.new!(%{
+      id: :google_sheets_destructive,
+      label: "Google Sheets destructive",
+      description: "Read and write Sheets data, clear values, and delete sheets.",
+      filters: %{provider: :google_sheets},
+      allowed_tools: @destructive_tools,
+      metadata: %{
+        package: :jido_connect_google_sheets,
+        risk: :destructive,
+        excludes: ["google.sheets.batch_update"]
+      }
     })
   end
 end

@@ -3,18 +3,6 @@
 This repository contains the `jido_connect` umbrella and a local Phoenix demo
 host.
 
-## Work Management
-
-This project tracks durable work with `bw` (Beadwork). Always run this before
-starting work:
-
-```sh
-bw prime
-```
-
-Use Beadwork issues for roadmap, multi-step, or branch/PR work so plans,
-progress, and decisions survive context compaction.
-
 ## Working Rules
 
 - Prefer the existing Spark DSL and Zoi struct patterns.

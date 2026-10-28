@@ -59,7 +59,7 @@ Use packs to scope tool discovery and invocation:
 ```elixir
 # List available packs
 packs = Airtable.catalog_packs()
-# => [%Pack{id: :airtable_reader, ...}, %Pack{id: :airtable_editor, ...}]
+# => reader, editor, and destructive packs
 
 # Search tools within the reader pack
 results =
@@ -184,7 +184,8 @@ and invocation:
 | Pack | Risk | Description |
 |------|------|-------------|
 | `:airtable_reader` | read | Base schema and record queries |
-| `:airtable_editor` | write | Reader + record create, update, delete |
+| `:airtable_editor` | write | Reader + record create and update |
+| `:airtable_destructive` | destructive | Editor + record delete |
 
 Triggers are subscribed to independently and are not listed in packs.
 

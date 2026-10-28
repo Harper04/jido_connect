@@ -7,48 +7,62 @@ defmodule Jido.Connect.Google.Tasks.CatalogPacks do
     "google.tasks.tasklist.list",
     "google.tasks.tasklist.get",
     "google.tasks.task.list",
-    "google.tasks.task.get",
-    "google.tasks.task.changed"
+    "google.tasks.task.get"
   ]
 
   @editor_tools @readonly_tools ++
                   [
                     "google.tasks.tasklist.create",
                     "google.tasks.tasklist.update",
-                    "google.tasks.tasklist.delete",
                     "google.tasks.task.create",
                     "google.tasks.task.update",
-                    "google.tasks.task.delete",
-                    "google.tasks.task.clear",
                     "google.tasks.task.move"
                   ]
 
+  @destructive_tools @editor_tools ++
+                       [
+                         "google.tasks.tasklist.delete",
+                         "google.tasks.task.delete",
+                         "google.tasks.task.clear"
+                       ]
+
   @doc "Returns all built-in Google Tasks catalog packs."
-  def all, do: [readonly(), editor()]
+  def all, do: [readonly(), editor(), destructive()]
 
   @doc "Read-only Tasks metadata and content pack."
   def readonly do
     Pack.new!(%{
       id: :google_tasks_readonly,
       label: "Google Tasks read-only",
-      description:
-        "Read Google Tasks task list and task data, and poll task changes, without mutation tools.",
+      description: "Read Google Tasks task list and task data without mutation tools.",
       filters: %{provider: :google_tasks},
       allowed_tools: @readonly_tools,
       metadata: %{package: :jido_connect_google_tasks, risk: :read}
     })
   end
 
-  @doc "Tasks editor pack for task list and task creation, update, and deletion."
+  @doc "Tasks editor pack for task list and task creation and update."
   def editor do
     Pack.new!(%{
       id: :google_tasks_editor,
       label: "Google Tasks editor",
       description:
-        "Read, create, update, and delete Google Tasks task lists and tasks. Includes all mutation tools.",
+        "Read, create, update, and move Google Tasks task lists and tasks without delete tools.",
       filters: %{provider: :google_tasks},
       allowed_tools: @editor_tools,
       metadata: %{package: :jido_connect_google_tasks, risk: :write}
+    })
+  end
+
+  @doc "Tasks destructive pack for task list deletion, task deletion, and clear."
+  def destructive do
+    Pack.new!(%{
+      id: :google_tasks_destructive,
+      label: "Google Tasks destructive",
+      description: "Read, manage, delete, and clear Google Tasks task lists and tasks.",
+      filters: %{provider: :google_tasks},
+      allowed_tools: @destructive_tools,
+      metadata: %{package: :jido_connect_google_tasks, risk: :destructive}
     })
   end
 end

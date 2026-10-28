@@ -10,12 +10,7 @@ defmodule Jido.Connect.Gmail.CatalogPacks do
     "google.gmail.message.get",
     "google.gmail.threads.list",
     "google.gmail.thread.get",
-    "google.gmail.history.list",
-    "google.gmail.message.received"
-  ]
-
-  @webhook_tools [
-    "google.gmail.mailbox.changed"
+    "google.gmail.history.list"
   ]
 
   @watch_tools [
@@ -29,7 +24,6 @@ defmodule Jido.Connect.Gmail.CatalogPacks do
   ]
 
   @triage_tools @metadata_tools ++
-                  @webhook_tools ++
                   @watch_tools ++
                   @content_read_tools ++
                   [
@@ -37,15 +31,12 @@ defmodule Jido.Connect.Gmail.CatalogPacks do
                     "google.gmail.label.update",
                     "google.gmail.message.labels.apply",
                     "google.gmail.messages.batch_modify",
-                    "google.gmail.message.trash",
                     "google.gmail.message.untrash",
                     "google.gmail.thread.modify",
-                    "google.gmail.thread.trash",
                     "google.gmail.thread.untrash"
                   ]
 
   @send_tools @metadata_tools ++
-                @webhook_tools ++
                 [
                   "google.gmail.message.send",
                   "google.gmail.drafts.list",
@@ -56,7 +47,6 @@ defmodule Jido.Connect.Gmail.CatalogPacks do
                 ]
 
   @destructive_tools @metadata_tools ++
-                       @webhook_tools ++
                        [
                          "google.gmail.draft.delete",
                          "google.gmail.label.delete",
@@ -70,15 +60,14 @@ defmodule Jido.Connect.Gmail.CatalogPacks do
   @doc "Returns all built-in Gmail catalog packs."
   def all, do: [metadata(), triage(), send(), destructive()]
 
-  @doc "Read-only Gmail metadata and message-received polling pack."
+  @doc "Read-only Gmail metadata pack."
   def metadata do
     Pack.new!(%{
       id: :google_gmail_metadata,
       label: "Gmail metadata",
-      description:
-        "Read Gmail metadata, list history, and poll received message metadata without mutation tools.",
+      description: "Read Gmail metadata and list history without mutation tools.",
       filters: %{provider: :gmail},
-      allowed_tools: @metadata_tools ++ @webhook_tools,
+      allowed_tools: @metadata_tools,
       metadata: %{package: :jido_connect_gmail, risk: :read}
     })
   end
@@ -89,11 +78,12 @@ defmodule Jido.Connect.Gmail.CatalogPacks do
       id: :google_gmail_triage,
       label: "Gmail triage",
       description:
-        "Read Gmail metadata and attachments, manage push watches, poll received messages, and manage labels. Excludes send and draft tools.",
+        "Read Gmail metadata and attachments, manage push watches, and manage labels. Excludes send and draft tools.",
       filters: %{provider: :gmail},
       allowed_tools: @triage_tools,
       metadata: %{
         package: :jido_connect_gmail,
+        risk: :write,
         excludes: [
           "google.gmail.message.send",
           "google.gmail.draft.create",
@@ -101,8 +91,10 @@ defmodule Jido.Connect.Gmail.CatalogPacks do
           "google.gmail.draft.send",
           "google.gmail.draft.delete",
           "google.gmail.label.delete",
+          "google.gmail.message.trash",
           "google.gmail.message.delete",
           "google.gmail.messages.batch_delete",
+          "google.gmail.thread.trash",
           "google.gmail.thread.delete"
         ]
       }
@@ -114,12 +106,12 @@ defmodule Jido.Connect.Gmail.CatalogPacks do
     Pack.new!(%{
       id: :google_gmail_send,
       label: "Gmail send",
-      description:
-        "Read Gmail metadata, receive mailbox-change webhook metadata, and send or draft messages. Excludes label mutations.",
+      description: "Read Gmail metadata and send or draft messages. Excludes label mutations.",
       filters: %{provider: :gmail},
       allowed_tools: @send_tools,
       metadata: %{
         package: :jido_connect_gmail,
+        risk: :write,
         excludes: [
           "google.gmail.label.create",
           "google.gmail.label.update",

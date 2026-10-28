@@ -10,15 +10,17 @@ Selected on 2026-10-27:
 
 | Package | Requirement | Source |
 | --- | --- | --- |
-| `jido_action` | `8e9b3f7b268e175091b0eb3720bab3b8633d3c24` | Git |
-| `jido_signal` | `== 3.0.0-beta.5` | Hex |
-| `jido` | `90763478104f1edbf0afcfcf9444621c3f9755e8` | Git |
+| `jido_action` | `d2a981895fb986e9a2fe88f8c523326572643117` | Git |
+| `jido_signal` | `7b825f1d050a0e0159bb2a72ba79c100b5d362d3` | Git |
+| `jido` | `aaca071c90691662c7036fe4d71ab63e6ee3432a` | Git |
+| `jido_ai` | `3b02d83eaa248e262ba1760f39da73cab5fe3bdf` | Git |
 | `arbor_mcp` | `== 2.0.0-rc.6` | Hex |
 | `bandit` | Locked to 1.14.0 in the shared demo/umbrella lockfile | Hex |
 
-Jido and Action use exact Git revisions. Signal and ArborMCP use exact
-prerelease versions. This keeps each upstream change deliberate during v3
-development. Do not return to the abandoned Jido v2/v3 compatibility PR #324.
+Jido, Action, Signal, and Jido AI use the exact Git revisions recorded by the
+Jido AI v3 line. ArborMCP uses an exact prerelease version. This keeps each
+upstream change deliberate during v3 development. Do not return to the
+abandoned Jido v2/v3 compatibility PR #324.
 
 ArborMCP `2.0.0-rc.6` replaces ExMCP. Source modules use the `Arbor.MCP`
 namespace and the OTP application is `:arbor_mcp`. Connect verifies status,

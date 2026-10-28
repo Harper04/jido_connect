@@ -24,11 +24,11 @@ defmodule Jido.Connect.Things.CatalogPacks do
                     "things.todo.complete",
                     "things.todo.cancel",
                     "things.todo.reopen",
-                    "things.todo.trash",
                     "things.todo.restore"
                   ]
+  @destructive_tools @editor_tools ++ ["things.todo.trash"]
 
-  def all, do: [reader(), editor()]
+  def all, do: [reader(), editor(), destructive()]
 
   def reader do
     Pack.new!(%{
@@ -51,7 +51,23 @@ defmodule Jido.Connect.Things.CatalogPacks do
       allowed_tools: @editor_tools,
       metadata: %{
         package: :jido_connect_things,
-        risk: :external_write,
+        risk: :write,
+        storage: :host_owned,
+        unofficial_api?: true
+      }
+    })
+  end
+
+  def destructive do
+    Pack.new!(%{
+      id: :things_inbox_destructive,
+      label: "Things Inbox destructive",
+      description: "Read and write Things Cloud Inbox to-dos, including trash.",
+      filters: %{provider: :things},
+      allowed_tools: @destructive_tools,
+      metadata: %{
+        package: :jido_connect_things,
+        risk: :destructive,
         storage: :host_owned,
         unofficial_api?: true
       }

@@ -60,4 +60,5 @@ defmodule Jido.Connect.Google.Tasks do
   defdelegate catalog_packs, to: Jido.Connect.Google.Tasks.CatalogPacks, as: :all
   defdelegate readonly_pack, to: Jido.Connect.Google.Tasks.CatalogPacks, as: :readonly
   defdelegate editor_pack, to: Jido.Connect.Google.Tasks.CatalogPacks, as: :editor
+  defdelegate destructive_pack, to: Jido.Connect.Google.Tasks.CatalogPacks, as: :destructive
 end

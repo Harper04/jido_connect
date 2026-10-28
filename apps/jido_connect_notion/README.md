@@ -5,7 +5,8 @@
 It includes:
 
 - `Jido.Connect.Notion`, a Spark-authored provider that compiles into Jido tools
-- Catalog packs for scoped tool discovery (`:notion_reader`, `:notion_editor`)
+- Catalog packs for scoped tool discovery (`:notion_reader`, `:notion_editor`,
+  `:notion_destructive`)
 
 The Spark DSL declaration lives in
 `lib/jido_connect/notion.ex`.
@@ -102,7 +103,8 @@ The provider ships with curated catalog packs for scoped tool discovery:
 | Pack | Risk | Tools |
 |---|---|---|
 | `:notion_reader` | read | 7 read-only Notion queries |
-| `:notion_editor` | write | Reader + 6 write tools |
+| `:notion_editor` | write | Reader + 5 non-destructive write tools |
+| `:notion_destructive` | destructive | Editor + block archive |
 
 Tool IDs are populated from action fragments.
 

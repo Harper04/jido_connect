@@ -46,14 +46,16 @@ defmodule Jido.Connect.CatalogTest do
   defmodule CatalogHostAgent do
     use Jido.Agent, name: "connect_catalog_host"
 
-    agent do
+    state do
       schema(
         Zoi.object(%{
           workspace: Zoi.string(),
           catalog_results: Zoi.list(Zoi.any()) |> Zoi.default([])
         })
       )
+    end
 
+    plugins do
       plugin(Jido.Connect.Catalog.Plugin,
         config: %{modules: [Jido.Connect.MCP]}
       )
@@ -67,7 +69,10 @@ defmodule Jido.Connect.CatalogTest do
 
   test "host catalog route keeps domain state through Agent.cmd" do
     agent =
-      CatalogHostAgent.new!(state: %{workspace: "tenant-1", catalog_results: []})
+      CatalogHostAgent.instantiate!(
+        id: "catalog-host-test",
+        state: %{workspace: "tenant-1", catalog_results: []}
+      )
 
     signal = Jido.Signal.new!("connect.catalog.search", %{query: "mcp.tools"}, source: "/host")
 
@@ -844,8 +849,15 @@ defmodule Jido.Connect.CatalogTest do
   end
 
   test "catalog plugin supplies configuration through the v3 preparation contract" do
-    assert {:ok, %Jido.Plugin.Manifest{module: Catalog.Plugin, agent: Catalog.Plugin}} =
-             Jido.Plugin.manifest({Catalog.Plugin, modules: [CatalogFixtures.Integration]})
+    assert {:ok,
+            [
+              %Jido.Plugin.Spec{
+                manifest: %Jido.Plugin.Manifest{module: Catalog.Plugin, agent: Catalog.Plugin}
+              }
+            ]} =
+             Jido.Plugin.Normalizer.normalize_all([
+               {Catalog.Plugin, modules: [CatalogFixtures.Integration]}
+             ])
 
     preparation = %Jido.Agent.Plugin.Preparation{
       plugin: Catalog.Plugin,
@@ -876,16 +888,16 @@ defmodule Jido.Connect.CatalogTest do
     assert {:ok, %{}} = Catalog.Plugin.prepare(unrelated, modules: [])
 
     agent =
-      Jido.Agent.new!(
-        name: "catalog_preparation",
-        schema: Zoi.object(%{results: Zoi.list(Zoi.any()) |> Zoi.default([])}),
-        routes: [{"connect.catalog.search", SearchTools}],
-        plugins: [{Catalog.Plugin, modules: [CatalogFixtures.Integration]}]
+      CatalogHostAgent.instantiate!(
+        id: "catalog-preparation-test",
+        state: %{workspace: "tenant-1", catalog_results: []}
       )
-      |> Jido.Agent.instantiate!(id: "catalog-preparation-test")
 
-    assert {:ok, next, []} = Jido.Agent.cmd(agent, preparation.signal)
-    assert [_ | _] = next.state.results
+    signal =
+      Jido.Signal.new!("connect.catalog.search", %{query: "mcp.tools"}, source: "/host")
+
+    assert {:ok, next, []} = Jido.Agent.cmd(agent, signal)
+    assert [_ | _] = next.state.catalog_results
   end
 
   test "canonical items include stable refs and complete operation metadata" do

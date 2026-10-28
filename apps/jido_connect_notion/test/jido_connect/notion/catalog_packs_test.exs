@@ -10,6 +10,7 @@ defmodule Jido.Connect.Notion.CatalogPacksTest do
 
       assert :notion_reader in pack_ids
       assert :notion_editor in pack_ids
+      assert :notion_destructive in pack_ids
     end
 
     test "all packs reference notion provider and correct package" do
@@ -56,13 +57,18 @@ defmodule Jido.Connect.Notion.CatalogPacksTest do
         "notion.page.update",
         "notion.block.append_children",
         "notion.block.update",
-        "notion.block.archive",
         "notion.comment.create"
       ]
 
       for tool <- write_tools do
         assert tool in editor.allowed_tools, "Expected #{tool} in editor allowed_tools"
       end
+
+      refute "notion.block.archive" in editor.allowed_tools
+
+      destructive = Enum.find(packs, &(&1.id == :notion_destructive))
+      assert destructive.metadata.risk == :destructive
+      assert "notion.block.archive" in destructive.allowed_tools
     end
 
     test "editor pack includes all reader tools" do

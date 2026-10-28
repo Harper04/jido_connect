@@ -59,6 +59,7 @@ defmodule Jido.Connect.MicrosoftCalendar.CatalogPacks do
       allowed_tools: @triage_tools,
       metadata: %{
         package: :jido_connect_microsoft_calendar,
+        risk: :read,
         excludes: [
           "microsoft.calendar.event.create",
           "microsoft.calendar.event.update",
@@ -83,6 +84,7 @@ defmodule Jido.Connect.MicrosoftCalendar.CatalogPacks do
       allowed_tools: @write_tools,
       metadata: %{
         package: :jido_connect_microsoft_calendar,
+        risk: :write,
         excludes: [
           "microsoft.calendar.event.delete",
           "microsoft.calendar.event.cancel"

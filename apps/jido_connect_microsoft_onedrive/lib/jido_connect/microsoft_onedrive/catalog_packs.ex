@@ -29,7 +29,7 @@ defmodule Jido.Connect.MicrosoftOnedrive.CatalogPacks do
                          "microsoft.onedrive.item.delete"
                        ]
 
-  @sharing_tools @destructive_tools ++
+  @sharing_tools @write_tools ++
                    [
                      "microsoft.onedrive.item.create_link",
                      "microsoft.onedrive.item.permissions.list",
@@ -70,6 +70,7 @@ defmodule Jido.Connect.MicrosoftOnedrive.CatalogPacks do
       allowed_tools: @triage_tools,
       metadata: %{
         package: :jido_connect_microsoft_onedrive,
+        risk: :read,
         excludes: [
           "microsoft.onedrive.item.create",
           "microsoft.onedrive.item.update",
@@ -91,6 +92,7 @@ defmodule Jido.Connect.MicrosoftOnedrive.CatalogPacks do
       allowed_tools: @write_tools,
       metadata: %{
         package: :jido_connect_microsoft_onedrive,
+        risk: :write,
         excludes: [
           "microsoft.onedrive.item.delete"
         ]
@@ -113,7 +115,7 @@ defmodule Jido.Connect.MicrosoftOnedrive.CatalogPacks do
   @doc """
   Microsoft OneDrive sharing pack for creating links and managing item permissions.
 
-  Includes all read, write, and delete item tools plus sharing link creation and
+  Includes all read and write item tools plus sharing link creation and
   permission listing, inspection, and invitation. Permission deletion is excluded
   to prevent accidental access revocation.
   """
@@ -127,7 +129,9 @@ defmodule Jido.Connect.MicrosoftOnedrive.CatalogPacks do
       allowed_tools: @sharing_tools,
       metadata: %{
         package: :jido_connect_microsoft_onedrive,
+        risk: :privileged,
         excludes: [
+          "microsoft.onedrive.item.delete",
           "microsoft.onedrive.item.permission.delete"
         ]
       }

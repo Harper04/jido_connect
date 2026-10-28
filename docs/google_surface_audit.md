@@ -6,9 +6,9 @@ records the implementation sequence for the next Google connector work.
 
 Detailed provider comparison lives in `docs/google_provider_gap_audit.md`.
 This document is the G13 roll-up: current coverage, gap recommendations,
-live-test readiness, and Beadwork sequencing.
+live-test readiness, and roadmap sequencing.
 
-## Beadwork Plan
+## roadmap Plan
 
 | Ticket | Purpose |
 | --- | --- |

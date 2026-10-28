@@ -40,7 +40,7 @@ defmodule Jido.Connect.Slack.CatalogPacks do
         "Read Slack messages and presence, post messages, move a read cursor, and update the calling user's presence and status.",
       filters: %{provider: :slack},
       allowed_tools: @editor_tools,
-      metadata: %{package: :jido_connect_slack, risk: :external_write}
+      metadata: %{package: :jido_connect_slack, risk: :write}
     })
   end
 end

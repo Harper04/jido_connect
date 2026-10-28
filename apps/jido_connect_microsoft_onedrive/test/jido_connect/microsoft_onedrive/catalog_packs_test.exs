@@ -183,6 +183,16 @@ defmodule Jido.Connect.MicrosoftOnedrive.CatalogPacksTest do
                packs: MicrosoftOnedrive.catalog_packs(),
                pack: :microsoft_onedrive_sharing
              )
+
+    # Destructive item deletion stays in the destructive and admin packs.
+    assert {:error, %Connect.Error.ValidationError{reason: :tool_not_in_pack}} =
+             Catalog.describe_tool("microsoft.onedrive.item.delete",
+               modules: [MicrosoftOnedrive],
+               packs: MicrosoftOnedrive.catalog_packs(),
+               pack: :microsoft_onedrive_sharing
+             )
+
+    assert MicrosoftOnedrive.sharing_pack().metadata.risk == :privileged
   end
 
   test "admin pack exposes permission deletion" do

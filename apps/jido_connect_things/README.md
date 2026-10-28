@@ -99,9 +99,10 @@ it sends the write.
 ## Catalog packs
 
 - `things_inbox_reader` contains all V1 read actions.
-- `things_inbox_editor` adds all V1 guarded Task6 write actions.
+- `things_inbox_editor` adds non-destructive V1 guarded Task6 write actions.
+- `things_inbox_destructive` adds the to-do trash action.
 
-Both packs are storage-free. They do not contain raw wire, direct delete, or
+The packs are storage-free. They do not contain raw wire, direct delete, or
 tombstone tools.
 
 ## Local live conformance test

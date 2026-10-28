@@ -95,6 +95,7 @@ defmodule Jido.Connect.MicrosoftSharepoint.CatalogPacks do
       "Read and change SharePoint list items and document libraries without delete tools.",
       @write_tools,
       %{
+        risk: :write,
         excludes: [
           "microsoft.sharepoint.list.item.delete",
           "microsoft.sharepoint.library.item.delete"

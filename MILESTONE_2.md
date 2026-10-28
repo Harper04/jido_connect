@@ -402,7 +402,7 @@ Evaluate:
 
 The production connector API should remain the same regardless of the chosen backend.
 
-## First Beadwork Epics
+## First roadmap Epics
 
 Create epics in this order:
 
@@ -431,13 +431,13 @@ Suggested first task set:
 - Add catalog packs for Sheets.
 - Write the Google host integration README.
 
-## Beadwork Backlog Plan
+## roadmap Backlog Plan
 
-Use this section as the source of truth when loading Milestone 2 into Beadwork. Each epic and story has a stable planning ID so dependencies can be preserved even if Beadwork assigns different issue IDs.
+Use this section as the source of truth when loading Milestone 2 into roadmap. Each epic and story has a stable planning ID so dependencies can be preserved even if roadmap assigns different issue IDs.
 
 ### Current Status
 
-| Planning ID | Beadwork epic | Status |
+| Planning ID | roadmap epic | Status |
 | --- | --- | --- |
 | G00 | `[G00] Milestone Orchestration` | Closed after importing epics, tasks, labels, and dependencies. |
 | G01 | `[G01] Shared Google Foundation` | Closed after adding the initial shared Google package, auth metadata, OAuth refresh, transport, scopes, pagination, tests, and README. |
@@ -452,13 +452,13 @@ Use this section as the source of truth when loading Milestone 2 into Beadwork. 
 | G10 | `[G10] Google Search Console Connector` | Blocked by Analytics. |
 | G11 | `[G11] Cross-Google Hardening And Demo` | Blocked by product connector waves. |
 
-Suggested Beadwork mapping:
+Suggested roadmap mapping:
 
-- Create one Beadwork epic per `Gxx` section.
-- Create one Beadwork story per `Gxx-Syy` row.
+- Create one roadmap epic per `Gxx` section.
+- Create one roadmap story per `Gxx-Syy` row.
 - Put the planning ID at the start of each issue title, for example `[G01-S01] Scaffold shared Google package`.
-- Translate `Depends on` into Beadwork blocking relationships.
-- Keep implementation issues small enough that the Beadwork Codex loop can finish one story, format, test, and commit cleanly.
+- Translate `Depends on` into roadmap blocking relationships.
+- Keep implementation issues small enough that the roadmap Codex loop can finish one story, format, test, and commit cleanly.
 
 ### Global Execution Graph
 
@@ -489,7 +489,7 @@ Purpose: keep the milestone coherent while implementation happens in many small 
 
 ```mermaid
 flowchart TD
-  A["G00-S01 Confirm package boundaries"] --> B["G00-S02 Create Beadwork epics"]
+  A["G00-S01 Confirm package boundaries"] --> B["G00-S02 Create roadmap epics"]
   B --> C["G00-S03 Add milestone status checklist"]
   C --> D["G00-S04 Maintain dependency graph"]
 ```
@@ -497,7 +497,7 @@ flowchart TD
 | ID | Story | Depends on | Acceptance |
 | --- | --- | --- | --- |
 | G00-S01 | Confirm Google package boundaries | None | Final package list is documented; first-wave and later-wave packages are explicitly separated. |
-| G00-S02 | Create Beadwork epics from this plan | G00-S01 | Beadwork has epics for G01 through G11 with dependency edges. |
+| G00-S02 | Create roadmap epics from this plan | G00-S01 | roadmap has epics for G01 through G11 with dependency edges. |
 | G00-S03 | Add milestone status checklist | G00-S02 | `MILESTONE_2.md` or a linked status doc tracks each package wave and verification result. |
 | G00-S04 | Maintain dependency graph as work lands | G00-S03 | Graph stays accurate after each package wave; completed stories are not left ambiguous. |
 

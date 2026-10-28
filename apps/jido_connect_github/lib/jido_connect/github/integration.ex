@@ -24,6 +24,12 @@ defmodule Jido.Connect.GitHub do
       Jido.Connect.GitHub.Triggers.Issues
     ]
 
+  defdelegate catalog_packs, to: Jido.Connect.GitHub.CatalogPacks, as: :all
+  defdelegate readonly_pack, to: Jido.Connect.GitHub.CatalogPacks, as: :read_only
+  defdelegate issues_read_pack, to: Jido.Connect.GitHub.CatalogPacks, as: :issues_read
+  defdelegate issues_manage_pack, to: Jido.Connect.GitHub.CatalogPacks, as: :issues_manage
+  defdelegate full_pack, to: Jido.Connect.GitHub.CatalogPacks, as: :full
+
   integration do
     id :github
     name "GitHub"

@@ -3,7 +3,7 @@
 This document compares the current Google connector packages against the
 official Google REST API surfaces as of May 14, 2026. It builds on
 `docs/google_surface_audit.md` and records the post-expansion state after the
-high-value gaps were converted into Beadwork tickets and implemented.
+high-value gaps were converted into roadmap tickets and implemented.
 
 The goal is connector-specific expansion, not a provider-neutral query DSL in
 `jido_connect`. Filtering, field masks, search syntax, data filters, and
@@ -227,7 +227,7 @@ Official People API resources include `people`, `people.connections`,
   for host apps. It reports action and trigger ids with connection, scope, and
   allow-list states without requiring credential leases or provider API calls.
 
-## Next Beadwork Step
+## Next roadmap Step
 
 `jido_con-5zt.12` closes the current-package expansion by refreshing catalog
 packs, package docs, and action availability tests before the new Google product

@@ -61,4 +61,5 @@ defmodule Jido.Connect.Google.Sheets do
   defdelegate catalog_packs, to: Jido.Connect.Google.Sheets.CatalogPacks, as: :all
   defdelegate readonly_pack, to: Jido.Connect.Google.Sheets.CatalogPacks, as: :readonly
   defdelegate writer_pack, to: Jido.Connect.Google.Sheets.CatalogPacks, as: :writer
+  defdelegate destructive_pack, to: Jido.Connect.Google.Sheets.CatalogPacks, as: :destructive
 end

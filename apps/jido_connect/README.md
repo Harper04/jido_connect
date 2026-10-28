@@ -522,6 +522,35 @@ Jido.Connect.Catalog.describe_tool("github.issue.create",
 )
 ```
 
+## Jido AI Catalog Packs
+
+`Jido.Connect.AI.CatalogToolSource` exposes the generated Actions from one
+reviewed pack as native Jido AI tools. Build the source before the Agent request:
+
+```elixir
+{:ok, github_source} =
+  Jido.Connect.AI.CatalogToolSource.new(
+    Jido.Connect.GitHub,
+    Jido.Connect.GitHub.CatalogPacks.issues_read()
+  )
+
+MyApp.GitHubAgent.cmd(agent, request,
+  context: %{
+    jido_ai_tool_sources: [github_source],
+    integration_context: context,
+    credential_lease: lease,
+    policy: MyApp.ConnectPolicy
+  }
+)
+```
+
+The source configuration contains only portable catalog data. It does not
+contain credentials. It stores each reviewed tool fingerprint and checks the
+current fingerprint before it runs the generated Connect Action. The source
+accepts only read and metadata Actions. It rejects mutation packs until Jido AI
+review is connected to `Jido.Connect.prepare/4` and `Jido.Connect.commit/4`
+authorization.
+
 Rankers can optionally reorder deterministic candidates. Rankers receive only
 sanitized catalog metadata: tool ids, labels, schemas, auth/scopes/policy names,
 scores, and matched fields. They never receive credentials, leases, provider

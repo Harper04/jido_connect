@@ -72,6 +72,34 @@ For user OAuth/manual-token connections:
   )
 ```
 
+## Catalog Packs
+
+The provider includes catalog-pack templates for common agent roles:
+
+```elixir
+Jido.Connect.GitHub.CatalogPacks.read_only()
+Jido.Connect.GitHub.CatalogPacks.issues_read()
+Jido.Connect.GitHub.CatalogPacks.issues_manage()
+Jido.Connect.GitHub.CatalogPacks.full()
+```
+
+The issue packs use explicit Action lists. The `read_only/0` and `all/0` packs
+use filters and can include new matching Actions after a package update.
+
+Create a Jido AI source from a pack:
+
+```elixir
+{:ok, source} =
+  Jido.Connect.AI.CatalogToolSource.new(
+    Jido.Connect.GitHub,
+    Jido.Connect.GitHub.CatalogPacks.issues_read()
+  )
+```
+
+Only read-only packs can become Jido AI tool sources. Mutation packs stay
+blocked until the host integrates Jido AI review with `Jido.Connect.prepare/4`
+and `Jido.Connect.commit/4` authorization.
+
 ## Webhooks
 
 Use `Jido.Connect.GitHub.Webhook.verify_request/3` from a Plug or Phoenix

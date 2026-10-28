@@ -104,6 +104,22 @@ defmodule Jido.Connect.Google.Sheets.CatalogPacksTest do
                packs: Sheets.catalog_packs(),
                pack: :google_sheets_writer
              )
+
+    assert {:error, %Connect.Error.ValidationError{reason: :tool_not_in_pack}} =
+             Catalog.describe_tool("google.sheets.values.clear",
+               modules: [Sheets],
+               packs: Sheets.catalog_packs(),
+               pack: :google_sheets_writer
+             )
+
+    assert {:ok, descriptor} =
+             Catalog.describe_tool("google.sheets.values.clear",
+               modules: [Sheets],
+               packs: Sheets.catalog_packs(),
+               pack: :google_sheets_destructive
+             )
+
+    assert descriptor.tool.id == "google.sheets.values.clear"
   end
 
   test "pack restrictions apply to call_tool" do

@@ -9,21 +9,24 @@ defmodule Jido.Connect.Google.Tasks.CatalogPacksTest do
     "google.tasks.tasklist.list",
     "google.tasks.tasklist.get",
     "google.tasks.task.list",
-    "google.tasks.task.get",
-    "google.tasks.task.changed"
+    "google.tasks.task.get"
   ]
 
   @editor_tools @readonly_tools ++
                   [
                     "google.tasks.tasklist.create",
                     "google.tasks.tasklist.update",
-                    "google.tasks.tasklist.delete",
                     "google.tasks.task.create",
                     "google.tasks.task.update",
-                    "google.tasks.task.delete",
-                    "google.tasks.task.clear",
                     "google.tasks.task.move"
                   ]
+
+  @destructive_tools @editor_tools ++
+                       [
+                         "google.tasks.tasklist.delete",
+                         "google.tasks.task.delete",
+                         "google.tasks.task.clear"
+                       ]
 
   defmodule FakeTasksClient do
     def create_task_list(%{title: "Personal"}, "token") do
@@ -58,7 +61,7 @@ defmodule Jido.Connect.Google.Tasks.CatalogPacksTest do
     assert readonly.filters == %{provider: :google_tasks}
   end
 
-  test "editor pack contains all tools" do
+  test "editor pack contains non-destructive tools" do
     packs = Tasks.catalog_packs()
     editor = Enum.find(packs, &(&1.id == :google_tasks_editor))
 
@@ -67,12 +70,22 @@ defmodule Jido.Connect.Google.Tasks.CatalogPacksTest do
     assert editor.filters == %{provider: :google_tasks}
   end
 
+  test "destructive pack contains delete and clear tools" do
+    packs = Tasks.catalog_packs()
+    destructive = Enum.find(packs, &(&1.id == :google_tasks_destructive))
+
+    assert destructive.allowed_tools == @destructive_tools
+    assert destructive.metadata.risk == :destructive
+    assert destructive.filters == %{provider: :google_tasks}
+  end
+
   test "pack delegates return expected packs" do
     assert %{id: :google_tasks_readonly} = Tasks.readonly_pack()
     assert %{id: :google_tasks_editor} = Tasks.editor_pack()
+    assert %{id: :google_tasks_destructive} = Tasks.destructive_pack()
 
     assert Enum.map(Tasks.catalog_packs(), & &1.id) ==
-             [:google_tasks_readonly, :google_tasks_editor]
+             [:google_tasks_readonly, :google_tasks_editor, :google_tasks_destructive]
   end
 
   test "editor tools are a superset of readonly tools" do
@@ -103,7 +116,7 @@ defmodule Jido.Connect.Google.Tasks.CatalogPacksTest do
     assert "google.tasks.tasklist.get" in ids
     assert "google.tasks.task.list" in ids
     assert "google.tasks.task.get" in ids
-    assert "google.tasks.task.changed" in ids
+    refute "google.tasks.task.changed" in ids
     refute "google.tasks.tasklist.create" in ids
     refute "google.tasks.task.create" in ids
     refute "google.tasks.task.delete" in ids
@@ -118,14 +131,12 @@ defmodule Jido.Connect.Google.Tasks.CatalogPacksTest do
 
     assert descriptor.tool.id == "google.tasks.task.get"
 
-    assert {:ok, trigger_descriptor} =
+    assert {:error, %Connect.Error.ValidationError{reason: :tool_not_in_pack}} =
              Catalog.describe_tool("google.tasks.task.changed",
                modules: [Tasks],
                packs: Tasks.catalog_packs(),
                pack: :google_tasks_readonly
              )
-
-    assert trigger_descriptor.tool.id == "google.tasks.task.changed"
 
     assert {:error, %Connect.Error.ValidationError{reason: :tool_not_in_pack}} =
              Catalog.describe_tool("google.tasks.task.create",
@@ -135,7 +146,7 @@ defmodule Jido.Connect.Google.Tasks.CatalogPacksTest do
              )
   end
 
-  test "editor pack allows all read and write tools" do
+  test "editor and destructive packs separate task mutations" do
     assert {:ok, descriptor} =
              Catalog.describe_tool("google.tasks.task.create",
                modules: [Tasks],
@@ -145,11 +156,18 @@ defmodule Jido.Connect.Google.Tasks.CatalogPacksTest do
 
     assert descriptor.tool.id == "google.tasks.task.create"
 
-    assert {:ok, descriptor} =
+    assert {:error, %Connect.Error.ValidationError{reason: :tool_not_in_pack}} =
              Catalog.describe_tool("google.tasks.tasklist.delete",
                modules: [Tasks],
                packs: Tasks.catalog_packs(),
                pack: :google_tasks_editor
+             )
+
+    assert {:ok, descriptor} =
+             Catalog.describe_tool("google.tasks.tasklist.delete",
+               modules: [Tasks],
+               packs: Tasks.catalog_packs(),
+               pack: :google_tasks_destructive
              )
 
     assert descriptor.tool.id == "google.tasks.tasklist.delete"
@@ -163,14 +181,12 @@ defmodule Jido.Connect.Google.Tasks.CatalogPacksTest do
 
     assert descriptor.tool.id == "google.tasks.task.move"
 
-    assert {:ok, trigger_descriptor} =
+    assert {:error, %Connect.Error.ValidationError{reason: :tool_not_in_pack}} =
              Catalog.describe_tool("google.tasks.task.changed",
                modules: [Tasks],
                packs: Tasks.catalog_packs(),
                pack: :google_tasks_editor
              )
-
-    assert trigger_descriptor.tool.id == "google.tasks.task.changed"
   end
 
   # --- Catalog call_tool enforcement tests ---

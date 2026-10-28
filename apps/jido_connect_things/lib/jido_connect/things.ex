@@ -60,4 +60,5 @@ defmodule Jido.Connect.Things do
   defdelegate catalog_packs, to: Jido.Connect.Things.CatalogPacks, as: :all
   defdelegate inbox_reader_pack, to: Jido.Connect.Things.CatalogPacks, as: :reader
   defdelegate inbox_editor_pack, to: Jido.Connect.Things.CatalogPacks, as: :editor
+  defdelegate inbox_destructive_pack, to: Jido.Connect.Things.CatalogPacks, as: :destructive
 end

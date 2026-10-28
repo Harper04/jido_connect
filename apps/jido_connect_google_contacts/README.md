@@ -43,9 +43,9 @@ trigger metadata, and curated catalog packs.
 - `:google_contacts_readonly` includes person reads, person search, batch get,
   directory reads, other-contact reads, and contact group list/get/batch-get
   without mutation tools.
-- `:google_contacts_manager` includes the full Contacts surface: read tools,
-  batch contact create/update/delete, other-contact copy, contact
-  create/update/delete, and contact group create/update/delete/member modify.
+- `:google_contacts_manager` includes reads, contact create/update,
+  other-contact copy, and contact group create/update/member modify.
+- `:google_contacts_destructive` adds contact and contact group delete tools.
 
 ## Triggers
 

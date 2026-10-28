@@ -37,7 +37,7 @@ defmodule Jido.Connect.Google.Docs.CatalogPacks do
         "Read, create, and batch update Google Docs documents. Includes all mutation tools.",
       filters: %{provider: :google_docs},
       allowed_tools: @editor_tools,
-      metadata: %{package: :jido_connect_google_docs, risk: :write}
+      metadata: %{package: :jido_connect_google_docs, risk: :destructive}
     })
   end
 end

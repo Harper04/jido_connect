@@ -26,28 +26,28 @@ The provider supports one authentication profile:
 | `hmac_verification` | webhook | Verify inbound webhook signatures using HMAC-SHA256 with configurable headers and digest prefixes |
 | `inbound_delivery` | webhook | Receive normalized inbound webhook deliveries with header, body, and query metadata, plus replay deduplication |
 
-## Catalog Packs
+## Trigger Packs and Capability Sets
 
-Packs scope tool discovery at the catalog boundary. The webhook provider
-offers two packs:
+The webhook provider has no executable Actions. Its triggers and capabilities
+stay separate from Action catalog packs.
 
-| Pack | Capabilities | Tools | Risk |
-|---|---|---|---|
-| `:webhook_verifier` | `hmac_verification` | none (triggers excluded) | read |
-| `:webhook_receiver` | `hmac_verification`, `inbound_delivery` | `webhook.inbound.delivery` | read |
+The receiver trigger pack scopes trigger discovery:
 
 ```elixir
-# List available packs
-packs = Jido.Connect.InboundWebhook.catalog_packs()
-
-# Get a specific pack
-verifier = Jido.Connect.InboundWebhook.verifier_pack()
-receiver = Jido.Connect.InboundWebhook.receiver_pack()
+packs = Jido.Connect.InboundWebhook.trigger_packs()
+receiver = Jido.Connect.InboundWebhook.receiver_trigger_pack()
 ```
 
-Triggers are subscribed to independently. Use `:webhook_receiver` when you
-want the catalog boundary to expose the `webhook.inbound.delivery` trigger tool.
-Use `:webhook_verifier` when you only need verification primitives.
+Capability sets advertise host features without pretending that they are
+executable tools:
+
+```elixir
+sets = Jido.Connect.InboundWebhook.capability_sets()
+verifier = Jido.Connect.InboundWebhook.verifier_capabilities()
+receiver = Jido.Connect.InboundWebhook.receiver_capabilities()
+```
+
+Triggers are subscribed to independently. They cannot become Jido AI tools.
 
 ## Verification Profile
 
@@ -213,7 +213,8 @@ end
 | Module | Purpose |
 |---|---|
 | `Jido.Connect.InboundWebhook` | Spark DSL integration (provider module) |
-| `Jido.Connect.InboundWebhook.CatalogPacks` | Curated catalog packs for webhook capabilities |
+| `Jido.Connect.InboundWebhook.TriggerPacks` | Curated inbound delivery trigger packs |
+| `Jido.Connect.InboundWebhook.CapabilitySets` | Named host capability sets |
 | `Jido.Connect.InboundWebhook.Verification` | HMAC-SHA256, bearer, and unsigned verification primitives |
 | `Jido.Connect.InboundWebhook.VerificationProfile` | Verification configuration struct |
 | `Jido.Connect.InboundWebhook.Normalizer` | Delivery normalization and header sanitization |

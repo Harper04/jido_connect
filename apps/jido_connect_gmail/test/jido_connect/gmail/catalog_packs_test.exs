@@ -26,7 +26,7 @@ defmodule Jido.Connect.Gmail.CatalogPacksTest do
     end
   end
 
-  test "metadata pack exposes only read and poll tools" do
+  test "metadata pack exposes only read Actions" do
     results =
       Catalog.search_tools("gmail",
         modules: [Gmail],
@@ -39,8 +39,8 @@ defmodule Jido.Connect.Gmail.CatalogPacksTest do
     assert "google.gmail.profile.get" in ids
     assert "google.gmail.message.get" in ids
     assert "google.gmail.history.list" in ids
-    assert "google.gmail.message.received" in ids
-    assert "google.gmail.mailbox.changed" in ids
+    refute "google.gmail.message.received" in ids
+    refute "google.gmail.mailbox.changed" in ids
     refute "google.gmail.label.get" in ids
     refute "google.gmail.message.attachment.get" in ids
     refute "google.gmail.watch.start" in ids
@@ -48,14 +48,12 @@ defmodule Jido.Connect.Gmail.CatalogPacksTest do
     refute "google.gmail.label.create" in ids
     refute "google.gmail.message.delete" in ids
 
-    assert {:ok, descriptor} =
+    assert {:error, %Connect.Error.ValidationError{reason: :tool_not_in_pack}} =
              Catalog.describe_tool("google.gmail.message.received",
                modules: [Gmail],
                packs: Gmail.catalog_packs(),
                pack: :google_gmail_metadata
              )
-
-    assert descriptor.tool.id == "google.gmail.message.received"
 
     assert {:error, %Connect.Error.ValidationError{reason: :tool_not_in_pack}} =
              Catalog.describe_tool("google.gmail.message.send",
@@ -93,11 +91,18 @@ defmodule Jido.Connect.Gmail.CatalogPacksTest do
 
     assert batch_descriptor.tool.id == "google.gmail.messages.batch_modify"
 
-    assert {:ok, thread_descriptor} =
+    assert {:error, %Connect.Error.ValidationError{reason: :tool_not_in_pack}} =
              Catalog.describe_tool("google.gmail.thread.trash",
                modules: [Gmail],
                packs: Gmail.catalog_packs(),
                pack: :google_gmail_triage
+             )
+
+    assert {:ok, thread_descriptor} =
+             Catalog.describe_tool("google.gmail.thread.trash",
+               modules: [Gmail],
+               packs: Gmail.catalog_packs(),
+               pack: :google_gmail_destructive
              )
 
     assert thread_descriptor.tool.id == "google.gmail.thread.trash"

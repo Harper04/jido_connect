@@ -16,7 +16,7 @@ flowchart TD
   F --> G[Review dependency exceptions before publication]
 ```
 
-| Work | Beadwork | State |
+| Work | roadmap | State |
 | --- | --- | --- |
 | SharePoint on v3 | `jido_con-s91.1` | Landed at `74f41c69`; PR #66 closed |
 | Tools, resources, prompts, completion, notifications, connection lifecycle | `jido_con-s91.2` | Implemented at `a783ef6d`; core, umbrella, and demo checks pass |

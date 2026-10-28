@@ -96,8 +96,8 @@ configurable through application environment for tests.
 ## Catalog Packs
 
 - `:google_tasks_readonly` includes task list and task reads only.
-- `:google_tasks_editor` adds task list and task creation, update, and
-  deletion. Includes all Tasks tools.
+- `:google_tasks_editor` adds task list and task creation, update, and move.
+- `:google_tasks_destructive` adds task list delete, task delete, and clear.
 
 ```elixir
 alias Jido.Connect.Catalog
@@ -114,9 +114,10 @@ Catalog.search_tools("tasks",
 Pack delegates are available directly from the provider module:
 
 ```elixir
-Tasks.catalog_packs()    # [readonly_pack, editor_pack]
+Tasks.catalog_packs()    # [readonly_pack, editor_pack, destructive_pack]
 Tasks.readonly_pack()    # :google_tasks_readonly
 Tasks.editor_pack()      # :google_tasks_editor
+Tasks.destructive_pack() # :google_tasks_destructive
 ```
 
 ## Tool Availability

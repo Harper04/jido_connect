@@ -21,11 +21,7 @@ defmodule Jido.Connect.Google.Drive.CatalogPacks do
     "google.drive.shared_drive.get",
     "google.drive.changes.get_start_page_token",
     "google.drive.changes.list",
-    "google.drive.collection.changes.list",
-    "google.drive.file.changed",
-    "google.drive.file.changed.push",
-    "google.drive.collection.changes",
-    "google.drive.collection.changes.push"
+    "google.drive.collection.changes.list"
   ]
 
   @watch_tools @readonly_tools ++
@@ -72,6 +68,7 @@ defmodule Jido.Connect.Google.Drive.CatalogPacks do
       allowed_tools: @file_writer_tools,
       metadata: %{
         package: :jido_connect_google_drive,
+        risk: :write,
         excludes: [
           "google.drive.file.delete",
           "google.drive.permission.create",
@@ -100,8 +97,7 @@ defmodule Jido.Connect.Google.Drive.CatalogPacks do
     Pack.new!(%{
       id: :google_drive_watch,
       label: "Google Drive watch",
-      description:
-        "Read Drive metadata, discover file-change webhooks, and manage Drive push notification channels.",
+      description: "Read Drive metadata and manage Drive push notification channels.",
       filters: %{provider: :google_drive},
       allowed_tools: @watch_tools,
       metadata: %{package: :jido_connect_google_drive, risk: :write}

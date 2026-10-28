@@ -49,7 +49,7 @@ For a generated `google_api_*` package, capture:
 - Whether errors expose raw provider response bodies.
 - Whether test fixtures can assert method/path/query/body without live Google calls.
 - Whether adding the dependency affects umbrella compile time materially.
-- Whether docs/API names are discoverable enough for Codex/Beadwork implementation loops.
+- Whether docs/API names are discoverable enough for Codex/roadmap implementation loops.
 
 ## Handwritten Req Checklist
 

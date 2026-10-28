@@ -66,7 +66,7 @@ defmodule Jido.Connect.Calendly.CatalogPacks do
         "calendly.webhooks.list",
         "calendly.webhooks.delete"
       ],
-      metadata: %{package: :jido_connect_calendly, risk: :full}
+      metadata: %{package: :jido_connect_calendly, risk: :mixed}
     })
   end
 end

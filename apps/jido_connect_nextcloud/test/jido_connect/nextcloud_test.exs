@@ -93,9 +93,13 @@ defmodule Jido.Connect.NextcloudTest do
              :nextcloud_files_write,
              :nextcloud_files_destructive,
              :nextcloud_sharing,
+             :nextcloud_sharing_destructive,
              :nextcloud_office,
              :nextcloud_full
            ]
+
+    refute "nextcloud.share.delete" in Nextcloud.sharing_pack().allowed_tools
+    assert "nextcloud.share.delete" in Nextcloud.sharing_destructive_pack().allowed_tools
   end
 
   test "resolves package scope labels" do

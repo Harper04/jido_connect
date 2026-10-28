@@ -82,9 +82,21 @@ defmodule Jido.Connect.InboundWebhook do
     end
   end
 
-  defdelegate catalog_packs, to: Jido.Connect.InboundWebhook.CatalogPacks, as: :all
-  defdelegate verifier_pack, to: Jido.Connect.InboundWebhook.CatalogPacks, as: :verifier
-  defdelegate receiver_pack, to: Jido.Connect.InboundWebhook.CatalogPacks, as: :receiver
+  defdelegate trigger_packs, to: Jido.Connect.InboundWebhook.TriggerPacks, as: :all
+
+  defdelegate receiver_trigger_pack,
+    to: Jido.Connect.InboundWebhook.TriggerPacks,
+    as: :receiver
+
+  defdelegate capability_sets, to: Jido.Connect.InboundWebhook.CapabilitySets, as: :all
+
+  defdelegate verifier_capabilities,
+    to: Jido.Connect.InboundWebhook.CapabilitySets,
+    as: :verifier
+
+  defdelegate receiver_capabilities,
+    to: Jido.Connect.InboundWebhook.CapabilitySets,
+    as: :receiver
 
   policies do
     policy :webhook_access do

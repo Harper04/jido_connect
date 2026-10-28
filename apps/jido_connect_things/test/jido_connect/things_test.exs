@@ -146,8 +146,8 @@ defmodule Jido.Connect.ThingsTest do
              })
   end
 
-  test "publishes reader and editor packs without raw or destructive tools" do
-    assert [reader, editor] = Things.catalog_packs()
+  test "publishes separate reader, editor, and destructive packs" do
+    assert [reader, editor, destructive] = Things.catalog_packs()
 
     assert reader.id == :things_inbox_reader
 
@@ -181,11 +181,13 @@ defmodule Jido.Connect.ThingsTest do
              "things.todo.complete",
              "things.todo.cancel",
              "things.todo.reopen",
-             "things.todo.trash",
              "things.todo.restore"
            ]
 
     refute Enum.any?(editor.allowed_tools, &String.contains?(&1, ["delete", "raw"]))
+    refute "things.todo.trash" in editor.allowed_tools
+    assert "things.todo.trash" in destructive.allowed_tools
+    assert destructive.metadata.risk == :destructive
   end
 
   test "catalog data contains no protocol secrets" do

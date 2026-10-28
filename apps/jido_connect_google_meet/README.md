@@ -11,7 +11,7 @@ added.
 
 This scaffold declares the provider package, user OAuth profile, Meet scope
 resolver, generated Jido plugin shell, and normalized Zoi-backed structs.
-Trigger work is intentionally split into later Beadwork tasks.
+Trigger work is intentionally split into later roadmap tasks.
 
 ## Normalized Structs
 

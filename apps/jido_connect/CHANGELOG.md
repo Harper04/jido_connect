@@ -9,8 +9,14 @@
   listeners. Preserve endpoint fencing,
   credential leases, authorization, schema checks, notification scope, status
   deadlines, and host-owned client references.
-- Use exact Jido and Jido Action Git revisions, Jido Signal `3.0.0-beta.5`,
-  and ArborMCP `2.0.0-rc.6`.
+- Use exact compatible Jido, Jido Action, Jido Signal, and Jido AI v3 Git
+  revisions with ArborMCP `2.0.0-rc.6`.
+- Add a catalog-backed Jido AI tool source for reviewed Connect Action packs.
+- Standardize `CatalogPacks` across all providers with executable Actions,
+  separate trigger and capability sets, and add a catalog-wide compatibility
+  test.
+- Block mutation packs from Jido AI tool loading until the host review and
+  Connect prepare/commit authorization path is available.
 - Make `Jido.Connect.Catalog.Item` the canonical catalog projection while the
   old tool paths remain narrow compatibility adapters.
 - Upgrade generated Actions and catalog Actions to Jido Action v3 and remove

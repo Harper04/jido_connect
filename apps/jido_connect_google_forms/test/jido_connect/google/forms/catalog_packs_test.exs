@@ -90,7 +90,7 @@ defmodule Jido.Connect.Google.Forms.CatalogPacksTest do
     assert "google.forms.form.get" in ids
     assert "google.forms.responses.list" in ids
     assert "google.forms.responses.get" in ids
-    assert "google.forms.response.submitted" in ids
+    refute "google.forms.response.submitted" in ids
     refute "google.forms.form.create" in ids
     refute "google.forms.form.batch_update" in ids
     refute "google.forms.watch.create" in ids
@@ -136,14 +136,12 @@ defmodule Jido.Connect.Google.Forms.CatalogPacksTest do
                pack: :google_forms_readonly
              )
 
-    assert {:ok, trigger_descriptor} =
+    assert {:error, %Connect.Error.ValidationError{reason: :tool_not_in_pack}} =
              Catalog.describe_tool("google.forms.response.submitted",
                modules: [Forms],
                packs: Forms.catalog_packs(),
                pack: :google_forms_readonly
              )
-
-    assert trigger_descriptor.tool.id == "google.forms.response.submitted"
   end
 
   # ---------------------------------------------------------------------------
@@ -170,8 +168,8 @@ defmodule Jido.Connect.Google.Forms.CatalogPacksTest do
     assert "google.forms.watch.renew" in ids
     assert "google.forms.watch.delete" in ids
 
-    # Response-submitted trigger
-    assert "google.forms.response.submitted" in ids
+    # Triggers are subscribed to outside Action packs.
+    refute "google.forms.response.submitted" in ids
 
     # Excludes form mutation
     refute "google.forms.form.create" in ids
@@ -236,7 +234,7 @@ defmodule Jido.Connect.Google.Forms.CatalogPacksTest do
     assert "google.forms.watch.create" in ids
     assert "google.forms.watch.renew" in ids
     assert "google.forms.watch.delete" in ids
-    assert "google.forms.response.submitted" in ids
+    refute "google.forms.response.submitted" in ids
 
     assert {:ok, descriptor} =
              Catalog.describe_tool("google.forms.form.create",

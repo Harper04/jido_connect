@@ -136,14 +136,15 @@ result.update.updated_cells
 
 ## Built-In Packs
 
-`Sheets.catalog_packs/0` returns two storage-free catalog packs:
+`Sheets.catalog_packs/0` returns three storage-free catalog packs:
 
 - `:google_sheets_readonly` exposes spreadsheet metadata reads and single or
   batch value reads that work with `spreadsheets.readonly`.
 - `:google_sheets_writer` exposes read tools, spreadsheet creation, value
-  writes, value batch writes/clears, provider-specific data-filter tools,
-  developer metadata tools, and sheet add/delete/rename. It intentionally
-  excludes raw `google.sheets.batch_update`.
+  writes, value batch writes, provider-specific data-filter tools, developer
+  metadata tools, and sheet add/rename. It excludes clear, delete, and raw
+  `google.sheets.batch_update` actions.
+- `:google_sheets_destructive` adds value clear and sheet delete actions.
 
 Data-filter inputs use Google Sheets DataFilter shape inside this provider
 package, for example `%{a1Range: "Sheet1!A1:B2"}` or

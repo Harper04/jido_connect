@@ -42,7 +42,7 @@ to be wrapped to preserve Jido's sanitized Splode error contract.
 The handwritten Req slice used existing `CredentialLease` access-token handling,
 `Jido.Connect.Google.Transport`, `Req.Test`, and the same sanitized provider
 error boundary used by the rest of `jido_connect`. It required more endpoint
-code, but the code shape is smaller and easier to implement one Beadwork story
+code, but the code shape is smaller and easier to implement one roadmap story
 at a time.
 
 ## Consequences

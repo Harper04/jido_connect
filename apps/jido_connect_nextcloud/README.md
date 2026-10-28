@@ -72,6 +72,7 @@ external-app access in the richdocuments app.
 - `:nextcloud_files_write`
 - `:nextcloud_files_destructive`
 - `:nextcloud_sharing`
+- `:nextcloud_sharing_destructive`
 - `:nextcloud_office`
 - `:nextcloud_full`
 

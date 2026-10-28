@@ -51,6 +51,7 @@ defmodule Jido.Connect.MicrosoftOutlook.CatalogPacks do
       allowed_tools: @triage_tools,
       metadata: %{
         package: :jido_connect_microsoft_outlook,
+        risk: :read,
         excludes: [
           "microsoft.outlook.message.send",
           "microsoft.outlook.draft.create",
@@ -71,6 +72,7 @@ defmodule Jido.Connect.MicrosoftOutlook.CatalogPacks do
       allowed_tools: @send_tools,
       metadata: %{
         package: :jido_connect_microsoft_outlook,
+        risk: :write,
         excludes: [
           "microsoft.outlook.message.get",
           "microsoft.outlook.folder.get"

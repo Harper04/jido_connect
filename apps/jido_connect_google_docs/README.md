@@ -70,8 +70,8 @@ configurable through application environment for tests.
 ## Catalog Packs
 
 - `:google_docs_readonly` includes document metadata and content reads only.
-- `:google_docs_editor` adds document creation and batch update. Includes all
-  Docs tools.
+- `:google_docs_editor` adds document creation and destructive batch update.
+  Its risk label is `:destructive`.
 
 ```elixir
 alias Jido.Connect.Catalog

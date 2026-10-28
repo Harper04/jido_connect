@@ -59,14 +59,14 @@ channel lifecycle storage.
 
 ## Catalog Packs
 
-- `:google_calendar_reader` includes calendar/event reads, freebusy,
-  availability, event-change polling, and webhook trigger metadata.
-- `:google_calendar_scheduler` adds event create, update, and delete tools for
-  scheduling workflows, including event move.
+- `:google_calendar_reader` includes calendar/event reads, freebusy, and
+  availability.
+- `:google_calendar_scheduler` adds event create, update, and move tools for
+  non-destructive scheduling workflows.
 - `:google_calendar_watch` adds event, CalendarList, ACL, settings watch
   creation and channel stop lifecycle actions.
-- `:google_calendar_manager` adds calendar CRUD, CalendarList item mutation,
-  ACL sharing lifecycle, and destructive calendar management tools.
+- `:google_calendar_manager` adds event delete, calendar CRUD, CalendarList
+  item mutation, ACL sharing lifecycle, and destructive management tools.
 
 ```elixir
 Jido.Connect.Catalog.search_tools("calendar",

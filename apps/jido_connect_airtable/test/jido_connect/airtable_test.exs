@@ -203,7 +203,8 @@ defmodule Jido.Connect.AirtableTest do
 
     assert Enum.map(Airtable.catalog_packs(), & &1.id) == [
              :airtable_reader,
-             :airtable_editor
+             :airtable_editor,
+             :airtable_destructive
            ]
   end
 

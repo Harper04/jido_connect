@@ -166,7 +166,7 @@ defmodule Jido.Connect.Microsoft.TestSupport.ConnectorContracts do
       assert Map.has_key?(pack.metadata, :risk) or Map.has_key?(pack.metadata, :excludes)
 
       if risk = Map.get(pack.metadata, :risk) do
-        assert_known_risk(risk)
+        assert_known_pack_risk(risk)
       end
 
       for excluded_tool <- Map.get(pack.metadata, :excludes, []) do
@@ -219,6 +219,10 @@ defmodule Jido.Connect.Microsoft.TestSupport.ConnectorContracts do
 
   defp assert_known_risk(risk) do
     assert Taxonomy.known_risk?(risk)
+  end
+
+  defp assert_known_pack_risk(risk) do
+    assert Taxonomy.known_pack_risk?(risk)
   end
 
   defp assert_known_confirmation(confirmation) do

@@ -96,7 +96,7 @@ defmodule Jido.Connect.Airtable.CatalogPacksTest do
       # Write tools included
       assert "airtable.records.create" in ids
       assert "airtable.records.update" in ids
-      assert "airtable.records.delete" in ids
+      refute "airtable.records.delete" in ids
     end
 
     test "describe_tool accepts write tools" do
@@ -118,11 +118,22 @@ defmodule Jido.Connect.Airtable.CatalogPacksTest do
 
       assert descriptor.tool.id == "airtable.records.update"
 
-      assert {:ok, descriptor} =
+      assert {:error, %Connect.Error.ValidationError{reason: :tool_not_in_pack}} =
                Catalog.describe_tool("airtable.records.delete",
                  modules: [Airtable],
                  packs: Airtable.catalog_packs(),
                  pack: :airtable_editor
+               )
+    end
+  end
+
+  describe "destructive pack" do
+    test "accepts record delete tools" do
+      assert {:ok, descriptor} =
+               Catalog.describe_tool("airtable.records.delete",
+                 modules: [Airtable],
+                 packs: Airtable.catalog_packs(),
+                 pack: :airtable_destructive
                )
 
       assert descriptor.tool.id == "airtable.records.delete"
@@ -130,11 +141,11 @@ defmodule Jido.Connect.Airtable.CatalogPacksTest do
   end
 
   describe "pack delegates" do
-    test "catalog_packs returns reader and editor packs" do
+    test "catalog_packs returns reader, editor, and destructive packs" do
       packs = Airtable.catalog_packs()
       pack_ids = Enum.map(packs, & &1.id)
 
-      assert pack_ids == [:airtable_reader, :airtable_editor]
+      assert pack_ids == [:airtable_reader, :airtable_editor, :airtable_destructive]
     end
 
     test "all packs reference airtable provider and correct package" do

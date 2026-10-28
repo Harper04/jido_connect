@@ -414,7 +414,8 @@ defmodule Jido.Connect.Google.ContactsTest do
 
     ConnectorContracts.assert_catalog_pack_delegates(Contacts,
       readonly_pack: :google_contacts_readonly,
-      manager_pack: :google_contacts_manager
+      manager_pack: :google_contacts_manager,
+      destructive_pack: :google_contacts_destructive
     )
 
     ConnectorContracts.assert_plugin_tool_availability(Contacts)

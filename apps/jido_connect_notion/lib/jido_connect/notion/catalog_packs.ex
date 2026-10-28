@@ -10,7 +10,8 @@ defmodule Jido.Connect.Notion.CatalogPacks do
   | Pack | Risk | Tools |
   |------|------|-------|
   | `:notion_reader` | read | read-only queries |
-  | `:notion_editor` | write | reader + mutations |
+  | `:notion_editor` | write | reader + non-destructive mutations |
+  | `:notion_destructive` | destructive | editor + block archive |
 
   Triggers are subscribed to independently and are not listed in packs.
 
@@ -34,13 +35,13 @@ defmodule Jido.Connect.Notion.CatalogPacks do
     "notion.page.update",
     "notion.block.append_children",
     "notion.block.update",
-    "notion.block.archive",
     "notion.comment.create"
   ]
   @editor_tools @reader_tools ++ @write_tools
+  @destructive_tools @editor_tools ++ ["notion.block.archive"]
 
   @doc "Returns all built-in Notion catalog packs."
-  def all, do: [reader(), editor()]
+  def all, do: [reader(), editor(), destructive()]
 
   @doc "Read-only Notion pack."
   def reader do
@@ -63,6 +64,18 @@ defmodule Jido.Connect.Notion.CatalogPacks do
       filters: %{provider: :notion},
       allowed_tools: @editor_tools,
       metadata: %{package: :jido_connect_notion, risk: :write}
+    })
+  end
+
+  @doc "Notion destructive pack for block archive."
+  def destructive do
+    Pack.new!(%{
+      id: :notion_destructive,
+      label: "Notion destructive",
+      description: "Read and write Notion content, including block archive.",
+      filters: %{provider: :notion},
+      allowed_tools: @destructive_tools,
+      metadata: %{package: :jido_connect_notion, risk: :destructive}
     })
   end
 end

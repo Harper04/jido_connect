@@ -361,7 +361,8 @@ defmodule Jido.Connect.Google.SheetsTest do
 
     ConnectorContracts.assert_catalog_pack_delegates(Sheets,
       readonly_pack: :google_sheets_readonly,
-      writer_pack: :google_sheets_writer
+      writer_pack: :google_sheets_writer,
+      destructive_pack: :google_sheets_destructive
     )
 
     ConnectorContracts.assert_plugin_tool_availability(Sheets)

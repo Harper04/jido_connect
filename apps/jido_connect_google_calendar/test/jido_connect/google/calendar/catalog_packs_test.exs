@@ -46,7 +46,7 @@ defmodule Jido.Connect.Google.Calendar.CatalogPacksTest do
     end
   end
 
-  test "reader pack exposes read, availability, and poll tools only" do
+  test "reader pack exposes read and availability Actions only" do
     results =
       Catalog.search_tools("calendar",
         modules: [Calendar],
@@ -64,8 +64,8 @@ defmodule Jido.Connect.Google.Calendar.CatalogPacksTest do
     assert "google.calendar.availability.find" in ids
     assert "google.calendar.acl.list" in ids
     assert "google.calendar.acl.get" in ids
-    assert "google.calendar.event.changed" in ids
-    assert "google.calendar.event.changed.push" in ids
+    refute "google.calendar.event.changed" in ids
+    refute "google.calendar.event.changed.push" in ids
     refute "google.calendar.event.create" in ids
     refute "google.calendar.calendar.delete" in ids
     refute "google.calendar.acl.create" in ids
@@ -98,11 +98,18 @@ defmodule Jido.Connect.Google.Calendar.CatalogPacksTest do
 
     assert descriptor.tool.id == "google.calendar.event.create"
 
-    assert {:ok, descriptor} =
+    assert {:error, %Connect.Error.ValidationError{reason: :tool_not_in_pack}} =
              Catalog.describe_tool("google.calendar.event.delete",
                modules: [Calendar],
                packs: Calendar.catalog_packs(),
                pack: :google_calendar_scheduler
+             )
+
+    assert {:ok, descriptor} =
+             Catalog.describe_tool("google.calendar.event.delete",
+               modules: [Calendar],
+               packs: Calendar.catalog_packs(),
+               pack: :google_calendar_manager
              )
 
     assert descriptor.tool.id == "google.calendar.event.delete"
@@ -151,7 +158,7 @@ defmodule Jido.Connect.Google.Calendar.CatalogPacksTest do
     assert "google.calendar.acl.watch" in ids
     assert "google.calendar.settings.watch" in ids
     assert "google.calendar.channel.stop" in ids
-    assert "google.calendar.event.changed.push" in ids
+    refute "google.calendar.event.changed.push" in ids
     refute "google.calendar.event.create" in ids
   end
 

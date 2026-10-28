@@ -124,7 +124,7 @@ privilege order:
 |---|---|---|---|
 | **Read-only** | `:google_forms_readonly` | `:read` | `form.get`, `responses.list`, `responses.get` |
 | **Responder** | `:google_forms_responder` | `:write` | All read-only + `watch.create`, `watch.renew`, `watch.delete` |
-| **Editor** | `:google_forms_editor` | `:write` | All tools including `form.create`, `form.batch_update` |
+| **Editor** | `:google_forms_editor` | `:destructive` | All tools including `form.create`, `form.batch_update` |
 
 Pack delegates are available directly from the provider module:
 

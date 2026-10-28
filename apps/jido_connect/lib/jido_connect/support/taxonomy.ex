@@ -72,6 +72,7 @@ defmodule Jido.Connect.Taxonomy do
   ]
 
   @risks [:metadata, :read, :write, :external_write, :destructive]
+  @pack_risks @risks ++ [:privileged, :mixed]
   @confirmations [:none, :required_for_ai, :always]
 
   def categories, do: @categories
@@ -80,6 +81,7 @@ defmodule Jido.Connect.Taxonomy do
   def verbs, do: @verbs
   def data_classifications, do: @data_classifications
   def risks, do: @risks
+  def pack_risks, do: @pack_risks
   def confirmations, do: @confirmations
 
   def known_category?(nil), do: true
@@ -95,5 +97,6 @@ defmodule Jido.Connect.Taxonomy do
   def known_data_classification?(classification), do: classification in @data_classifications
 
   def known_risk?(risk), do: risk in @risks
+  def known_pack_risk?(risk), do: risk in @pack_risks
   def known_confirmation?(confirmation), do: confirmation in @confirmations
 end

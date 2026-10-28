@@ -184,4 +184,6 @@ defmodule Jido.Connect.Slack do
       decision :allow_operation
     end
   end
+
+  defdelegate catalog_packs, to: Jido.Connect.Slack.CatalogPacks, as: :all
 end

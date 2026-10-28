@@ -6,15 +6,13 @@ defmodule Jido.Connect.Google.Forms.CatalogPacks do
   @readonly_tools [
     "google.forms.form.get",
     "google.forms.responses.list",
-    "google.forms.responses.get",
-    "google.forms.response.submitted"
+    "google.forms.responses.get"
   ]
 
   @responder_tools [
     "google.forms.form.get",
     "google.forms.responses.list",
     "google.forms.responses.get",
-    "google.forms.response.submitted",
     "google.forms.watch.create",
     "google.forms.watch.renew",
     "google.forms.watch.delete"
@@ -38,7 +36,7 @@ defmodule Jido.Connect.Google.Forms.CatalogPacks do
       id: :google_forms_readonly,
       label: "Google Forms read-only",
       description:
-        "Read Google Forms form metadata, content, and response-submitted webhook events without mutation tools.",
+        "Read Google Forms form metadata, content, and responses without mutation tools.",
       filters: %{provider: :google_forms},
       allowed_tools: @readonly_tools,
       metadata: %{package: :jido_connect_google_forms, risk: :read}
@@ -67,7 +65,7 @@ defmodule Jido.Connect.Google.Forms.CatalogPacks do
         "Read, create, and update Google Forms. Includes all mutation and response tools.",
       filters: %{provider: :google_forms},
       allowed_tools: @editor_tools,
-      metadata: %{package: :jido_connect_google_forms, risk: :write}
+      metadata: %{package: :jido_connect_google_forms, risk: :destructive}
     })
   end
 end

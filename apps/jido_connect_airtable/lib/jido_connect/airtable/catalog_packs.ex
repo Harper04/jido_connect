@@ -10,7 +10,8 @@ defmodule Jido.Connect.Airtable.CatalogPacks do
   | Pack | Risk | Tools |
   |------|------|-------|
   | `:airtable_reader` | read | base schema and record queries |
-  | `:airtable_editor` | write | reader + record create, update, delete |
+  | `:airtable_editor` | write | reader + record create and update |
+  | `:airtable_destructive` | destructive | editor + record delete |
 
   Triggers are subscribed to independently and are not listed in packs.
   """
@@ -34,17 +35,23 @@ defmodule Jido.Connect.Airtable.CatalogPacks do
   @record_write_tools [
     "airtable.records.create",
     "airtable.records.update",
-    "airtable.records.delete",
     "airtable.records.batch_create",
-    "airtable.records.batch_update",
+    "airtable.records.batch_update"
+  ]
+
+  @record_delete_tools [
+    "airtable.records.delete",
     "airtable.records.batch_delete"
   ]
 
   @editor_tools @reader_tools ++
                   @record_write_tools
 
+  @destructive_tools @editor_tools ++
+                       @record_delete_tools
+
   @doc "Returns all built-in Airtable catalog packs."
-  def all, do: [reader(), editor()]
+  def all, do: [reader(), editor(), destructive()]
 
   @doc "Read-only Airtable pack for base schema and record queries."
   def reader do
@@ -58,16 +65,27 @@ defmodule Jido.Connect.Airtable.CatalogPacks do
     })
   end
 
-  @doc "Airtable editor pack for read, record create, update, and delete."
+  @doc "Airtable editor pack for read, record create, and update."
   def editor do
     Pack.new!(%{
       id: :airtable_editor,
       label: "Airtable editor",
-      description:
-        "Read Airtable base schemas and records, plus create, update, and delete records.",
+      description: "Read Airtable base schemas and records, plus create and update records.",
       filters: %{provider: :airtable},
       allowed_tools: @editor_tools,
       metadata: %{package: :jido_connect_airtable, risk: :write}
+    })
+  end
+
+  @doc "Airtable destructive pack for record deletion."
+  def destructive do
+    Pack.new!(%{
+      id: :airtable_destructive,
+      label: "Airtable destructive",
+      description: "Read, create, update, and delete Airtable records.",
+      filters: %{provider: :airtable},
+      allowed_tools: @destructive_tools,
+      metadata: %{package: :jido_connect_airtable, risk: :destructive}
     })
   end
 end

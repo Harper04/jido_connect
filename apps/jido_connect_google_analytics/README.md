@@ -13,7 +13,7 @@ This scaffold declares the provider package, user OAuth profile, Analytics
 scope resolver, generated Jido plugin shell, shared Google transport boundary,
 normalized Zoi-backed structs, metadata lookup, core report actions, and
 realtime report actions, property discovery, and curated catalog packs. Trigger
-work is intentionally split into later Beadwork tasks.
+work is intentionally split into later roadmap tasks.
 
 ## Normalized Structs
 

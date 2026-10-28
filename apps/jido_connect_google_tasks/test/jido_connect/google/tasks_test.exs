@@ -298,7 +298,8 @@ defmodule Jido.Connect.Google.TasksTest do
 
     ConnectorContracts.assert_catalog_pack_delegates(Tasks,
       readonly_pack: :google_tasks_readonly,
-      editor_pack: :google_tasks_editor
+      editor_pack: :google_tasks_editor,
+      destructive_pack: :google_tasks_destructive
     )
 
     ConnectorContracts.assert_plugin_tool_availability(Tasks)

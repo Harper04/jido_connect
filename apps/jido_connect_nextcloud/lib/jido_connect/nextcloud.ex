@@ -121,6 +121,11 @@ defmodule Jido.Connect.Nextcloud do
     as: :files_destructive
 
   defdelegate sharing_pack, to: Jido.Connect.Nextcloud.CatalogPacks, as: :sharing
+
+  defdelegate sharing_destructive_pack,
+    to: Jido.Connect.Nextcloud.CatalogPacks,
+    as: :sharing_destructive
+
   defdelegate office_pack, to: Jido.Connect.Nextcloud.CatalogPacks, as: :office
   defdelegate full_pack, to: Jido.Connect.Nextcloud.CatalogPacks, as: :full
 end

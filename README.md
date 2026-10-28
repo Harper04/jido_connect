@@ -326,13 +326,11 @@ apps/                   Core, foundation, bridge, and connector packages
 config/                 Umbrella configuration
 dev/demo/               Local Phoenix host
 docs/                   Architecture and operation guides
-pi-connector-factory/   Beadwork-driven connector build helper
 ```
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). Durable work is tracked with Beadwork.
-Run `bw prime` before repository work.
+See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
