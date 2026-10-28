@@ -20,11 +20,15 @@
     {
       "text": "GitHub Quality passed in 5m31s: https://github.com/agentjido/jido_connect/actions/runs/40605353170",
       "timestamp": "2026-10-28T00:00:49Z"
+    },
+    {
+      "text": "Merged pull request 106 into release/2.0 as f9786172 after GitHub Quality passed.",
+      "timestamp": "2026-10-28T00:04:08Z"
     }
   ],
   "priority": 2,
   "status": "closed",
   "title": "Update Jido Connect v2 dependencies",
   "type": "task",
-  "updated_at": "2026-10-28T00:00:49Z"
+  "updated_at": "2026-10-28T00:04:08Z"
 }
