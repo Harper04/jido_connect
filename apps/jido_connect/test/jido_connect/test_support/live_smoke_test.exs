@@ -11,6 +11,13 @@ defmodule Jido.Connect.TestSupport.LiveSmokeTest do
 
   @req_key :live_smoke_test_req_options
   @docs Path.expand("../../../../../docs/live_smoke_tests.md", __DIR__)
+  # Unset, so a sourced env file does not add its site hosts to these tests.
+  @no_sites %{
+    "JIRA_SITE" => nil,
+    "CONFLUENCE_SITE" => nil,
+    "TEMPO_OAUTH_REDIRECT_URI" => nil,
+    "JIDO_PUBLIC_URL" => nil
+  }
 
   defmodule RecordingWebhook do
     def verify_delivery(body, headers, secret, opts) do
@@ -256,6 +263,120 @@ defmodule Jido.Connect.TestSupport.LiveSmokeTest do
                LiveSmoke.sanitize_capture(capture)
     end
 
+    test "replaces tenant hosts of Atlassian sites and tunnels with stable example hosts" do
+      body = %{
+        "self" => "https://acme-live.atlassian.net/rest/api/3/issue/10001",
+        "_links" => %{"base" => "https://ACME-LIVE.atlassian.net/wiki"},
+        "other" => "https://second-site.atlassian.net/browse/KEY-1",
+        "callback" => "https://quiet-otter-42.ngrok-free.dev/integrations/jira/webhook",
+        "api" => "https://api.atlassian.com/ex/jira/1/rest/api/3/myself"
+      }
+
+      with_env(@no_sites, fn ->
+        assert LiveSmoke.sanitize(body) == %{
+                 "self" => "https://example.atlassian.net/rest/api/3/issue/10001",
+                 "_links" => %{"base" => "https://example.atlassian.net/wiki"},
+                 "other" => "https://example-2.atlassian.net/browse/KEY-1",
+                 "callback" => "https://example.ngrok-free.dev/integrations/jira/webhook",
+                 "api" => "https://api.atlassian.com/ex/jira/1/rest/api/3/myself"
+               }
+      end)
+    end
+
+    test "replaces the hosts of configured sites and of the public tunnel" do
+      env =
+        Map.merge(@no_sites, %{
+          "JIRA_SITE" => "https://jira.acme.test",
+          "CONFLUENCE_SITE" => "https://wiki.acme.test/wiki",
+          "JIDO_PUBLIC_URL" => "https://dev-box.tunnel.test"
+        })
+
+      with_env(env, fn ->
+        body = %{
+          "self" => "https://jira.acme.test/rest/api/3/issue/1",
+          "base" => "https://WIKI.acme.test/wiki",
+          "redirect" => "https://dev-box.tunnel.test/callback",
+          "docs" => "https://acme.test/handbook"
+        }
+
+        assert LiveSmoke.sanitize(body) == %{
+                 "self" => "https://host-1.example.com/rest/api/3/issue/1",
+                 "base" => "https://host-2.example.com/wiki",
+                 "redirect" => "https://host-3.example.com/callback",
+                 "docs" => "https://acme.test/handbook"
+               }
+      end)
+    end
+
+    test "replaces Atlassian account IDs with stable placeholders, also inside URLs" do
+      admin = "5d0000000000000000000001"
+      user = "557058:00000000-0000-4000-8000-000000000002"
+
+      body = %{
+        "assignee" => %{"accountId" => admin},
+        "author" => %{
+          "accountId" => user,
+          "self" => "https://example.test/rest/api/3/user?accountId=#{user}"
+        },
+        "link" => "https://example.test/user?accountId=#{URI.encode_www_form(user)}",
+        "ownerId" => user,
+        "version" => %{"authorId" => admin, "number" => 3}
+      }
+
+      assert LiveSmoke.sanitize(body) == %{
+               "assignee" => %{"accountId" => "account-1"},
+               "author" => %{
+                 "accountId" => "account-2",
+                 "self" => "https://example.test/rest/api/3/user?accountId=account-2"
+               },
+               "link" => "https://example.test/user?accountId=account-2",
+               "ownerId" => "account-2",
+               "version" => %{"authorId" => "account-1", "number" => 3}
+             }
+    end
+
+    test "fails when a site host, a configured email or an account ID survives encoded" do
+      site = "acme-live.atlassian.net"
+      email = "tester@acme.test"
+      id = "557058:00000000-0000-4000-8000-000000000003"
+      env = Map.merge(@no_sites, %{"JIRA_SITE" => "https://#{site}", "JIRA_EMAIL" => email})
+
+      with_env(env, fn ->
+        for {body, source} <- [
+              {%{"blob" => Base.encode64(site)}, "JIRA_SITE"},
+              {%{"blob" => Base.encode64(email)}, "JIRA_EMAIL"},
+              {%{"accountId" => id, "blob" => Base.encode64(id)}, "an account ID"}
+            ] do
+          error = assert_raise LeakError, fn -> LiveSmoke.sanitize(body) end
+          assert Exception.message(error) =~ source
+
+          for value <- [site, email, id] do
+            refute Exception.message(error) =~ value
+          end
+        end
+      end)
+
+      with_env(@no_sites, fn ->
+        assert_raise LeakError, ~r/tenant host/, fn ->
+          LiveSmoke.sanitize(%{"self" => "https://#{site}/x", "blob" => Base.encode64(site)})
+        end
+      end)
+    end
+
+    test "leaves an already sanitized value unchanged" do
+      body = %{
+        "self" => "https://acme-live.atlassian.net/rest/api/3/issue/1",
+        "callback" => "https://quiet-otter-42.ngrok-free.dev/hook",
+        "author" => %{"accountId" => "5d0000000000000000000005", "displayName" => "Ada Lovelace"},
+        "note" => "ada@corp.test"
+      }
+
+      with_env(@no_sites, fn ->
+        once = LiveSmoke.sanitize(body)
+        assert LiveSmoke.sanitize(once) == once
+      end)
+    end
+
     test "guards credential-shaped variables that the convention does not list" do
       secret = "seed-only-secret-value"
 
@@ -356,6 +477,26 @@ defmodule Jido.Connect.TestSupport.LiveSmokeTest do
       refute File.exists?(Path.join(tmp, "test/fixtures/stub/recorded/leak.json"))
     end
 
+    test "records site hosts and account IDs as placeholders", %{tmp: tmp} do
+      body = %{
+        "self" => "https://acme-live.atlassian.net/rest/api/3/issue/10001",
+        "fields" => %{"assignee" => %{"accountId" => "5d0000000000000000000004"}}
+      }
+
+      base_url = start_stub([{200, body}])
+
+      with_env(Map.put(@no_sites, "JIDO_CONNECT_RECORD", "1"), fn ->
+        put_req_options(retry: false)
+        :ok = LiveSmoke.record({:jido_connect, @req_key}, :stub, "issue", root: tmp)
+        assert {:ok, %Req.Response{status: 200}} = get(base_url, "/rest/api/3/issue/10001")
+      end)
+
+      assert LiveSmoke.fixture!(:stub, "issue", root: tmp) == %{
+               "self" => "https://example.atlassian.net/rest/api/3/issue/10001",
+               "fields" => %{"assignee" => %{"accountId" => "account-1"}}
+             }
+    end
+
     test "stores size and digest instead of a body that is not UTF-8", %{tmp: tmp} do
       bytes = <<0xFF, 0xD8, 0xFF, 0x00>>
       base_url = start_stub([{200, {:raw, "image/jpeg", bytes}}])
@@ -411,6 +552,22 @@ defmodule Jido.Connect.TestSupport.LiveSmokeTest do
                slack_signature(LiveSmoke.replay_secret(), "1700000000", sanitized["body"])
 
       assert sanitized["captured_at"] == raw["captured_at"]
+    end
+
+    test "sanitizing replaces the request host of a capture wherever it appears" do
+      body =
+        ~s({"type":"event_callback","url":"https://demo.tunnel.test/integrations/slack/events"})
+
+      raw =
+        body
+        |> slack_capture("secret")
+        |> put_in(["headers", "host"], "demo.tunnel.test:443")
+
+      sanitized = with_env(@no_sites, fn -> LiveSmoke.sanitize_capture(raw, secret: "secret") end)
+
+      assert sanitized["headers"]["host"] == "host-1.example.com:443"
+      assert sanitized["body"] =~ "https://host-1.example.com/integrations/slack/events"
+      refute inspect(sanitized) =~ "tunnel.test"
     end
 
     test "sanitizing refuses a capture whose original signature does not verify" do

@@ -1,11 +1,16 @@
 defmodule Jido.Connect.TestSupport.LiveSmoke.LeakError do
-  @moduledoc "Raised when sanitized live smoke output still holds a credential value."
+  @moduledoc """
+  Raised when sanitized live smoke output still holds a credential value or an
+  identifying value: a site or tunnel host, a configured email address or an
+  account ID.
+  """
 
   defexception [:variable]
 
   @impl true
   def message(%__MODULE__{variable: variable}) do
-    "live smoke output contains the value of #{variable}; nothing was written"
+    what = if variable =~ ~r/^[A-Z][A-Z0-9_]*$/, do: "the value of #{variable}", else: variable
+    "live smoke output contains #{what}; nothing was written"
   end
 end
 
@@ -13,8 +18,8 @@ defmodule Jido.Connect.TestSupport.LiveSmoke.Sanitize do
   @moduledoc false
 
   # Sanitizes recorded responses and captured deliveries. One state keeps the
-  # placeholders for email addresses, display names and configured fields
-  # stable across all values of one recording or capture.
+  # placeholders for email addresses, display names, tenant hosts and
+  # configured fields stable across all values of one recording or capture.
 
   alias Jido.Connect.Sanitizer
   alias Jido.Connect.TestSupport.LiveSmoke.LeakError
@@ -27,27 +32,52 @@ defmodule Jido.Connect.TestSupport.LiveSmoke.Sanitize do
   @name_keys ~w(displayName display_name display_name_normalized real_name
                 real_name_normalized publicName fullName full_name first_name last_name
                 givenName familyName username user_name)
+  # Keys whose values are Atlassian account IDs in Jira, Confluence and Tempo payloads.
+  @account_keys ~w(accountId authorAccountId leadAccountId authorId ownerId lastOwnerId)
   @dropped_header ~r/auth|cookie|token|secret|signature|^x-forwarded-|^forwarded$|^x-real-ip$/i
+  # Hosts whose first label names a customer site or a developer's tunnel.
+  @tenant_domains ~w(atlassian.net ngrok-free.dev ngrok-free.app ngrok.app ngrok.dev ngrok.io)
+  @tenant_host Regex.compile!(
+                 "(?<![A-Za-z0-9.-])[A-Za-z0-9][A-Za-z0-9-]*\\.(?:" <>
+                   Enum.map_join(@tenant_domains, "|", &Regex.escape/1) <> ")(?![A-Za-z0-9-])",
+                 "i"
+               )
+  # Placeholders this module writes; learning them again would flag clean output.
+  @host_placeholder ~r/^(?:example(?:-\d+)?\.[a-z0-9.-]+|host-\d+\.example\.com)$/
+  @account_placeholder ~r/^account-\d+$/
   @min_credential_bytes 8
 
   # `credentials` is a function returning `{variable, value}` pairs, so that
   # inspecting the state, as ExUnit does for failing calls, shows no values.
-  defstruct fields: [],
+  defstruct accounts: %{},
+            fields: [],
             name_keys: @name_keys,
             keep_keys: ["fields"],
             credentials: nil,
             emails: %{},
+            hosts: %{},
+            identifying: [],
             names: %{},
             values: %{}
 
-  @doc "Builds a state from the `:fields`, `:name_keys`, `:keep_keys` and `:credentials` options."
+  @doc """
+  Builds a state from the `:fields`, `:name_keys`, `:keep_keys`, `:credentials`,
+  `:hosts` and `:identifying` options. `:hosts` holds `{source, host}` pairs
+  that get placeholders before any value is read; `:identifying` holds
+  `{source, value}` pairs that must not remain, such as configured emails.
+  """
   def new(opts) do
-    %__MODULE__{
+    hosts = Keyword.get(opts, :hosts, [])
+
+    state = %__MODULE__{
       fields: strings(Keyword.get(opts, :fields, [])),
       name_keys: @name_keys ++ strings(Keyword.get(opts, :name_keys, [])),
       keep_keys: strings(Keyword.get(opts, :keep_keys, ["fields"])),
-      credentials: credentials(Keyword.get(opts, :credentials, []))
+      credentials: credentials(Keyword.get(opts, :credentials, [])),
+      identifying: Keyword.get(opts, :identifying, []) ++ hosts
     }
+
+    Enum.reduce(hosts, state, fn {_source, host}, state -> add_host(state, host) end)
   end
 
   @doc "Sanitizes a decoded JSON value."
@@ -92,11 +122,26 @@ defmodule Jido.Connect.TestSupport.LiveSmoke.Sanitize do
     end)
   end
 
-  @doc "Raises `LeakError` when the encoded value holds a credential value."
-  def check_leaks!(value, %__MODULE__{credentials: credentials}) do
+  @doc """
+  Raises `LeakError` when the encoded value holds a credential value, a
+  configured identifying value, or a tenant host or account ID that sanitizing
+  replaced elsewhere.
+  """
+  def check_leaks!(value, %__MODULE__{} = state) do
     encoded = Jason.encode!(value)
 
-    case Enum.find(credentials.(), fn {_name, secret} -> leaked?(encoded, secret) end) do
+    learned =
+      Enum.map(state.hosts, fn {host, _placeholder} -> {"a tenant host", host} end) ++
+        Enum.map(state.accounts, fn {id, _placeholder} -> {"an account ID", id} end)
+
+    guarded =
+      Enum.filter(state.identifying ++ learned, fn {_source, value} ->
+        is_binary(value) and byte_size(value) >= @min_credential_bytes
+      end)
+
+    case Enum.find(state.credentials.() ++ guarded, fn {_name, secret} ->
+           leaked?(encoded, secret)
+         end) do
       nil -> :ok
       {name, _secret} -> raise LeakError, variable: name
     end
@@ -116,9 +161,11 @@ defmodule Jido.Connect.TestSupport.LiveSmoke.Sanitize do
       state = if is_binary(key), do: collect(key, state), else: state
 
       state =
-        if is_binary(item) and to_string(key) in state.name_keys,
-          do: add_name(state, item),
-          else: state
+        cond do
+          is_binary(item) and to_string(key) in state.name_keys -> add_name(state, item)
+          is_binary(item) and to_string(key) in @account_keys -> add_account(state, item)
+          true -> state
+        end
 
       collect(item, state)
     end)
@@ -138,10 +185,16 @@ defmodule Jido.Connect.TestSupport.LiveSmoke.Sanitize do
         state
       end
 
-    @email
+    state =
+      @email
+      |> Regex.scan(text)
+      |> List.flatten()
+      |> Enum.reduce(state, &add_email(&2, &1))
+
+    @tenant_host
     |> Regex.scan(text)
     |> List.flatten()
-    |> Enum.reduce(state, &add_email(&2, &1))
+    |> Enum.reduce(state, &add_host(&2, &1))
   end
 
   defp collect(_other, state), do: state
@@ -153,6 +206,44 @@ defmodule Jido.Connect.TestSupport.LiveSmoke.Sanitize do
       state
     else
       put_in(state.emails[key], "person-#{map_size(state.emails) + 1}@example.com")
+    end
+  end
+
+  defp add_host(state, host) do
+    host = String.downcase(host)
+
+    if host == "" or Map.has_key?(state.hosts, host) or Regex.match?(@host_placeholder, host) do
+      state
+    else
+      put_in(state.hosts[host], host_placeholder(state, host))
+    end
+  end
+
+  # A tenant host keeps its provider domain; any other host becomes host-<n>.example.com.
+  defp host_placeholder(state, host) do
+    case Enum.find(@tenant_domains, &String.ends_with?(host, "." <> &1)) do
+      nil ->
+        "host-#{count_placeholders(state, ".example.com") + 1}.example.com"
+
+      domain ->
+        case count_placeholders(state, "." <> domain) do
+          0 -> "example.#{domain}"
+          count -> "example-#{count + 1}.#{domain}"
+        end
+    end
+  end
+
+  defp count_placeholders(state, suffix),
+    do:
+      Enum.count(state.hosts, fn {_host, placeholder} ->
+        String.ends_with?(placeholder, suffix)
+      end)
+
+  defp add_account(state, id) do
+    if id == "" or Map.has_key?(state.accounts, id) or Regex.match?(@account_placeholder, id) do
+      state
+    else
+      put_in(state.accounts[id], "account-#{map_size(state.accounts) + 1}")
     end
   end
 
@@ -196,6 +287,24 @@ defmodule Jido.Connect.TestSupport.LiveSmoke.Sanitize do
 
   defp replace_text(text, state) do
     text = Regex.replace(@email, text, &Map.get(state.emails, String.downcase(&1), &1))
+
+    # Hosts before names, so a name that equals a host label leaves the host whole.
+    text =
+      Enum.reduce(state.hosts, text, fn {host, placeholder}, text ->
+        Regex.replace(
+          ~r/(?<![A-Za-z0-9.-])#{Regex.escape(host)}(?![A-Za-z0-9-])/i,
+          text,
+          placeholder
+        )
+      end)
+
+    # Account IDs appear raw and percent-encoded, as in `?accountId=` of user links.
+    text =
+      Enum.reduce(state.accounts, text, fn {id, placeholder}, text ->
+        text
+        |> String.replace(id, placeholder)
+        |> String.replace(URI.encode_www_form(id), placeholder)
+      end)
 
     state.names
     |> Enum.sort_by(fn {name, _placeholder} -> -byte_size(name) end)

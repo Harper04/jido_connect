@@ -78,6 +78,10 @@ defmodule Jido.Connect.TestSupport.LiveSmoke do
 
   @replay_secret "jido-connect-live-smoke-replay-secret"
 
+  # Settings whose URL host names a customer site or a developer's tunnel.
+  @host_variables ~w(JIRA_SITE CONFLUENCE_SITE TEMPO_OAUTH_REDIRECT_URI JIDO_PUBLIC_URL)
+  @loopback_hosts ~w(localhost 127.0.0.1 ::1)
+
   defmacro __using__(_opts) do
     quote do
       alias Jido.Connect.TestSupport.LiveSmoke
@@ -215,10 +219,12 @@ defmodule Jido.Connect.TestSupport.LiveSmoke do
   Sanitizes a decoded provider value.
 
   Redacts the sensitive keys of `Jido.Connect.Sanitizer` except `:keep_keys`
-  (default `["fields"]`, the issue payload of Jira), replaces email addresses
-  and display names with stable placeholders, and replaces the values under
-  `:fields` with `<field>-<n>`. `:name_keys` adds keys that hold display names.
-  Raises `LeakError` when a credential variable's value remains.
+  (default `["fields"]`, the issue payload of Jira), replaces email addresses,
+  display names, site and tunnel hosts and Atlassian account IDs with stable
+  placeholders, and replaces the values under `:fields` with `<field>-<n>`.
+  `:name_keys` adds keys that hold display names. Raises `LeakError` when a
+  credential value, a configured host or email address, or a replaced host or
+  account ID remains.
   """
   @spec sanitize(term(), keyword()) :: term()
   def sanitize(value, opts \\ []) do
@@ -242,15 +248,16 @@ defmodule Jido.Connect.TestSupport.LiveSmoke do
   host. Slack and Jira captures need the provider's signing secret as
   `:secret`: the original signature must verify before the sanitized body
   gets a new `x-slack-signature` or `x-hub-signature`. A forged or edited
-  capture therefore never becomes a fixture. Other options are those of
-  `sanitize/2`.
+  capture therefore never becomes a fixture. The capture's `Host` header,
+  usually the tunnel, is replaced like a configured site host. Other options
+  are those of `sanitize/2`.
   """
   @spec sanitize_capture(map() | Path.t(), keyword()) :: map()
   def sanitize_capture(capture, opts \\ []) do
     capture = load_capture(capture)
     {secret, opts} = Keyword.pop(opts, :secret)
     verify_capture!(capture, secret)
-    state = sanitizer(opts)
+    state = sanitizer(opts, capture_hosts(capture))
     content_type = Sanitize.header_value_of(capture["headers"], "content-type")
 
     {body, state} = Sanitize.body(capture["body"], content_type, state)
@@ -374,7 +381,43 @@ defmodule Jido.Connect.TestSupport.LiveSmoke do
   defp restore_env(app, key, {:ok, options}), do: Application.put_env(app, key, options)
   defp restore_env(app, key, :error), do: Application.delete_env(app, key)
 
-  defp sanitizer(opts), do: Sanitize.new(Keyword.put(opts, :credentials, credential_values()))
+  defp sanitizer(opts, extra_hosts \\ []) do
+    opts
+    |> Keyword.put(:credentials, credential_values())
+    |> Keyword.put(:hosts, configured_hosts() ++ extra_hosts)
+    |> Keyword.put(:identifying, configured_emails())
+    |> Sanitize.new()
+  end
+
+  # Listed settings and every set variable ending in _EMAIL whose value is an address.
+  defp configured_emails do
+    listed = for {_provider, groups} <- @variables, name <- groups.settings, do: name
+    shaped = for {name, _value} <- System.get_env(), String.ends_with?(name, "_EMAIL"), do: name
+
+    for name <- Enum.uniq(listed ++ shaped),
+        value = System.get_env(name),
+        not blank?(value) and Regex.match?(~r/^[^@\s]+@[^@\s]+\.[A-Za-z]{2,}$/, value),
+        do: {name, value}
+  end
+
+  defp configured_hosts do
+    for name <- @host_variables,
+        value = System.get_env(name),
+        not blank?(value),
+        host = URI.parse(value).host,
+        not blank?(host) and host not in @loopback_hosts,
+        do: {name, host}
+  end
+
+  # The demo host receives captures through a tunnel, so the Host header names it.
+  defp capture_hosts(capture) do
+    host =
+      capture["headers"]
+      |> Sanitize.header_value_of("host")
+      |> String.replace(~r/:\d+$/, "")
+
+    if blank?(host) or host in @loopback_hosts, do: [], else: [{"the capture host", host}]
+  end
 
   # Listed credentials plus every set variable whose name looks like one, so a
   # token added to an env file before it is listed here is still guarded.
