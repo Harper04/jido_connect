@@ -16,10 +16,15 @@ that adopt the convention start ExUnit with `exclude: [:live_smoke]`, so a plain
 `mix test` never calls a provider. Run the live tests of one package with:
 
 ```sh
-source ~/.config/jido_connect/live/google.env
+set -a; source ~/.config/jido_connect/live/google.env; set +a
 cd apps/jido_connect_gmail
 mix test --only live_smoke
 ```
+
+The env files hold plain `NAME=value` lines, so `set -a` exports them to
+`mix`. Google access tokens expire after an hour and are not stored: mint
+`GOOGLE_ACCESS_TOKEN` and `GOOGLE_GMAIL_METADATA_ACCESS_TOKEN` from the refresh
+tokens before each run.
 
 The Slack, Jira and Confluence packages declare `plug` as a test-only
 dependency, which conflicts with a transitive dependency when Mix runs inside
@@ -117,7 +122,7 @@ as seed input belong to the scripts that create the test data.
 | `GOOGLE_GMAIL_FORWARD_ATTACHED_ID` | setting | Forward as attachment |
 | `GOOGLE_GMAIL_LABEL_ID` | setting | Test label |
 | `GOOGLE_GMAIL_DISPOSABLE_MESSAGE_ID` | setting | Message that a write test may delete |
-| `GOOGLE_GMAIL_ARCHIVE_MESSAGE_ID` | setting | Second message of the archive and label thread |
+| `GOOGLE_GMAIL_ARCHIVE_MESSAGE_ID` | setting | One message of the two-message archive and label thread |
 | `GOOGLE_GMAIL_RECIPIENT` | setting | Second mailbox for sent mail |
 | `GOOGLE_CALENDAR_ID` | setting | Test calendar |
 | `GOOGLE_CALENDAR_EVENT_ID` | setting | Event with attendees, attachments and Meet data |
@@ -296,7 +301,7 @@ every request into that directory before they verify it. When
 deliveries; without it, that route answers 404.
 
 ```sh
-source ~/.config/jido_connect/live/slack.env
+set -a; source ~/.config/jido_connect/live/slack.env; set +a
 (cd dev/demo && mix phx.server)
 
 # second shell, repo root
