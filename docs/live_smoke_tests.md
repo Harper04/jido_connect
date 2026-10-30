@@ -69,8 +69,9 @@ end
 `write!/1`, and adds a setup that puts the variable values into the test
 context under `:env`.
 
-`env!/1` takes the variable names a test needs. It rejects names that this
-document does not list, so a typo fails at once. When a variable is unset or
+`env!/1` takes the variable names a test needs; list them all in one call,
+because a second `env!/1` tag on the same test replaces the first list. It
+rejects names that this document does not list, so a typo fails at once. When a variable is unset or
 empty, the test is skipped and the reason names the variable. ExUnit does not
 print skip reasons, so a run that includes `:live_smoke` prints a line such as:
 
@@ -81,8 +82,10 @@ live_smoke skip test/jido_connect/gmail/live_smoke_test.exs:15: set GOOGLE_ACCES
 `write!/1` marks a test that changes data in the provider account. The test is
 skipped unless `<PROVIDER>_LIVE_DESTRUCTIVE=true`, the gate that
 `MICROSOFT_LIVE_DESTRUCTIVE` already applies in `jido_connect_microsoft_onedrive`.
-If a write test runs anyway, for example with `--include skip`, the setup
-refuses it while the gate is closed.
+If a skipped test runs anyway, for example with `--include skip`, the setup
+raises for an unset or empty variable and refuses a write while the gate is
+closed. A `setup_all` callback runs before that check, so keep provider calls
+out of `setup_all`.
 
 Use `async: false`: recording changes application environment and runs one
 recorder per test.
@@ -209,8 +212,10 @@ a shorter run no longer writes. Without `JIDO_CONNECT_RECORD=1` the call does
 nothing, so live tests keep the call in place. Recording refuses to start while
 the Req options contain `:plug`, because a plug replaces the network.
 
-A fixture file holds the recording date, the request method and path without
-query, the status, the sanitized response headers and the sanitized body:
+A fixture file holds the recording date, the request method and the decoded
+path without query, the status, the sanitized response headers and the
+sanitized body. A body that is not UTF-8, such as a file download, is stored as
+`"body": null` with `body_bytes` and `body_sha256`:
 
 ```json
 {
@@ -229,9 +234,8 @@ unchanged:
 Req.Test.stub(MyStub, &Req.Test.json(&1, LiveSmoke.fixture!(:gmail, "profile")))
 ```
 
-Review every recording before committing it. Default test runs do not play
-recordings back on their own; each build ticket wires its fixtures into its
-offline tests.
+Default test runs do not play recordings back on their own; each build ticket
+wires its fixtures into its offline tests.
 
 ## Sanitizing
 
@@ -243,20 +247,29 @@ Recordings and captures pass through the same sanitizer, also available as
   `signature`, the forwarding headers, and every header that
   `Jido.Connect.Sanitizer.sensitive_key?/1` reports are dropped.
 - Values under the sensitive keys of `Jido.Connect.Sanitizer` become
-  `"[redacted]"`. `fields` is kept by default because it is the issue payload
-  of Jira; pass `keep_keys:` to change that.
-- Email addresses become `person-<n>@example.com`. Display names under keys
-  such as `displayName`, `real_name` or `publicName`, and names in
-  `Name <address>` lists, become `Person <n>` wherever they appear. Pass
-  `name_keys:` for more keys.
+  `"[redacted]"`, in JSON and in form bodies. `fields` is kept by default
+  because it is the issue payload of Jira; pass `keep_keys:` to change that.
+- Email addresses in values and in map keys become `person-<n>@example.com`.
+- Display names become `Person <n>`. They are taken from keys such as
+  `displayName`, `real_name`, `publicName` and `username`, and from address
+  lists such as `Ada Lovelace <ada@example.org>, bob@example.org`. Once known,
+  a name is replaced as a whole word, ignoring case, wherever it appears. Pass
+  `name_keys:` for more keys, such as Slack's `name`.
 - Values under the keys given as `fields:` become `<field>-<n>`, for message
   text or other content a fixture does not need.
 - Placeholders are stable within one recording or capture: the same input gets
   the same placeholder.
 - If the value of any credential variable listed above, eight bytes or longer,
-  still appears in the output, the sanitizer raises
-  `LiveSmoke.LeakError`. The message names the variable, not the value, and
-  nothing is written.
+  still appears in the output, raw or JSON-, percent- or Base64-encoded, the
+  sanitizer raises `LiveSmoke.LeakError`. The message names the variable, not
+  the value, and nothing is written.
+
+The sanitizer does not look inside encoded content. Base64 message bodies,
+such as Gmail's `payload.body.data` and `raw`, keep whatever they contain; list
+such keys in `fields:` or check them by hand. Free text keeps names that never
+appear under a name key or in an address list, and names shorter than three
+bytes stay as they are. Review every recording and capture before committing
+it.
 
 ## Capturing Inbound Deliveries
 
@@ -288,7 +301,16 @@ capture directories outside the repository.
 `test/fixtures/<provider>/captured/<name>.json`. Sanitizing changes the body,
 so the original signature no longer matches. Slack and Jira captures are
 therefore signed again with `LiveSmoke.replay_secret/0`, a fixed test key that
-is not a credential.
+is not a credential. Before that, the original signature must verify with the
+provider's signing secret, passed as `:secret`, so an edited capture or an
+unsigned request to the public tunnel never becomes a fixture:
+
+```elixir
+LiveSmoke.write_capture!(raw_path, :slack, "message_changed",
+  secret: env["SLACK_SIGNING_SECRET"],
+  fields: ["text"]
+)
+```
 
 `LiveSmoke.replay/2` passes a capture through a package's
 `verify_delivery/4`, with the capture time as `now`:
@@ -300,7 +322,10 @@ LiveSmoke.replay(raw_path, webhook: Jido.Connect.Slack.Webhook, secret: env["SLA
 
 A sanitized capture verifies with the default replay secret; a raw capture
 needs the provider's signing secret. Any change to the body after signing fails
-verification. The Jira connector has no `verify_delivery/4` yet, so Jira
+verification. `replay/2` suits deliveries that the package's
+`verify_delivery/4` accepts, such as Slack Events API payloads. Slack
+interactivity captures are form bodies; check them with
+`Jido.Connect.Slack.Webhook.verify_signature/4` and the capture time as `now`. The Jira connector has no `verify_delivery/4` yet, so Jira
 captures can be sanitized but not replayed until it does.
 
 ## Evidence
@@ -315,4 +340,6 @@ shasum -a 256 apps/jido_connect_gmail/test/fixtures/gmail/recorded/profile.json
 
 A report never contains credentials, message text, document content or other
 account content. IDs of test objects are fine; they also appear in this
-document's variables.
+document's variables. ExUnit prints the arguments of a failing call, which in a
+live test can include a token, so do not paste raw failure output into a
+report.

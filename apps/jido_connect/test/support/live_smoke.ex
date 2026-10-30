@@ -151,7 +151,7 @@ defmodule Jido.Connect.TestSupport.LiveSmoke do
 
     case context[:live_env] do
       nil -> :ok
-      names -> %{env: Map.new(names, &{&1, System.fetch_env!(&1)})}
+      names -> %{env: Map.new(names, &{&1, fetch_env!(&1)})}
     end
   end
 
@@ -235,12 +235,17 @@ defmodule Jido.Connect.TestSupport.LiveSmoke do
   Sanitizes a captured delivery and signs it again with `replay_secret/0`.
 
   `capture` is a capture map or the path of a capture file from the demo
-  host. Slack captures get a new `x-slack-signature`, Jira captures a new
-  `x-hub-signature`, so the sanitized body still verifies.
+  host. Slack and Jira captures need the provider's signing secret as
+  `:secret`: the original signature must verify before the sanitized body
+  gets a new `x-slack-signature` or `x-hub-signature`. A forged or edited
+  capture therefore never becomes a fixture. Other options are those of
+  `sanitize/2`.
   """
   @spec sanitize_capture(map() | Path.t(), keyword()) :: map()
   def sanitize_capture(capture, opts \\ []) do
     capture = load_capture(capture)
+    {secret, opts} = Keyword.pop(opts, :secret)
+    verify_capture!(capture, secret)
     state = sanitizer(opts)
     content_type = Sanitize.header_value_of(capture["headers"], "content-type")
 
@@ -251,7 +256,7 @@ defmodule Jido.Connect.TestSupport.LiveSmoke do
     sanitized =
       Map.merge(capture, %{
         "body" => body,
-        "headers" => sign(capture["provider"], body, headers),
+        "headers" => resign(capture["provider"], body, headers),
         "path" => path
       })
 
@@ -262,7 +267,8 @@ defmodule Jido.Connect.TestSupport.LiveSmoke do
   @doc """
   Sanitizes a capture and writes it to `test/fixtures/<provider>/captured/<name>.json`.
 
-  Returns the written path. Accepts `:root` and the options of `sanitize/2`.
+  Returns the written path. Accepts `:root`, `:secret` and the options of
+  `sanitize/2`; see `sanitize_capture/2`.
   """
   @spec write_capture!(map() | Path.t(), atom() | String.t(), String.t(), keyword()) :: Path.t()
   def write_capture!(capture, provider, name, opts \\ []) do
@@ -387,20 +393,54 @@ defmodule Jido.Connect.TestSupport.LiveSmoke do
   defp load_capture(path) when is_binary(path), do: path |> File.read!() |> Jason.decode!()
   defp load_capture(capture) when is_map(capture), do: capture
 
-  defp sign("slack", body, headers) do
-    timestamp = headers["x-slack-request-timestamp"]
-    Map.put(headers, "x-slack-signature", "v0=" <> hmac("v0:#{timestamp}:#{body}"))
+  defp verify_capture!(capture, secret) do
+    provider = capture["provider"]
+    headers = capture["headers"] || %{}
+
+    case signature(provider, secret || "", capture["body"] || "", headers) do
+      nil ->
+        :ok
+
+      {_header, _expected} when secret in [nil, ""] ->
+        raise ArgumentError,
+              "pass the #{provider} signing secret as :secret to sanitize a capture"
+
+      {header, expected} ->
+        unless Sanitize.header_value_of(headers, header) == expected do
+          raise ArgumentError, "the #{provider} capture signature does not verify with :secret"
+        end
+    end
   end
 
-  defp sign("jira", body, headers),
-    do: Map.put(headers, "x-hub-signature", "sha256=" <> hmac(body))
+  defp resign(provider, body, headers) do
+    case signature(provider, @replay_secret, body, headers) do
+      nil -> headers
+      {header, value} -> Map.put(headers, header, value)
+    end
+  end
 
-  defp sign(_provider, _body, headers), do: headers
+  # The signature header of a delivery and its value under `secret`.
+  defp signature("slack", secret, body, headers) do
+    timestamp = Sanitize.header_value_of(headers, "x-slack-request-timestamp")
+    {"x-slack-signature", "v0=" <> hmac(secret, "v0:#{timestamp}:#{body}")}
+  end
 
-  defp hmac(data) do
+  defp signature("jira", secret, body, _headers),
+    do: {"x-hub-signature", "sha256=" <> hmac(secret, body)}
+
+  defp signature(_provider, _secret, _body, _headers), do: nil
+
+  defp hmac(secret, data) do
     :hmac
-    |> :crypto.mac(:sha256, @replay_secret, data)
+    |> :crypto.mac(:sha256, secret, data)
     |> Base.encode16(case: :lower)
+  end
+
+  defp fetch_env!(name) do
+    case System.get_env(name) do
+      value when value in [nil, ""] -> raise ArgumentError, "set #{name} to run this live test"
+      value -> value
+    end
   end
 
   defp blank?(value), do: value in [nil, ""]

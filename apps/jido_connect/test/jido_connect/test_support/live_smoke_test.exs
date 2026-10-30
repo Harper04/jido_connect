@@ -5,7 +5,7 @@ defmodule Jido.Connect.TestSupport.LiveSmokeTest do
 
   alias Jido.Connect.Provider.Transport
   alias Jido.Connect.TestSupport.LiveSmoke
-  alias Jido.Connect.TestSupport.LiveSmoke.LeakError
+  alias Jido.Connect.TestSupport.LiveSmoke.{LeakError, Sanitize}
 
   require LiveSmoke
 
@@ -72,6 +72,12 @@ defmodule Jido.Connect.TestSupport.LiveSmokeTest do
       end)
 
       assert LiveSmoke.setup_live_env(%{}) == :ok
+
+      with_env(%{"JIRA_SITE" => ""}, fn ->
+        assert_raise ArgumentError, ~r/JIRA_SITE/, fn ->
+          LiveSmoke.setup_live_env(%{live_env: ["JIRA_SITE"]})
+        end
+      end)
     end
   end
 
@@ -211,6 +217,50 @@ defmodule Jido.Connect.TestSupport.LiveSmokeTest do
              }
     end
 
+    test "covers map keys, bare addresses, user names and whole words only" do
+      body = %{
+        "calendars" => %{"ada@corp.test" => %{"busy" => []}},
+        "creator" => %{"displayName" => "Admin"},
+        "message" => %{
+          "username" => "ada.lovelace",
+          "text" => "ada lovelace asked the Administrator"
+        },
+        "to" => "bob@corp.test, Ada Lovelace <ada@corp.test>"
+      }
+
+      assert LiveSmoke.sanitize(body) == %{
+               "calendars" => %{"person-1@example.com" => %{"busy" => []}},
+               "creator" => %{"displayName" => "Person 1"},
+               "message" => %{
+                 "username" => "Person 2",
+                 "text" => "Person 3 asked the Administrator"
+               },
+               "to" => "person-2@example.com, Person 3 <person-1@example.com>"
+             }
+    end
+
+    test "keeps keep_keys in form bodies and survives missing bodies and headers" do
+      form = "fields=summary&token=xoxp-form-token&note=ada%40corp.test"
+
+      assert {"fields=summary&token=%5Bredacted%5D&note=person-1%40example.com", _state} =
+               Sanitize.body(form, "application/x-www-form-urlencoded", Sanitize.new([]))
+
+      capture = %{
+        "provider" => "github",
+        "captured_at" => 1,
+        "headers" => %{"x-github-event" => nil},
+        "body" => nil
+      }
+
+      assert %{"body" => "", "headers" => %{"x-github-event" => nil}} =
+               LiveSmoke.sanitize_capture(capture)
+    end
+
+    test "never shows credential values when the sanitizer state is inspected" do
+      token = "xoxb-live-smoke-inspect-check"
+      refute inspect(Sanitize.new(credentials: [{"SLACK_BOT_TOKEN", token}])) =~ token
+    end
+
     test "fails when a credential variable's value appears, naming only the variable" do
       token = "xoxb-live-smoke-leak-check"
 
@@ -222,6 +272,16 @@ defmodule Jido.Connect.TestSupport.LiveSmokeTest do
 
         assert Exception.message(error) =~ "SLACK_BOT_TOKEN"
         refute Exception.message(error) =~ token
+      end)
+
+      refresh = "1//live-smoke-refresh"
+
+      with_env(%{"GOOGLE_REFRESH_TOKEN" => refresh}, fn ->
+        for encoded <- [URI.encode_www_form(refresh), Base.encode64(refresh)] do
+          assert_raise LeakError, ~r/GOOGLE_REFRESH_TOKEN/, fn ->
+            LiveSmoke.sanitize(%{"next" => "https://example.test/?t=#{encoded}"})
+          end
+        end
       end)
     end
   end
@@ -239,7 +299,9 @@ defmodule Jido.Connect.TestSupport.LiveSmokeTest do
         assert Application.get_env(:jido_connect, @req_key)[:adapter] == LiveSmoke.Recorder
 
         assert {:ok, %Req.Response{status: 200, body: ^body}} = get(base_url, "/v1/profile")
-        assert {:ok, %Req.Response{body: %{"page" => 2}}} = get(base_url, "/v1/profile")
+
+        assert {:ok, %Req.Response{body: %{"page" => 2}}} =
+                 get(base_url, "/v1/calendars/ada%40corp.test")
       end)
 
       recorded = Path.join(tmp, "test/fixtures/stub/recorded/profile.json")
@@ -254,6 +316,11 @@ defmodule Jido.Connect.TestSupport.LiveSmokeTest do
 
       assert LiveSmoke.fixture!(:stub, "profile", root: tmp) == body
       assert LiveSmoke.fixture!(:stub, "profile.2", root: tmp) == %{"page" => 2}
+
+      second = Path.join(tmp, "test/fixtures/stub/recorded/profile.2.json")
+
+      assert %{"path" => "/v1/calendars/person-1@example.com"} =
+               second |> File.read!() |> Jason.decode!() |> Map.fetch!("request")
 
       fixture = LiveSmoke.fixture!(:stub, "profile", root: tmp)
       Req.Test.stub(__MODULE__, &Req.Test.json(&1, fixture))
@@ -277,6 +344,26 @@ defmodule Jido.Connect.TestSupport.LiveSmokeTest do
       end)
 
       refute File.exists?(Path.join(tmp, "test/fixtures/stub/recorded/leak.json"))
+    end
+
+    test "stores size and digest instead of a body that is not UTF-8", %{tmp: tmp} do
+      bytes = <<0xFF, 0xD8, 0xFF, 0x00>>
+      base_url = start_stub([{200, {:raw, "image/jpeg", bytes}}])
+
+      with_env(%{"JIDO_CONNECT_RECORD" => "1"}, fn ->
+        put_req_options(retry: false)
+        :ok = LiveSmoke.record({:jido_connect, @req_key}, :stub, "download", root: tmp)
+        assert {:ok, %Req.Response{status: 200, body: ^bytes}} = get(base_url, "/v1/file")
+      end)
+
+      envelope =
+        Path.join(tmp, "test/fixtures/stub/recorded/download.json")
+        |> File.read!()
+        |> Jason.decode!()
+
+      assert envelope["body"] == nil
+      assert envelope["body_bytes"] == 4
+      assert envelope["body_sha256"] == Base.encode16(:crypto.hash(:sha256, bytes), case: :lower)
     end
 
     test "leaves the Req options alone unless JIDO_CONNECT_RECORD=1", %{tmp: tmp} do
@@ -303,7 +390,7 @@ defmodule Jido.Connect.TestSupport.LiveSmokeTest do
     test "sanitizing re-signs a Slack capture for the replay secret" do
       raw = slack_capture(~s({"event":{"type":"message","user_email":"ada@corp.test"}}), "secret")
 
-      sanitized = LiveSmoke.sanitize_capture(raw)
+      sanitized = LiveSmoke.sanitize_capture(raw, secret: "secret")
 
       assert sanitized["body"] =~ "person-1@example.com"
       refute sanitized["body"] =~ "ada@corp.test"
@@ -316,11 +403,28 @@ defmodule Jido.Connect.TestSupport.LiveSmokeTest do
       assert sanitized["captured_at"] == raw["captured_at"]
     end
 
+    test "sanitizing refuses a capture whose original signature does not verify" do
+      raw = slack_capture(~s({"type":"event_callback"}), "secret")
+      tampered = Map.put(raw, "body", ~s({"type":"event_callback","forged":true}))
+
+      assert_raise ArgumentError, ~r/secret/, fn -> LiveSmoke.sanitize_capture(raw) end
+
+      assert_raise ArgumentError, ~r/does not verify/, fn ->
+        LiveSmoke.sanitize_capture(tampered, secret: "secret")
+      end
+
+      assert_raise ArgumentError, ~r/does not verify/, fn ->
+        LiveSmoke.sanitize_capture(raw, secret: "other-secret")
+      end
+    end
+
     test "replay passes the capture to verify_delivery/4 with the captured time as now", %{
       tmp: tmp
     } do
       capture = slack_capture(~s({"type":"event_callback"}), "secret")
-      path = LiveSmoke.write_capture!(capture, :slack, "event_callback", root: tmp)
+
+      path =
+        LiveSmoke.write_capture!(capture, :slack, "event_callback", root: tmp, secret: "secret")
 
       assert path == Path.join(tmp, "test/fixtures/slack/captured/event_callback.json")
       assert {:ok, :verified} = LiveSmoke.replay(path, webhook: RecordingWebhook)
@@ -408,16 +512,21 @@ defmodule Jido.Connect.TestSupport.LiveSmokeTest do
   defp serve(listen, [{status, body} | responses]) do
     {:ok, socket} = :gen_tcp.accept(listen)
     :ok = read_head(socket, "")
-    json = Jason.encode!(body)
+
+    {content_type, payload} =
+      case body do
+        {:raw, content_type, bytes} -> {content_type, bytes}
+        body -> {"application/json", Jason.encode!(body)}
+      end
 
     :ok =
       :gen_tcp.send(socket, [
         "HTTP/1.1 #{status} OK\r\n",
-        "content-type: application/json\r\n",
+        "content-type: #{content_type}\r\n",
         "set-cookie: sid=stub\r\n",
-        "content-length: #{byte_size(json)}\r\n",
+        "content-length: #{byte_size(payload)}\r\n",
         "connection: close\r\n\r\n",
-        json
+        payload
       ])
 
     :gen_tcp.close(socket)

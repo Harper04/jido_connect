@@ -23,18 +23,22 @@ defmodule Jido.Connect.Slack.LiveSmokeTest do
 
   @tag env!(["SLACK_SIGNING_SECRET", "SLACK_CAPTURE_DIR"])
   test "the newest captured event replays before and after sanitizing", %{env: env} do
-    path =
+    secret = env["SLACK_SIGNING_SECRET"]
+
+    capture =
       env["SLACK_CAPTURE_DIR"]
       |> Path.join("slack-events-*.json")
       |> Path.wildcard()
-      |> Enum.max(fn -> flunk("no slack-events-*.json capture in SLACK_CAPTURE_DIR") end)
+      |> Enum.map(&(&1 |> File.read!() |> Jason.decode!()))
+      |> Enum.max_by(& &1["captured_at"], fn ->
+        flunk("no slack-events-*.json capture in SLACK_CAPTURE_DIR")
+      end)
+
+    assert {:ok, _delivery} = LiveSmoke.replay(capture, webhook: Webhook, secret: secret)
 
     assert {:ok, _delivery} =
-             LiveSmoke.replay(path, webhook: Webhook, secret: env["SLACK_SIGNING_SECRET"])
-
-    assert {:ok, _delivery} =
-             path
-             |> LiveSmoke.sanitize_capture()
+             capture
+             |> LiveSmoke.sanitize_capture(secret: secret)
              |> LiveSmoke.replay(webhook: Webhook)
   end
 end

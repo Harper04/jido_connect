@@ -49,7 +49,7 @@ defmodule Jido.Connect.DemoWeb.CaptureTest do
     assert {:ok, %{delivery_id: "EvCapture1"}} =
              LiveSmoke.replay(path, webhook: Webhook, secret: @secret)
 
-    sanitized = LiveSmoke.sanitize_capture(path)
+    sanitized = LiveSmoke.sanitize_capture(path, secret: @secret)
     refute sanitized["body"] =~ "ada@corp.test"
 
     assert {:ok, %{delivery_id: "EvCapture1", payload: payload}} =
@@ -62,6 +62,12 @@ defmodule Jido.Connect.DemoWeb.CaptureTest do
 
       assert {:error, %AuthError{reason: :invalid_signature}} =
                LiveSmoke.replay(tampered, webhook: Webhook, secret: secret)
+    end
+
+    forged = Map.update!(raw, "body", &String.replace(&1, "ask", "tell"))
+
+    assert_raise ArgumentError, ~r/does not verify/, fn ->
+      LiveSmoke.sanitize_capture(forged, secret: @secret)
     end
   end
 
@@ -82,7 +88,7 @@ defmodule Jido.Connect.DemoWeb.CaptureTest do
     assert [path] = Path.wildcard(Path.join(dir, "slack-interactivity-*.json"))
     assert Jason.decode!(File.read!(path))["body"] == body
 
-    sanitized = LiveSmoke.sanitize_capture(path)
+    sanitized = LiveSmoke.sanitize_capture(path, secret: @secret)
 
     refute URI.decode_www_form(sanitized["body"]) =~ "ada@corp.test"
 
@@ -107,7 +113,7 @@ defmodule Jido.Connect.DemoWeb.CaptureTest do
     assert %{"ok" => true, "captured" => true} = json_response(response, 200)
     assert [path] = Path.wildcard(Path.join(dir, "jira-webhook-*.json"))
 
-    sanitized = LiveSmoke.sanitize_capture(path)
+    sanitized = LiveSmoke.sanitize_capture(path, secret: "jira-secret")
     refute sanitized["body"] =~ "ada@corp.test"
 
     assert sanitized["headers"]["x-hub-signature"] ==
