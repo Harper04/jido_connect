@@ -16,7 +16,7 @@ defmodule Jido.Connect.Jira.Triggers.Issues do
 
       verification(%{
         kind: :jira_webhook,
-        signature: :hmac_sha256_base64,
+        signature: :hmac_sha256,
         header: "x-hub-signature"
       })
 
@@ -65,7 +65,7 @@ defmodule Jido.Connect.Jira.Triggers.Issues do
 
       verification(%{
         kind: :jira_webhook,
-        signature: :hmac_sha256_base64,
+        signature: :hmac_sha256,
         header: "x-hub-signature"
       })
 
