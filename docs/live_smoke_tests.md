@@ -270,6 +270,16 @@ Recordings and captures pass through the same sanitizer, also available as
   `"[redacted]"`, in JSON and in form bodies. `fields` is kept by default
   because it is the issue payload of Jira; pass `keep_keys:` to change that.
 - Email addresses in values and in map keys become `person-<n>@example.com`.
+- Hosts that name a customer site or a developer's tunnel become example
+  hosts wherever they appear. A host under `atlassian.net` or one of ngrok's
+  domains keeps that domain: `example.atlassian.net`,
+  `example-2.atlassian.net`, `example.ngrok-free.dev`. The hosts of
+  `JIRA_SITE`, `CONFLUENCE_SITE`, `TEMPO_OAUTH_REDIRECT_URI` and
+  `JIDO_PUBLIC_URL`, and the `Host` header of a capture, become
+  `host-<n>.example.com` when they are not under such a domain.
+- Atlassian account IDs under `accountId`, `authorAccountId`,
+  `leadAccountId`, `authorId`, `ownerId` and `lastOwnerId` become
+  `account-<n>` wherever they appear, also percent-encoded in links.
 - Display names become `Person <n>`. They are taken from keys such as
   `displayName`, `real_name`, `publicName` and `username`, and from address
   lists such as `Ada Lovelace <ada@example.org>, bob@example.org`. Once known,
@@ -281,15 +291,20 @@ Recordings and captures pass through the same sanitizer, also available as
   the same placeholder.
 - If the value of any credential variable listed above, eight bytes or longer,
   still appears in the output, raw or JSON-, percent- or Base64-encoded, the
-  sanitizer raises `LiveSmoke.LeakError`. The message names the variable, not
-  the value, and nothing is written.
+  sanitizer raises `LiveSmoke.LeakError`. The same holds for the hosts above,
+  for email addresses in listed settings and in variables ending in `_EMAIL`,
+  and for every tenant host and account ID the sanitizer replaced elsewhere.
+  The message names the variable or the kind of value, not the value, and
+  nothing is written.
 
 The sanitizer does not look inside encoded content. Base64 message bodies,
 such as Gmail's `payload.body.data` and `raw`, keep whatever they contain; list
-such keys in `fields:` or check them by hand. Free text keeps names that never
-appear under a name key or in an address list, and names shorter than three
-bytes stay as they are. Review every recording and capture before committing
-it.
+such keys in `fields:` or check them by hand. The leak guard finds a guarded
+value there only when the encoding of the value itself appears. Free text
+keeps names that never appear under a name key or in an address list, and
+names shorter than three bytes stay as they are. Content such as issue
+summaries, comments and page bodies stays unless listed in `fields:`. Review
+every recording and capture before committing it.
 
 ## Capturing Inbound Deliveries
 
