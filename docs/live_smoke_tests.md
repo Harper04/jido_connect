@@ -96,7 +96,9 @@ Credentials live in a password manager and in local, uncommitted files such as
 `~/.config/jido_connect/live/google.env`, sourced into the shell before a run.
 They never go into the repository, CI, a fixture or a ticket comment. Values
 marked as credentials below are checked by the leak guard of every recording
-and capture.
+and capture, and so is every set variable whose name ends in `_TOKEN`,
+`_SECRET`, `_PASSWORD` or `_API_KEY`. Variables starting with `SEED_` or marked
+as seed input belong to the scripts that create the test data.
 
 ### Google Workspace
 
@@ -106,7 +108,8 @@ and capture.
 | `GOOGLE_CLIENT_SECRET` | credential | OAuth client secret |
 | `GOOGLE_REFRESH_TOKEN` | credential | Refresh token with the full test scopes |
 | `GOOGLE_ACCESS_TOKEN` | credential | Access token minted per run from the refresh token |
-| `GOOGLE_GMAIL_METADATA_ACCESS_TOKEN` | credential | Access token with `gmail.metadata` only |
+| `GOOGLE_GMAIL_METADATA_REFRESH_TOKEN` | credential | Refresh token with `gmail.metadata` only |
+| `GOOGLE_GMAIL_METADATA_ACCESS_TOKEN` | credential | Access token minted from it |
 | `GOOGLE_GMAIL_QUERY` | setting | Query matching inbox and archived test messages |
 | `GOOGLE_GMAIL_THREAD_ID` | setting | Three-message conversation |
 | `GOOGLE_GMAIL_ATTACHMENT_MESSAGE_ID` | setting | Message with attachments and nested parts |
@@ -114,12 +117,14 @@ and capture.
 | `GOOGLE_GMAIL_FORWARD_ATTACHED_ID` | setting | Forward as attachment |
 | `GOOGLE_GMAIL_LABEL_ID` | setting | Test label |
 | `GOOGLE_GMAIL_DISPOSABLE_MESSAGE_ID` | setting | Message that a write test may delete |
+| `GOOGLE_GMAIL_ARCHIVE_MESSAGE_ID` | setting | Second message of the archive and label thread |
 | `GOOGLE_GMAIL_RECIPIENT` | setting | Second mailbox for sent mail |
 | `GOOGLE_CALENDAR_ID` | setting | Test calendar |
 | `GOOGLE_CALENDAR_EVENT_ID` | setting | Event with attendees, attachments and Meet data |
 | `GOOGLE_MEET_CONFERENCE_RECORD` | setting | Past meeting with transcript and recording |
 | `GOOGLE_MEET_TRANSCRIPT` | setting | Transcript of that meeting |
 | `GOOGLE_MEET_RECORDING` | setting | Recording of that meeting |
+| `GOOGLE_MEET_POLL_EVENT_ID` | setting | Calendar event of the fresh meeting for the poll check |
 | `GOOGLE_DRIVE_SHARED_LINK_URL` | setting | Link-shared file with a resource key |
 | `GOOGLE_DRIVE_SHORTCUT_ID` | setting | Shortcut to that file |
 | `GOOGLE_DOCS_TABBED_DOCUMENT_ID` | setting | Document with nested tabs |
@@ -128,6 +133,11 @@ and capture.
 | `GOOGLE_DRIVE_WATCH_FOLDER_ID` | setting | Folder for externally added files |
 | `GOOGLE_DRIVE_UPLOAD_FOLDER_ID` | setting | Upload folder created by the app |
 | `GOOGLE_DOCS_SCRATCH_DOCUMENT_ID` | setting | Scratch document |
+| `GOOGLE_DRIVE_EDIT_FILE_ID` | setting | File that a write test may edit |
+| `GOOGLE_DRIVE_DELETE_FILE_ID` | setting | File that a write test may delete |
+| `GOOGLE_TEST_USER` | setting | Seed input: the test user |
+| `GOOGLE_CLOUD_PROJECT` | setting | Seed input: the test Cloud project |
+| `GOOGLE_SEED_ATTENDEES` | setting | Seed input: attendees for seeded events |
 | `GOOGLE_LIVE_DESTRUCTIVE` | gate | `true` allows write tests |
 
 ### Slack
@@ -145,6 +155,7 @@ and capture.
 | `SLACK_THREAD_TS` | setting | Thread with replies over more than one page |
 | `SLACK_SECOND_USER_ID` | setting | Second human user |
 | `SLACK_CAPTURE_DIR` | setting | Capture directory of the demo host |
+| `SLACK_APP_ID` | setting | ID of the test app |
 | `SLACK_LIVE_DESTRUCTIVE` | gate | `true` allows write tests |
 
 ### Jira
@@ -159,6 +170,8 @@ and capture.
 | `JIRA_ISSUE_ID` | setting | Numeric ID of the test issue |
 | `JIRA_WEBHOOK_SECRET` | credential | Secret of the registered webhook |
 | `JIRA_CAPTURE_DIR` | setting | Capture directory of the demo host |
+| `SEED_ADMIN_EMAIL` | setting | Seed input: site administrator |
+| `SEED_ADMIN_API_TOKEN` | credential | Seed input: API token of the site administrator |
 | `JIRA_LIVE_DESTRUCTIVE` | gate | `true` allows write tests |
 
 ### Tempo
@@ -171,6 +184,8 @@ and capture.
 | `TEMPO_OAUTH_REDIRECT_URI` | setting | Redirect URI on the demo host |
 | `TEMPO_OAUTH_ACCESS_TOKEN` | credential | OAuth access token |
 | `TEMPO_OAUTH_REFRESH_TOKEN` | credential | OAuth refresh token; each refresh replaces it |
+| `TEMPO_OAUTH_ACCESS_TOKEN_EXPIRES_AT` | setting | Expiry of the stored access token |
+| `SEED_TEMPO_API_TOKEN` | credential | Seed input: Tempo API token with admin rights |
 | `TEMPO_API_ORIGIN` | setting | Tempo API origin |
 | `TEMPO_ACCOUNT_ID` | setting | Tempo account linked to the test project |
 | `TEMPO_JIRA_ISSUE_ID` | setting | Jira issue for worklogs |

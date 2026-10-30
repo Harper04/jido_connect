@@ -256,6 +256,16 @@ defmodule Jido.Connect.TestSupport.LiveSmokeTest do
                LiveSmoke.sanitize_capture(capture)
     end
 
+    test "guards credential-shaped variables that the convention does not list" do
+      secret = "seed-only-secret-value"
+
+      with_env(%{"LIVE_SMOKE_EXTRA_API_TOKEN" => secret}, fn ->
+        assert_raise LeakError, ~r/LIVE_SMOKE_EXTRA_API_TOKEN/, fn ->
+          LiveSmoke.sanitize(%{"note" => secret})
+        end
+      end)
+    end
+
     test "never shows credential values when the sanitizer state is inspected" do
       token = "xoxb-live-smoke-inspect-check"
       refute inspect(Sanitize.new(credentials: [{"SLACK_BOT_TOKEN", token}])) =~ token

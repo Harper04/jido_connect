@@ -37,7 +37,7 @@ defmodule Jido.Connect.TestSupport.LiveSmoke do
   @variables %{
     google: %{
       credentials: ~w(GOOGLE_CLIENT_SECRET GOOGLE_REFRESH_TOKEN GOOGLE_ACCESS_TOKEN
-                      GOOGLE_GMAIL_METADATA_ACCESS_TOKEN),
+                      GOOGLE_GMAIL_METADATA_REFRESH_TOKEN GOOGLE_GMAIL_METADATA_ACCESS_TOKEN),
       settings: ~w(GOOGLE_CLIENT_ID GOOGLE_GMAIL_QUERY GOOGLE_GMAIL_THREAD_ID
                    GOOGLE_GMAIL_ATTACHMENT_MESSAGE_ID GOOGLE_GMAIL_FORWARD_INLINE_ID
                    GOOGLE_GMAIL_FORWARD_ATTACHED_ID GOOGLE_GMAIL_LABEL_ID
@@ -46,24 +46,28 @@ defmodule Jido.Connect.TestSupport.LiveSmoke do
                    GOOGLE_MEET_RECORDING GOOGLE_DRIVE_SHARED_LINK_URL GOOGLE_DRIVE_SHORTCUT_ID
                    GOOGLE_DOCS_TABBED_DOCUMENT_ID GOOGLE_DRIVE_STARRED_FILE_ID
                    GOOGLE_DRIVE_FOLDER_ID GOOGLE_DRIVE_WATCH_FOLDER_ID
-                   GOOGLE_DRIVE_UPLOAD_FOLDER_ID GOOGLE_DOCS_SCRATCH_DOCUMENT_ID)
+                   GOOGLE_DRIVE_UPLOAD_FOLDER_ID GOOGLE_DOCS_SCRATCH_DOCUMENT_ID
+                   GOOGLE_GMAIL_ARCHIVE_MESSAGE_ID GOOGLE_DRIVE_EDIT_FILE_ID
+                   GOOGLE_DRIVE_DELETE_FILE_ID GOOGLE_MEET_POLL_EVENT_ID GOOGLE_TEST_USER
+                   GOOGLE_CLOUD_PROJECT GOOGLE_SEED_ATTENDEES)
     },
     slack: %{
       credentials: ~w(SLACK_BOT_TOKEN SLACK_SIGNING_SECRET SLACK_USER_TOKEN),
       settings: ~w(SLACK_PUBLIC_CHANNEL_ID SLACK_PRIVATE_CHANNEL_ID SLACK_DM_CHANNEL_ID
                    SLACK_MPIM_CHANNEL_ID SLACK_NO_ACCESS_CHANNEL_ID SLACK_THREAD_TS
-                   SLACK_SECOND_USER_ID SLACK_CAPTURE_DIR)
+                   SLACK_SECOND_USER_ID SLACK_CAPTURE_DIR SLACK_APP_ID)
     },
     jira: %{
-      credentials: ~w(JIRA_API_TOKEN JIRA_WEBHOOK_SECRET),
+      credentials: ~w(JIRA_API_TOKEN JIRA_WEBHOOK_SECRET SEED_ADMIN_API_TOKEN),
       settings: ~w(JIRA_SITE JIRA_EMAIL JIRA_PROJECT_KEY JIRA_ISSUE_KEY JIRA_ISSUE_ID
-                   JIRA_CAPTURE_DIR)
+                   JIRA_CAPTURE_DIR SEED_ADMIN_EMAIL)
     },
     tempo: %{
       credentials: ~w(TEMPO_API_TOKEN TEMPO_OAUTH_CLIENT_SECRET TEMPO_OAUTH_ACCESS_TOKEN
-                      TEMPO_OAUTH_REFRESH_TOKEN),
+                      TEMPO_OAUTH_REFRESH_TOKEN SEED_TEMPO_API_TOKEN),
       settings: ~w(TEMPO_OAUTH_CLIENT_ID TEMPO_OAUTH_REDIRECT_URI TEMPO_API_ORIGIN
-                   TEMPO_ACCOUNT_ID TEMPO_JIRA_ISSUE_ID TEMPO_JIRA_PROJECT_ID)
+                   TEMPO_ACCOUNT_ID TEMPO_JIRA_ISSUE_ID TEMPO_JIRA_PROJECT_ID
+                   TEMPO_OAUTH_ACCESS_TOKEN_EXPIRES_AT)
     },
     confluence: %{
       credentials: ~w(CONFLUENCE_API_TOKEN),
@@ -372,9 +376,17 @@ defmodule Jido.Connect.TestSupport.LiveSmoke do
 
   defp sanitizer(opts), do: Sanitize.new(Keyword.put(opts, :credentials, credential_values()))
 
+  # Listed credentials plus every set variable whose name looks like one, so a
+  # token added to an env file before it is listed here is still guarded.
   defp credential_values do
-    for {_provider, groups} <- @variables,
-        name <- groups.credentials,
+    listed = for {_provider, groups} <- @variables, name <- groups.credentials, do: name
+
+    shaped =
+      for {name, _value} <- System.get_env(),
+          Regex.match?(~r/(TOKEN|SECRET|PASSWORD|API_KEY)$/, name),
+          do: name
+
+    for name <- Enum.uniq(listed ++ shaped),
         value = System.get_env(name),
         not blank?(value),
         do: {name, value}
