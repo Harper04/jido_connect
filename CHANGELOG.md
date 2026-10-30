@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Add a shared live smoke test convention in `docs/live_smoke_tests.md`:
+  `:live_smoke` tagging and exclusion, credentials from environment variables,
+  sanitized recordings of provider responses as `Req.Test` fixtures, and
+  captured Slack and Jira deliveries from a demo host capture mode.
+- Add `Jido.Connect.Sanitizer.sensitive_key?/1`.
 - Add MCP client resources, templates, prompts, completion, ping, and status.
 - Add authorized modern and legacy notification sessions with lease checks,
   subscriber monitoring, stream cleanup, and sanitized events.
