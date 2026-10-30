@@ -137,15 +137,30 @@ The provider declares webhook triggers for real-time issue and comment events:
 
 ### Webhook Verification
 
-`Jido.Connect.Jira.Webhook` provides pure helpers for:
+Jira Cloud administrator webhooks, registered with a secret on the Jira
+webhooks page or through `/rest/webhooks/1.0/webhook`, sign each delivery with
+`X-Hub-Signature: sha256=<hex>`: the lowercase hex HMAC-SHA256 of the raw
+request body under the webhook secret.
 
-- **Signature verification**: HMAC-SHA256 base64 of the raw body against the
-  webhook shared secret. Use `compute_signature/2` to compute the digest and
-  `verify_signature/2` for constant-time comparison.
+- **Signature verification**:
+  `Jido.Connect.Jira.Webhook.Verification.verify_signature/3` checks that
+  header against the exact raw body. A missing secret, a missing signature and
+  any other format, such as bare hex, base64 or a `sha1=` prefix, return a
+  `Jido.Connect.Error.AuthError`.
+- **Delivery verification**: `Jido.Connect.Jira.Webhook.verify_delivery/4`
+  checks the signature, decodes the body and returns a verified
+  `Jido.Connect.WebhookDelivery` with `X-Atlassian-Webhook-Identifier` as
+  `delivery_id`, `webhookEvent` as `event` and the normalized signal.
+  `seen_delivery_ids:` marks a repeated identifier as a duplicate.
 - **Event normalization**: `normalize_event/1` converts a raw Jira webhook
   payload into a flat signal map with stable field names. Issue events include
   changelog details; comment events include issue context.
 - **Batch normalization**: `normalize_events/1` processes a list of events.
+
+Deliveries of webhooks that Connect or OAuth 2.0 apps register follow a
+separate contract; this package does not verify them. `verify_signature/2`
+and `compute_signature/2` on `Jido.Connect.Jira.Webhook` are legacy helpers
+for a base64 digest and do not match the header Jira sends.
 
 ### Webhook Event Fields
 
@@ -234,14 +249,18 @@ export JIRA_SITE="https://your-domain.atlassian.net"
 
 To verify webhook delivery from a Jira Cloud instance:
 
-1. Register a webhook in Jira pointing to your endpoint URL.
-2. Configure the webhook shared secret for signature verification.
-3. Use `Jido.Connect.Jira.Webhook.compute_signature/2` to compute the
-   expected HMAC-SHA256 base64 digest.
-4. Use `Jido.Connect.Jira.Webhook.verify_signature/2` to compare against
-   the header value in constant time.
-5. Use `Jido.Connect.Jira.Webhook.normalize_event/1` to normalize the
-   accepted payload into a trigger signal.
+1. Register an administrator webhook with a secret in Jira, pointing to your
+   endpoint URL.
+2. Pass the raw request body, the request headers and the secret to
+   `Jido.Connect.Jira.Webhook.verify_delivery/4`. It checks
+   `X-Hub-Signature` before it decodes the body.
+3. Use the `normalized_signal` of the returned delivery, or call
+   `Jido.Connect.Jira.Webhook.normalize_event/1` on its payload.
+
+The repository's live smoke harness captures deliveries through the demo host
+and replays them through `verify_delivery/4`; see `docs/live_smoke_tests.md`.
+Deliveries from apps that register webhooks follow a separate contract and do
+not verify here.
 
 Do not expose the webhook shared secret in logs or public payloads.
 

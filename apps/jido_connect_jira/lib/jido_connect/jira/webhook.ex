@@ -1,15 +1,18 @@
 defmodule Jido.Connect.Jira.Webhook do
   @moduledoc """
-  Pure helpers for Jira webhook event verification and normalization.
+  Pure helpers for Jira webhook deliveries and their normalization into
+  trigger signals.
 
-  Jira webhooks deliver signed JSON payloads to a configured URL.
-  The signature is a base64-encoded HMAC-SHA256 of the raw request body
-  using the webhook's shared secret. Hosts verify the signature before
-  using these helpers to normalize the accepted delivery into trigger
-  signals.
+  Jira Cloud administrator webhooks sign each delivery with
+  `X-Hub-Signature: sha256=<hex>`, the hex HMAC-SHA256 of the raw request
+  body under the webhook secret. `Jido.Connect.Jira.Webhook.Verification`
+  checks that signature. `verify_delivery/4` delegates to it and returns a
+  verified `Jido.Connect.WebhookDelivery` with the signal of
+  `normalize_event/1`. The host keeps the secret; this module does not store
+  or expose it.
 
-  This module does **not** store or expose the shared secret. Verification
-  receives a pre-computed HMAC digest from the host layer.
+  `verify_signature/2` and `compute_signature/2` are legacy helpers that
+  compare a base64 digest. That format does not match the header Jira sends.
 
   ## Supported Events
 
@@ -20,6 +23,7 @@ defmodule Jido.Connect.Jira.Webhook do
   """
 
   alias Jido.Connect.{Data, Error}
+  alias Jido.Connect.Jira.Webhook.Verification
 
   @supported_issue_events ~w(jira:issue_created jira:issue_updated)
   @supported_comment_events ~w(comment_created comment_updated)
@@ -31,13 +35,16 @@ defmodule Jido.Connect.Jira.Webhook do
   @spec supported_events() :: [String.t()]
   def supported_events, do: @supported_events
 
-  @doc """
-  Verifies the Jira webhook signature.
+  @doc "See `Jido.Connect.Jira.Webhook.Verification.verify_delivery/4`."
+  defdelegate verify_delivery(body, headers, secret, opts \\ []), to: Verification
 
-  Returns `:ok` when the computed HMAC-SHA256 base64 digest matches the
-  `signature`, or an error otherwise. The host is responsible for
-  computing `computed` from the raw body and the webhook shared secret;
-  neither the secret nor the raw body are passed through this module.
+  @doc """
+  Legacy helper that compares two precomputed digests in constant time.
+
+  Returns `:ok` when `computed` matches `signature`, or an error otherwise.
+  It was written for a base64 digest from `compute_signature/2`, which does
+  not match the `X-Hub-Signature` header of Jira administrator webhooks. Use
+  `Jido.Connect.Jira.Webhook.Verification.verify_signature/3` for those.
   """
   @spec verify_signature(computed :: String.t(), signature :: String.t()) ::
           :ok | {:error, Error.ProviderError.t()}
@@ -63,10 +70,11 @@ defmodule Jido.Connect.Jira.Webhook do
   end
 
   @doc """
-  Computes the HMAC-SHA256 base64 digest for a raw body and shared secret.
+  Legacy helper that computes a base64 HMAC-SHA256 digest of a raw body.
 
-  This is a convenience function for hosts that have the secret available
-  at verification time. Do not log or expose the secret.
+  Jira administrator webhooks send a hex digest with a `sha256=` prefix
+  instead; `Jido.Connect.Jira.Webhook.Verification` checks that format. Do
+  not log or expose the secret.
   """
   @spec compute_signature(raw_body :: String.t(), shared_secret :: String.t()) :: String.t()
   def compute_signature(raw_body, shared_secret)
