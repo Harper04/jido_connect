@@ -471,6 +471,87 @@ defmodule Jido.Connect.Slack.WebhookTest do
               }} = Webhook.normalize_signal("message.im", shared_by_other)
     end
 
+    test "group DMs and thread replies in a DM keep shares like the bot DM" do
+      [shared] = payload!("message_im_shared_public")["event"]["attachments"]
+
+      # Derived: the captured share into the bot DM as a message in the
+      # captured group DM, and as a reply in the thread of the captured DM.
+      group_dm =
+        derive("message_im_shared_public", fn payload ->
+          update_in(
+            payload,
+            ["event"],
+            &Map.merge(&1, %{"channel" => "C0CDELYPYKF", "channel_type" => "mpim"})
+          )
+        end)
+
+      assert {:ok, %WebhookDelivery{normalized_signal: signal}} = replay(group_dm)
+
+      assert %{
+               channel_type: "mpim",
+               conversation: %{id: "C0CDELYPYKF", type: "mpim"},
+               shared_messages: [%{channel: "C0CEEB41FU0", ts: "1793627736.679599"}]
+             } = signal
+
+      assert {:ok, Map.delete(signal, :delivery)} ==
+               Webhook.normalize_signal("message.mpim", Jason.decode!(group_dm["body"]))
+
+      thread_reply =
+        put_in(payload!("message_im_shared_public"), ["event", "thread_ts"], "1793627769.877489")
+
+      for event <- ["message.im", "message.thread_reply"] do
+        assert {:ok,
+                %{
+                  thread_ts: "1793627769.877489",
+                  shared_messages: [%{channel: "C0CEEB41FU0", text: text}]
+                }} = Webhook.normalize_signal(event, thread_reply),
+               event
+
+        assert text == shared["text"]
+      end
+    end
+
+    test "several shares keep their order, a malformed one names its attachment index" do
+      [public] = payload!("message_im_shared_public")["event"]["attachments"]
+      [private] = payload!("message_im_shared_private")["event"]["attachments"]
+
+      # Derived: the captured share with both captured shares as attachments.
+      both =
+        put_in(payload!("message_im_shared_public"), ["event", "attachments"], [public, private])
+
+      assert {:ok,
+              %{
+                shared_messages: [
+                  %{channel: "C0CEEB41FU0", ts: "1793627736.679599"},
+                  %{channel: "C0CD4JEJ9V5", ts: "1793627741.845469"}
+                ]
+              }} = Webhook.normalize_signal("message.im", both)
+
+      # Derived: an unfurl, then the captured share without its channel. The
+      # index counts every attachment.
+      unfurl = Map.put(public, "is_share", false)
+
+      capture =
+        derive(
+          "message_im_shared_public",
+          &put_in(&1, ["event", "attachments"], [unfurl, Map.delete(public, "channel_id")])
+        )
+
+      assert {:error,
+              %Error.ProviderError{
+                reason: :invalid_shared_message,
+                details: %{field: "attachments.1.channel_id"}
+              }} = Webhook.normalize_signal("message.im", Jason.decode!(capture["body"]))
+
+      # The delivery still verifies, without a signal.
+      assert {:ok,
+              %WebhookDelivery{
+                event: "message",
+                signature_state: :verified,
+                normalized_signal: nil
+              }} = replay(capture)
+    end
+
     test "a DM without a shared attachment has no shared_messages, a malformed one fails" do
       assert {:ok, signal} = Webhook.normalize_signal("message.im", payload!("message_im"))
       refute Map.has_key?(signal, :shared_messages)
