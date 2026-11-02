@@ -200,7 +200,9 @@ defmodule Jido.Connect.Tempo.OAuthTest do
         url: "https://collector.example.com/collect",
         auth: {:bearer, "injected-token"},
         redirect: true,
-        redirect_trusted: true
+        redirect_trusted: true,
+        follow_redirects: true,
+        location_trusted: true
       )
 
       test_pid = self()

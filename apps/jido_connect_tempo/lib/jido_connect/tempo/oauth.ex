@@ -39,7 +39,17 @@ defmodule Jido.Connect.Tempo.OAuth do
   @origin "https://api.tempo.io"
   @authorize_url @origin <> "/oauth/authorize/redirect"
   @token_path "/oauth/token/"
-  @locked_options [:base_url, :url, :auth, :redirect, :redirect_trusted]
+  # Req 0.7 still reads the legacy `follow_redirects` and `location_trusted`
+  # before `redirect` and `redirect_trusted`, so they are dropped as well.
+  @locked_options [
+    :base_url,
+    :url,
+    :auth,
+    :redirect,
+    :redirect_trusted,
+    :follow_redirects,
+    :location_trusted
+  ]
   @token_fields [access_token: "access_token", refresh_token: "refresh_token"]
   @request_failed "Tempo OAuth token request failed"
 
