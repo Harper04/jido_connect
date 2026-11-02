@@ -24,6 +24,12 @@ defmodule Jido.Connect.Gmail.LiveSmokeTest do
   @query_inbox_matches 3
   @query_archived_matches 2
 
+  # The body text of the large-body message, which the seed script generates
+  # the same on every run: its size in windows-1252 and the SHA-256 of its
+  # UTF-8 form.
+  @large_body_size 3_149_652
+  @large_body_sha256 "f58a864cb155e8d126e6b13883d36eec73de34aa318f849e5fa2a000752df70f"
+
   @tag env!(["GOOGLE_ACCESS_TOKEN"])
   test "reads the mailbox profile", %{env: env} do
     LiveSmoke.record({:jido_connect_google, :google_req_options}, :gmail, "profile")
@@ -87,11 +93,12 @@ defmodule Jido.Connect.Gmail.LiveSmokeTest do
   end
 
   # The format=full payloads of the prepared messages are the fixtures of
-  # mime_traversal_test.exs. Each test records exactly one response, so the
-  # recorder sanitizes its body with fresh placeholders, as LiveSmoke.sanitize/2
-  # does with the live body below; the comparison therefore sees the same
-  # addresses and names on both sides. Gmail issues a new attachmentId with
-  # every response, so only the presence of an attachment ID is compared.
+  # mime_traversal_test.exs and content_test.exs. Each test records exactly
+  # one response, so the recorder sanitizes its body with fresh placeholders,
+  # as LiveSmoke.sanitize/2 does with the live body below; the comparison
+  # therefore sees the same addresses and names on both sides. Gmail issues
+  # a new attachmentId with every response, so only the presence of an
+  # attachment ID is compared.
 
   @tag env!(["GOOGLE_ACCESS_TOKEN", "GOOGLE_GMAIL_ARCHIVE_MESSAGE_ID"])
   test "traverses the single-part message like its recording", %{env: env} do
@@ -126,6 +133,15 @@ defmodule Jido.Connect.Gmail.LiveSmokeTest do
       env["GOOGLE_ACCESS_TOKEN"],
       "/gmail/v1/users/me/messages/#{env["GOOGLE_GMAIL_CHARSET_MESSAGE_ID"]}",
       "message_full_charsets"
+    )
+  end
+
+  @tag env!(["GOOGLE_ACCESS_TOKEN", "GOOGLE_GMAIL_LARGE_BODY_ID"])
+  test "traverses the large-body message like its recording", %{env: env} do
+    assert_traversal_matches_recording(
+      env["GOOGLE_ACCESS_TOKEN"],
+      "/gmail/v1/users/me/messages/#{env["GOOGLE_GMAIL_LARGE_BODY_ID"]}",
+      "message_full_large_body"
     )
   end
 
@@ -334,6 +350,51 @@ defmodule Jido.Connect.Gmail.LiveSmokeTest do
            ] = live.messages
 
     assert digest_view(live) == digest_view(recorded)
+  end
+
+  @tag env!(["GOOGLE_ACCESS_TOKEN", "GOOGLE_GMAIL_LARGE_BODY_ID"])
+  test "message.content.get fetches the windows-1252 body that Gmail keeps behind an attachmentId",
+       %{env: env} do
+    access_token = env["GOOGLE_ACCESS_TOKEN"]
+    message_id = env["GOOGLE_GMAIL_LARGE_BODY_ID"]
+
+    # Not recorded: attachments.get returns the 3 MB body as about 4 MB of
+    # data. "traverses the large-body message like its recording" records the
+    # format=full response.
+    assert {:ok, %{"payload" => %{"parts" => parts}}} =
+             Client.get_message_content(%{message_id: message_id}, access_token)
+
+    assert %{"mimeType" => "text/plain", "body" => %{"attachmentId" => _id} = body} =
+             Enum.find(parts, &(&1["partId"] == "0"))
+
+    assert body["size"] == @large_body_size
+    refute Map.has_key?(body, "data")
+
+    {context, lease} = read_grant(access_token)
+
+    assert {:ok, %{message: message}} =
+             Connect.invoke(
+               Gmail.integration(),
+               "google.gmail.message.content.get",
+               %{message_id: message_id},
+               context: context,
+               credential_lease: lease
+             )
+
+    # Compared as digests, so a failure does not print 3 MB of text.
+    assert [
+             %{
+               part_id: "0",
+               mime_type: "text/plain",
+               charset: "windows-1252",
+               size: @large_body_size,
+               decoded: true,
+               content: {:sha256, @large_body_sha256}
+             },
+             %{part_id: "1", mime_type: "text/html", decoded: true}
+           ] = digest_view(message.text_parts)
+
+    assert message.attachments == []
   end
 
   @tag env!(["GOOGLE_ACCESS_TOKEN", "GOOGLE_GMAIL_THREAD_ID"])

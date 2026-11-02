@@ -11,6 +11,14 @@ defmodule Jido.Connect.Gmail.ContentTest do
   # that needs a shape the recordings lack derives it from a recording and says
   # so. Each test expects exactly the requests it lists, so any further request,
   # such as an attachment fetch, fails it.
+  #
+  # Gmail keeps a large body text part behind an attachmentId, and
+  # attachments.get returns its original bytes. The prepared large-body message
+  # shows both live: its 3 MB windows-1252 text/plain part comes back that way
+  # in format=full, and attachments.get returns the windows-1252 bytes. That
+  # attachments.get response is about 4 MB and is not recorded. The tests that
+  # fetch a body text part therefore serve a small recorded attachments.get
+  # response instead, and each says which.
 
   @readonly_scope "https://www.googleapis.com/auth/gmail.readonly"
 
@@ -178,9 +186,12 @@ defmodule Jido.Connect.Gmail.ContentTest do
     end
 
     test "an attached forward without nested parts lists the part as a message/rfc822 attachment" do
-      # Gmail split every message/rfc822 part the seed tried, so no recording
-      # has one without nested parts. This variant drops the nested parts of
-      # headers-only.eml from the recorded forward.
+      # Gmail split every message/rfc822 part the seed tried into nested parts:
+      # a base64-encoded original (opaque.eml of the charset message), a part
+      # with empty content (empty.eml) and a part with a header block only
+      # (headers-only.eml). No recording therefore has one without nested
+      # parts. This variant drops the nested parts of headers-only.eml from the
+      # recorded forward.
       recorded = LiveSmoke.fixture!(:gmail, "message_full_forward_opaque")
 
       variant =
@@ -212,9 +223,66 @@ defmodule Jido.Connect.Gmail.ContentTest do
                get_in(recorded, ["payload", "parts", Access.at(2), "body", "attachmentId"])
     end
 
+    test "fetches the windows-1252 body text that Gmail keeps behind an attachmentId" do
+      # The format=full recording of the large-body message. In place of its
+      # 3 MB attachments.get response, the test serves the one recorded for
+      # notiz.txt of the conversation, ASCII text that windows-1252 decodes
+      # the same, under the attachment ID of this recording.
+      recorded = LiveSmoke.fixture!(:gmail, "message_full_large_body")
+
+      assert [
+               %{"partId" => "0", "mimeType" => "text/plain", "filename" => "", "body" => body},
+               %{"partId" => "1", "mimeType" => "text/html"}
+             ] = recorded["payload"]["parts"]
+
+      assert %{"attachmentId" => attachment_id, "size" => 3_149_652} = body
+      refute Map.has_key?(body, "data")
+
+      fetch =
+        put_in(
+          recording!("attachments_conversation"),
+          ["request", "path"],
+          "/gmail/v1/users/me/messages/#{recorded["id"]}/attachments/#{attachment_id}"
+        )
+
+      expect_full("/gmail/v1/users/me/messages/#{recorded["id"]}", recorded)
+      expect_attachment(fetch)
+
+      assert {:ok, %{message: message}} = read_message(recorded["id"])
+
+      assert message.text_parts == [
+               %{
+                 part_id: "0",
+                 mime_type: "text/plain",
+                 charset: "windows-1252",
+                 size: 25,
+                 content: "Kurze Notiz zum Termin.\r\n",
+                 content_base64: nil,
+                 encoding: "utf-8",
+                 decoded: true
+               },
+               %{
+                 part_id: "1",
+                 mime_type: "text/html",
+                 charset: "utf-8",
+                 size: 80,
+                 content:
+                   "<p>Großer Textkörper in windows-1252, Marker <b>jcl-marker-large-body</b>.</p>",
+                 content_base64: nil,
+                 encoding: "utf-8",
+                 decoded: true
+               }
+             ]
+
+      assert message.attachments == []
+      assert message.messages == []
+    end
+
     test "fetches a text part stored behind an attachmentId inside an enclosed message" do
-      # No recording has a body text part behind an attachmentId. This variant
-      # moves the text/plain body of original.eml behind the attachment ID that
+      # The large-body recording has its body text part behind an attachmentId
+      # at the top level; no recording has one inside an enclosed message. This
+      # variant gives the text/plain body of original.eml the shape of a large
+      # body, with the attachment ID and the small response that
       # attachments.get was recorded with for inner.txt of the same message.
       recorded = LiveSmoke.fixture!(:gmail, "message_full_forward_attached")
       fetch = recording!("attachments_forward_attached")
@@ -243,8 +311,9 @@ defmodule Jido.Connect.Gmail.ContentTest do
 
     test "puts a fetched text part back in Gmail's part order, comparing part IDs as numbers" do
       # A variant of the recorded attachment message: three copies of its inline
-      # text part 1 become parts 8, 9 and 10, and text part 2 moves behind the
-      # attachment ID that attachments.get was recorded with for notes.txt. A
+      # text part 1 become parts 8, 9 and 10, and text part 2 takes the shape
+      # of a large body, behind the attachment ID that attachments.get was
+      # recorded with for notes.txt, which serves its small response. A
       # comparison of part IDs as strings would put 10 before 2.
       recorded = LiveSmoke.fixture!(:gmail, "message_full_attachments")
       fetch = recording!("attachment_notes_latin9")
@@ -338,6 +407,48 @@ defmodule Jido.Connect.Gmail.ContentTest do
       end
     end
 
+    test "orders by an integer internalDate and returns it as a string" do
+      # Gmail returned internalDate as a string in every recording. This variant
+      # reverses the recorded messages and gives them their dates as integers.
+      recorded = LiveSmoke.fixture!(:gmail, "thread_full_conversation")
+
+      messages =
+        recorded["messages"]
+        |> Enum.reverse()
+        |> Enum.map(&Map.update!(&1, "internalDate", fn date -> String.to_integer(date) end))
+
+      expect_full("/gmail/v1/users/me/threads/#{recorded["id"]}", %{
+        recorded
+        | "messages" => messages
+      })
+
+      assert {:ok, %{thread: thread}} = read_thread(recorded["id"])
+
+      assert Enum.map(thread.messages, &{&1.message_id, &1.internal_date}) ==
+               Enum.map(recorded["messages"], &{&1["id"], &1["internalDate"]})
+    end
+
+    test "a missing or non-numeric internalDate fails the read with :invalid_response" do
+      # Every recorded message has a numeric internalDate. These variants drop
+      # it from the recorded sent reply or replace it.
+      recorded = LiveSmoke.fixture!(:gmail, "thread_full_conversation")
+      [first, reply, later] = recorded["messages"]
+
+      for invalid <- [
+            Map.delete(reply, "internalDate"),
+            %{reply | "internalDate" => nil},
+            %{reply | "internalDate" => ""},
+            %{reply | "internalDate" => reply["internalDate"] <> ".5"}
+          ] do
+        expect_full("/gmail/v1/users/me/threads/#{recorded["id"]}", %{
+          recorded
+          | "messages" => [first, invalid, later]
+        })
+
+        assert invalid_response(read_thread(recorded["id"])) == %{message_id: reply["id"]}
+      end
+    end
+
     test "returns a body longer than its snippet whole" do
       recorded = LiveSmoke.fixture!(:gmail, "thread_full_conversation")
       [_first, _reply, %{"snippet" => snippet}] = recorded["messages"]
@@ -354,12 +465,13 @@ defmodule Jido.Connect.Gmail.ContentTest do
     end
 
     test "fetches a text body stored behind an attachmentId once and no file attachment" do
-      # Gmail delivered even the 55 KB body inline, so no recording has a body
-      # text part behind an attachmentId. This variant moves the body text of
-      # the later answer behind the attachment ID that attachments.get was
-      # recorded with for its notiz.txt. notiz.txt keeps the attachment ID of
-      # the thread recording, so a fetch of the file attachment would be a
-      # request the test does not expect.
+      # Gmail delivered the 55 KB body of the later answer inline; only a large
+      # body, like that of the large-body message, comes behind an
+      # attachmentId. This variant gives the body text of the later answer that
+      # shape, behind the attachment ID that attachments.get was recorded with
+      # for its notiz.txt, which serves its small response. notiz.txt keeps the
+      # attachment ID of the thread recording, so a fetch of the file
+      # attachment would be a request the test does not expect.
       recorded = LiveSmoke.fixture!(:gmail, "thread_full_conversation")
       fetch = recording!("attachments_conversation")
       # Access.filter/1 in the path makes get_in/2 return a list.
@@ -397,8 +509,9 @@ defmodule Jido.Connect.Gmail.ContentTest do
     end
 
     test "a failed part fetch fails the whole read" do
-      # The variant of the previous test, with the body text behind the
-      # attachment ID that attachments.get was recorded rejecting.
+      # The variant of the previous test: the body text in the shape of a large
+      # body, behind the attachment ID that attachments.get was recorded
+      # rejecting.
       recorded = LiveSmoke.fixture!(:gmail, "thread_full_conversation")
       fetch = recording!("attachment_unknown_id")
       assert %{"status" => 400} = fetch
@@ -423,6 +536,26 @@ defmodule Jido.Connect.Gmail.ContentTest do
         refute text =~ "jcl-marker"
         refute text =~ "Danke. Anbei"
       end
+    end
+
+    test "an attachments.get response without data fails the read" do
+      # The variant of the fetch test above, served the attachments.get
+      # response recorded for notiz.txt without its data field.
+      recorded = LiveSmoke.fixture!(:gmail, "thread_full_conversation")
+      [_first, _reply, %{"id" => later_id}] = recorded["messages"]
+      fetch = recording!("attachments_conversation")
+
+      variant =
+        put_in(recorded, later_part_path("0") ++ ["body"], %{
+          "attachmentId" => attachment_id(fetch),
+          "size" => 25
+        })
+
+      expect_full("/gmail/v1/users/me/threads/#{recorded["id"]}", variant)
+      expect_attachment(update_in(fetch, ["body"], &Map.delete(&1, "data")))
+
+      assert invalid_response(read_thread(recorded["id"])) ==
+               %{message_id: later_id, part_id: "0"}
     end
 
     test "names the addressing and threading headers and keeps repeated headers" do
@@ -522,6 +655,57 @@ defmodule Jido.Connect.Gmail.ContentTest do
     end
   end
 
+  describe "invalid content responses" do
+    # Variants of the recordings in shapes Gmail did not return. Each fails
+    # with :invalid_response and details that name IDs only.
+
+    test "a message or thread without an id" do
+      message = LiveSmoke.fixture!(:gmail, "message_full_forward_inline")
+      thread = LiveSmoke.fixture!(:gmail, "thread_full_conversation")
+
+      for variant <- [Map.delete(message, "id"), %{message | "id" => ""}] do
+        expect_full("/gmail/v1/users/me/messages/#{message["id"]}", variant)
+        assert invalid_response(read_message(message["id"])) == %{}
+      end
+
+      for variant <- [Map.delete(thread, "id"), %{thread | "id" => ""}] do
+        expect_full("/gmail/v1/users/me/threads/#{thread["id"]}", variant)
+        assert invalid_response(read_thread(thread["id"])) == %{}
+      end
+    end
+
+    test "a thread whose messages are not a list of maps" do
+      thread = LiveSmoke.fixture!(:gmail, "thread_full_conversation")
+      [first | _rest] = thread["messages"]
+
+      for messages <- [nil, first, [first, first["id"]]] do
+        expect_full("/gmail/v1/users/me/threads/#{thread["id"]}", %{
+          thread
+          | "messages" => messages
+        })
+
+        assert invalid_response(read_thread(thread["id"])) == %{thread_id: thread["id"]}
+      end
+    end
+
+    test "a message or thread that the content struct rejects" do
+      message = LiveSmoke.fixture!(:gmail, "message_full_forward_inline")
+      thread = LiveSmoke.fixture!(:gmail, "thread_full_conversation")
+
+      expect_full("/gmail/v1/users/me/messages/#{message["id"]}", %{message | "threadId" => 42})
+      assert invalid_response(read_message(message["id"])) == %{message_id: message["id"]}
+
+      for history_id <- [true, %{"id" => thread["historyId"]}] do
+        expect_full("/gmail/v1/users/me/threads/#{thread["id"]}", %{
+          thread
+          | "historyId" => history_id
+        })
+
+        assert invalid_response(read_thread(thread["id"])) == %{thread_id: thread["id"]}
+      end
+    end
+  end
+
   test "metadata reads still request format=metadata" do
     for {action_id, input, path} <- [
           {"google.gmail.message.get", %{message_id: "msg"}, "/gmail/v1/users/me/messages/msg"},
@@ -592,6 +776,19 @@ defmodule Jido.Connect.Gmail.ContentTest do
       context: context,
       credential_lease: lease
     )
+  end
+
+  # The details of an :invalid_response error, which never quote message data.
+  defp invalid_response(result) do
+    assert {:error,
+            %Connect.Error.ProviderError{
+              provider: :google,
+              reason: :invalid_response,
+              details: details
+            } = error} = result
+
+    refute inspect(error) =~ "jcl-marker"
+    details
   end
 
   defp header(%{headers: headers}, name) do

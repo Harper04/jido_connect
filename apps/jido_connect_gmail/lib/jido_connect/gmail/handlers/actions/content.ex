@@ -241,7 +241,8 @@ defmodule Jido.Connect.Gmail.Handlers.Actions.Content do
      )}
   end
 
-  defp string(nil), do: nil
-  defp string(value) when is_binary(value), do: value
-  defp string(value), do: to_string(value)
+  # Gmail sends historyId and internalDate as strings. An integer becomes one;
+  # any other value stays as it is, so the struct schema rejects it.
+  defp string(value) when is_integer(value), do: Integer.to_string(value)
+  defp string(value), do: value
 end
