@@ -140,12 +140,13 @@ defmodule Jido.Connect.Google.Docs.LiveSmokeTest do
     token = env["GOOGLE_ACCESS_TOKEN"]
     document_id = env["GOOGLE_DOCS_SCRATCH_DOCUMENT_ID"]
 
-    # Registered before the first write, so the document is emptied also when
-    # an assertion below fails.
-    on_exit(fn -> empty_scratch_document!(token, document_id) end)
-
     assert %{tab_id: "t.0", revision_id: initial_revision, text: "\n"} =
              read_scratch(token, document_id)
+
+    # Registered after the document proved empty and before the first write.
+    # Cleanup then removes only what this test wrote, also when an assertion
+    # below fails, and never touches a document that was not empty.
+    on_exit(fn -> empty_scratch_document!(token, document_id) end)
 
     LiveSmoke.record(@req_options, :google_docs, "batch_update_insert")
 
