@@ -10,9 +10,9 @@ defmodule Jido.Connect.Tempo.Client.Transport do
 
   - Every request built by `request/2` checks its final URL before it is
     sent. Scheme, host and port must equal the connection's origin;
-    otherwise Req returns `{:error, %OriginError{}}`, which `get/3`
-    normalizes to a `:request_error` with `details.reason: :foreign_origin`
-    and `delivery: :not_sent`.
+    otherwise Req returns `{:error, %OriginError{}}`, which `get/3` and
+    `post/3` normalize to a `:request_error` with
+    `details.reason: :foreign_origin` and `delivery: :not_sent`.
   - Redirects are not followed. A 3xx response becomes a
     `Jido.Connect.Error.ProviderError`, so a `Location` on another origin
     never receives the `authorization` header.
@@ -24,10 +24,10 @@ defmodule Jido.Connect.Tempo.Client.Transport do
 
   Automatic retries are off by default; a caller may enable them for a GET
   through `:req_options`. A POST, sent by `post/3`, is never retried.
-  Failures carry `retry_after` for the host's own retry policy. JSON bodies are decoded by the step of
-  `Response.attach_json_decoder/1`, not by Req, so a malformed error body
-  keeps its status and a response step added by an adapter, such as the
-  live smoke recorder's, sees the decoded body.
+  Failures carry `retry_after` for the host's own retry policy. JSON bodies
+  are decoded by the step of `Response.attach_json_decoder/1`, not by Req,
+  so a malformed error body keeps its status and a response step added by
+  an adapter, such as the live smoke recorder's, sees the decoded body.
   """
 
   alias Jido.Connect.Provider.Transport

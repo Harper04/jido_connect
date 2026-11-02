@@ -17,6 +17,13 @@ defmodule Jido.Connect.Tempo.Client.Response do
   | 5xx | `:server_error` |
   | other | `:http_error` |
 
+  The `:reasons` option of `handle/2` gives a failure of a given status
+  whose Tempo error text contains a given text its own reason instead of
+  the status reason. With `mutation?: true`, for a request that Tempo does
+  not deduplicate, every error carries `mutation?: true` and
+  `provider_idempotency?: false`, and a 3xx, a 5xx and a malformed 2xx get
+  `delivery: :sent_outcome_unknown`.
+
   `details.message` is Tempo's error text from the recorded body form
   `{"errors": [{"message": ...}]}`, else the top-level `message` of the
   token endpoint's form `{"message": ..., "status": ...}`; the `:redact`
