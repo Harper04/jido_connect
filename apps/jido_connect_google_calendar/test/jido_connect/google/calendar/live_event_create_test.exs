@@ -7,6 +7,7 @@ defmodule Jido.Connect.Google.Calendar.LiveEventCreateTest do
 
   The test creates its events in February 2027, with per-run event IDs, no
   attendees and no notifications, and deletes them at the end and on exit.
+  The deletes go through the client and stay out of the recordings.
   """
 
   use ExUnit.Case, async: false
@@ -67,7 +68,7 @@ defmodule Jido.Connect.Google.Calendar.LiveEventCreateTest do
       assert all_day.end == "2027-02-03"
       assert all_day.all_day? == true
 
-      LiveCalendar.record("event_create_delete")
+      LiveCalendar.skip_recording()
 
       for event_id <- [timed_id, all_day_id] do
         assert {:ok, %{deleted?: true}} =

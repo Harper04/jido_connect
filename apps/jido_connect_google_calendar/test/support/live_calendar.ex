@@ -20,15 +20,40 @@ defmodule Jido.Connect.Google.Calendar.TestSupport.LiveCalendar do
   # which the sanitizer does not decode. Meet entry points carry dial-in PINs,
   # also inside the `more` link, so their `uri` goes too; hangoutLink stays.
   @record_fields ["htmlLink", "pin", "uri"]
+  @req_options {:jido_connect_google, :google_req_options}
 
   def events_readonly_scope, do: @events_readonly_scope
   def events_scope, do: @events_scope
 
-  @doc "Records the Calendar responses of the current test under `name`."
+  @doc """
+  Records the Calendar responses of the current test under `name`.
+
+  Each call starts the numbering again, so the next response goes to
+  `name.json` and replaces what an earlier call under `name` wrote.
+  """
   def record(name) do
-    LiveSmoke.record({:jido_connect_google, :google_req_options}, :google_calendar, name,
-      fields: @record_fields
-    )
+    LiveSmoke.record(@req_options, :google_calendar, name, fields: @record_fields)
+  end
+
+  @doc """
+  Keeps the following responses of the current test out of the fixtures
+  until the next `record/1`, for setup writes that are not under test.
+
+  The recorder has no pause, so while recording these responses go to a
+  scratch directory that is removed when the test exits.
+  """
+  def skip_recording do
+    if LiveSmoke.recording?() do
+      root = Path.join(System.tmp_dir!(), "jido_connect_google_calendar_unrecorded")
+      ExUnit.Callbacks.on_exit({__MODULE__, :scratch}, fn -> File.rm_rf!(root) end)
+
+      LiveSmoke.record(@req_options, :google_calendar, "setup",
+        fields: @record_fields,
+        root: root
+      )
+    end
+
+    :ok
   end
 
   @doc "Invokes a Calendar action with `scopes` on both the connection and the lease."

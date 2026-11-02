@@ -8,7 +8,7 @@ defmodule Jido.Connect.Google.Calendar.LiveEventChangedTest do
   Each test creates, edits and deletes its own events in January 2027, with
   per-run event IDs and no attendees, and deletes what is left on exit. The
   poll itself runs under the trigger's read-only scope; the setup writes go
-  through the client.
+  through the client and stay out of the recordings.
   """
 
   use ExUnit.Case, async: false
@@ -50,7 +50,7 @@ defmodule Jido.Connect.Google.Calendar.LiveEventChangedTest do
       assert is_binary(checkpoint) and checkpoint != ""
 
       summary = "jcl-live poll #{run}"
-      LiveCalendar.record("event_changed_insert")
+      LiveCalendar.skip_recording()
 
       assert {:ok, _event} =
                Client.create_event(
@@ -79,7 +79,7 @@ defmodule Jido.Connect.Google.Calendar.LiveEventChangedTest do
       assert [%{change_type: "updated", status: "confirmed", summary: ^summary} = created] = seen
 
       edited_summary = summary <> " edited"
-      LiveCalendar.record("event_changed_patch")
+      LiveCalendar.skip_recording()
 
       assert {:ok, _event} =
                Client.update_event(
@@ -107,7 +107,7 @@ defmodule Jido.Connect.Google.Calendar.LiveEventChangedTest do
 
       assert DateTime.compare(instant(edited.updated), instant(created.updated)) == :gt
 
-      LiveCalendar.record("event_changed_delete")
+      LiveCalendar.skip_recording()
       assert {:ok, %{deleted?: true}} = delete_event(calendar_id, event_id, token)
 
       {seen, _checkpoint} =
@@ -133,7 +133,7 @@ defmodule Jido.Connect.Google.Calendar.LiveEventChangedTest do
         LiveCalendar.delete_leftover(calendar_id, master_id, token)
       end)
 
-      LiveCalendar.record("event_cancelled_insert")
+      LiveCalendar.skip_recording()
 
       assert {:ok, _event} =
                Client.create_event(
@@ -169,8 +169,8 @@ defmodule Jido.Connect.Google.Calendar.LiveEventChangedTest do
       expanded = %{calendar_id: calendar_id}
       unexpanded = %{calendar_id: calendar_id, single_events: false}
 
-      LiveCalendar.record("event_cancelled_init")
-
+      # The expanded initialization is the same full sync as in the first
+      # test, so only the unexpanded one is recorded.
       assert {:ok, %{signals: [], checkpoint: expanded_cp}} =
                LiveCalendar.poll(expanded, nil, token)
 
@@ -180,7 +180,7 @@ defmodule Jido.Connect.Google.Calendar.LiveEventChangedTest do
                LiveCalendar.poll(unexpanded, nil, token)
 
       # A removed single event.
-      LiveCalendar.record("event_cancelled_delete")
+      LiveCalendar.skip_recording()
       assert {:ok, %{deleted?: true}} = delete_event(calendar_id, single_id, token)
 
       {seen, expanded_cp} =
@@ -198,7 +198,7 @@ defmodule Jido.Connect.Google.Calendar.LiveEventChangedTest do
 
       # One cancelled occurrence: an expanded instance on one chain, an
       # exception of the master on the other.
-      LiveCalendar.record("event_cancelled_delete_occurrence")
+      LiveCalendar.skip_recording()
       assert {:ok, %{deleted?: true}} = delete_event(calendar_id, second.id, token)
 
       {seen, expanded_cp} =
@@ -227,7 +227,7 @@ defmodule Jido.Connect.Google.Calendar.LiveEventChangedTest do
 
       # The cancelled series: the master on the unexpanded chain, the
       # remaining occurrences on the expanded one.
-      LiveCalendar.record("event_cancelled_delete_series")
+      LiveCalendar.skip_recording()
       assert {:ok, %{deleted?: true}} = delete_event(calendar_id, master_id, token)
 
       {seen, _cp} =
