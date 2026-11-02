@@ -20,16 +20,18 @@ defmodule Jido.Connect.Tempo.Fixture do
   Sends a recorded response with its status, content type and body.
 
   `:status` and `:headers` replace the recorded status or add headers, for
-  responses that cannot be triggered safely, such as 429 and 5xx.
+  responses that cannot be triggered safely, such as 429 and 5xx. `:body` is
+  a function that changes the recorded body, for malformed or hostile pages.
   """
   def respond(conn, name, opts \\ []) do
     fixture = recorded!(name)
     headers = content_type(fixture) ++ Keyword.get(opts, :headers, [])
     status = Keyword.get(opts, :status, fixture["status"])
+    body = Keyword.get(opts, :body, & &1).(fixture["body"])
 
     headers
     |> Enum.reduce(conn, fn {key, value}, conn -> Plug.Conn.put_resp_header(conn, key, value) end)
-    |> Plug.Conn.send_resp(status, body(fixture["body"]))
+    |> Plug.Conn.send_resp(status, body(body))
   end
 
   defp read!(kind, name) do

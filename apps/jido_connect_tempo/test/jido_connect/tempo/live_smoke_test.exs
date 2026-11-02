@@ -16,7 +16,7 @@ defmodule Jido.Connect.Tempo.LiveSmokeTest do
   use Jido.Connect.TestSupport.LiveSmoke
 
   alias Jido.Connect.{Connection, Error}
-  alias Jido.Connect.Tempo.Client.{Request, Transport}
+  alias Jido.Connect.Tempo.Client.{Pagination, Request, Transport}
 
   @recorder {:jido_connect_tempo, :tempo_req_options}
   @october [params: [from: "2026-10-01", to: "2026-10-31"]]
@@ -101,6 +101,20 @@ defmodule Jido.Connect.Tempo.LiveSmokeTest do
 
     assert {:error, %Error.ProviderError{reason: :forbidden, status: 403}} =
              Transport.get(request, "/4/holiday-schemes")
+  end
+
+  @tag env!(["TEMPO_API_TOKEN", "TEMPO_API_ORIGIN" | @jira])
+  test "pages through the October worklogs of the test user", %{env: env} do
+    request = request!(env, :api_token, env["TEMPO_API_TOKEN"])
+    path = "/4/worklogs/user/" <> URI.encode(request.account_id, &URI.char_unreserved?/1)
+    LiveSmoke.record(@recorder, :tempo, "worklogs_page")
+
+    assert {:ok, worklogs} = Pagination.collect(request, path, @october)
+
+    count = length(worklogs)
+    assert count > 50, "expected more than one page of 50 worklogs, got #{count}"
+    own? = Enum.all?(worklogs, &(get_in(&1, ["author", "accountId"]) == request.account_id))
+    assert own?, "every worklog belongs to the test user"
   end
 
   defp refute_leak(error, secret) do
