@@ -102,25 +102,35 @@ checkpoint. The checkpoint is a JSON string that hosts store as they get it:
 ```json
 {
   "version": 1,
-  "watermark": "2026-10-30T17:19:37.048979Z",
-  "settled_at_watermark": ["conferenceRecords/abc"],
+  "watermark": "2026-10-30T16:54:56.856863Z",
+  "settled": [
+    {
+      "name": "conferenceRecords/abc",
+      "end_time": "2026-10-30T16:54:56.856863Z"
+    }
+  ],
   "pending": [
     {
       "name": "conferenceRecords/def",
-      "end_time": "2026-10-30T16:54:56.856863Z",
+      "end_time": "2026-10-30T17:19:37.048979Z",
       "emitted": ["conferenceRecords/def/transcripts/ghi"]
     }
   ]
 }
 ```
 
-- `watermark` is the latest conference end time the trigger has listed. The
-  next poll filters on `end_time>="<watermark>"`. The inclusive filter lists
-  a record that ended exactly at the watermark again, so a second record with
-  the same end time is not lost.
-- `settled_at_watermark` names the settled records that ended exactly at the
-  watermark. A poll skips them, so the repeat with the returned checkpoint
-  emits nothing. It is emptied when the watermark moves on.
+- `watermark` is a conference end time; the next poll filters on
+  `end_time>="<watermark>"`. It moves only over records that need no further
+  check. Without pending records it is the latest end time the trigger has
+  listed. With pending records it is the latest end time of a record that
+  needs no further check and ended before the oldest pending record. It never
+  moves back. The inclusive filter lists a record that ended exactly at the
+  watermark again, so a second record with the same end time is not lost.
+- `settled` lists, by name and end time, the records at or after the
+  watermark that need no further check: settled records, and records that
+  left the pending set by age or count. A poll skips them, so the repeat with
+  the returned checkpoint emits nothing. Entries below the watermark leave the
+  list. It is sorted by end time, then name.
 - `pending` holds the records that are not settled, with their end time and
   the transcripts already emitted for them. A poll lists their transcripts
   again.
@@ -132,21 +142,35 @@ leaves by age. A record with one generated and one unfinished transcript
 emits the generated one at once and stays pending; `emitted` keeps the
 second poll from emitting it again.
 
+While a pending record holds the watermark, every poll lists all conferences
+that ended since then, for at most the 24 hours of the age bound. A meeting
+without transcription holds it that long, so in practice each poll lists the
+conferences of the last day and skips the known ones. More than 100 of them
+exceed the item bound of the conference record list: the poll fails with
+`reason: :poll_bound_exceeded` until the host resets the checkpoint. The bound
+stays at 100, which is more conferences than one account usually ends in a
+day (an assumption, not measured).
+
 ### Bounds
 
 - At most 50 pending records. Beyond that, the records with the oldest end
   time leave first. Fifty is far more meetings than one person ends within
   the age bound, so in practice the count bound only caps a burst.
-- A pending record leaves 24 hours after its conference ended. Transcripts
-  usually reach `FILE_GENERATED` minutes after a meeting ends (not verified
-  live). Twenty-four hours covers long generation delays; the cost is one
-  transcript list request per pending record and poll, about 288 a day for a
-  meeting without transcription.
+- A pending record leaves 24 hours after its conference ended. Before it
+  lists conference records, a poll moves stored pending records past that age
+  under `settled`; it neither requests their transcripts nor treats them as
+  new records. A record Google no longer serves, for example after deleting
+  it 30 days after the conference, therefore does not fail the poll. A record
+  listed for the first time after that age is checked once and then leaves.
+  Transcripts usually reach `FILE_GENERATED` minutes after a meeting ends (not
+  verified live). Twenty-four hours covers long generation delays; the cost is
+  one transcript list request per pending record and poll, about 288 a day
+  for a meeting without transcription.
 - Per poll, at most 10 pages and 100 conference records; per record, at most
   5 pages and 25 transcripts. Both lists request 100 items per page.
 
-A record that leaves by age or count is not checked again. A transcript that
-becomes ready later is not emitted.
+A record that leaves by age or count is not checked again, and the watermark
+can move past it. A transcript that becomes ready later is not emitted.
 
 ### First Poll and Errors
 
@@ -163,6 +187,9 @@ checkpoint. Errors that need a reset carry
 error with `reason: :invalid_checkpoint`. After a reset the next poll starts
 at the current time again.
 
+A pending record whose transcripts cannot be listed, for example after the
+connection lost access to it, fails every poll until it leaves by age.
+
 ### Observed Provider Behavior
 
 Checked live on 2026-11-02 against the test account:
@@ -176,9 +203,11 @@ Checked live on 2026-11-02 against the test account:
   repeated record and stops at its page bound.
 
 Not verified live: the delay before a finished meeting shows its end time in
-the list. A record whose end time becomes visible after the watermark has
-passed it is missed. That needs two conferences of one connection ending
-close together, with the later one listed first.
+the list. A pending record keeps the watermark before its end time, so an
+earlier conference that the list shows late is still found. A conference is
+missed when a later one of the same connection needs no further check the
+first time it is listed, usually because its transcript is already generated,
+and the earlier one appears in the list only after that poll.
 
 ## Workspace Events Spike
 
