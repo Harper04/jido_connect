@@ -15,7 +15,10 @@ defmodule Jido.Connect.Gmail.AttachmentContent do
       fields of the manifest entry. `size` is Gmail's `body.size`, the number
       of original bytes.
     * `data` holds the bytes as the base64url string that Gmail returned,
-      padded or not. It decodes to exactly `size` bytes.
+      padded or not. It decodes to exactly `size` bytes. Inline `text/*`
+      data that Gmail may have converted to UTF-8 is not returned; the
+      action fails with reason `:attachment_converted`, and the attachment
+      lookup section of `Jido.Connect.Gmail.MIME.Traversal` lists the cases.
 
   The connector does not interpret the bytes. For an enclosed message they
   are the whole original, its headers and body included.

@@ -72,19 +72,19 @@ defmodule Jido.Connect.Gmail.MIME.Charset do
 
   @windows_1252_undefined [0x81, 0x8D, 0x8F, 0x90, 0x9D]
 
-  @charsets ["utf-8", "us-ascii", "iso-8859-1", "iso-8859-15", "windows-1252"]
-
   @doc "Decodes `bytes` declared as `charset` into a UTF-8 string."
   @spec decode(binary(), String.t()) :: {:ok, String.t()} | :error
   def decode(bytes, charset) when is_binary(bytes) and is_binary(charset) do
     decode_known(bytes, canonical(charset))
   end
 
-  @doc "Returns whether `decode/2` supports `charset`, by name or alias."
-  @spec supported?(String.t()) :: boolean()
-  def supported?(charset) when is_binary(charset), do: canonical(charset) in @charsets
-
-  defp canonical(charset) do
+  @doc """
+  Returns `charset` in lower case, with an alias of a supported charset
+  replaced by the name it stands for: `canonical("LATIN1")` is
+  `"iso-8859-1"`, `canonical("KOI8-R")` is `"koi8-r"`.
+  """
+  @spec canonical(String.t()) :: String.t()
+  def canonical(charset) when is_binary(charset) do
     charset = String.downcase(charset)
     Map.get(@aliases, charset, charset)
   end

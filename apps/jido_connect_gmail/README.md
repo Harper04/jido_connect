@@ -70,8 +70,10 @@ Gmail's `partId` is the only part identity. The manifest of
 attachment entries and its enclosed messages. The action reads the message in
 `format=full`, selects the part with the MIME traversal and requests
 `attachments.get` only for a part without inline data, with the
-`attachmentId` of the same response. Both paths encode the IDs as single path
-segments.
+`attachmentId` of the same response. Empty `body.data` next to an
+`attachmentId` counts as no inline data. Both paths encode the IDs as single
+path segments. The root of a message is selectable like any other part; the
+root of a single-part message has the part ID `""`.
 
 The result carries the message, thread and history IDs, `part_id`,
 `attachment_id` when Gmail supplied one, `filename`, `mime_type`, `size`,
@@ -91,15 +93,21 @@ base64url and data of another length return `:invalid_base64url` and
 
 Gmail keeps a `text/*` part without a filename inline, also when its
 disposition is `attachment`, and returns the data converted to UTF-8 while
-`size` keeps the original count. Such a part has no `attachmentId`, so its
-original bytes cannot be fetched. The action returns inline text only when the
-part declares no charset or UTF-8, US-ASCII, ISO-8859-1, ISO-8859-15 or
-Windows-1252, the data has `size` bytes and contains no U+FFFD. For these
-charsets the conversion changes the length whenever it changes a byte. Other
-inline text fails with reason `:attachment_converted`. In the live test
-account, Gmail kept unnamed binary parts behind an `attachmentId` and returned
-unnamed ISO-8859-1, Windows-1252 and UTF-16LE text converted; the UTF-16LE
-text kept its length, so only its charset shows the conversion.
+`size` keeps the original count. Such a part has no `attachmentId`, so
+`attachments.get` cannot fetch it, and Gmail returns its original bytes only
+within the whole message in `format=raw`, which the action does not read. The
+action therefore returns inline text only where the conversion cannot have
+changed it: empty data, data of `size` bytes in a part declared as UTF-8, and
+7-bit ASCII data of `size` bytes in a part that declares no charset, US-ASCII,
+ISO-8859-1 to ISO-8859-10, ISO-8859-13 to ISO-8859-16, Windows-1250 to
+Windows-1258, KOI8-R or KOI8-U, also under the aliases that
+`Jido.Connect.Gmail.MIME.Charset` lists. Other inline text fails with reason
+`:attachment_converted`: non-ASCII text in a charset other than UTF-8, and any
+text in another charset such as UTF-16, whose UTF-8 form can keep the original
+length with other bytes. In the live test account, Gmail kept unnamed binary
+parts behind an `attachmentId` and returned unnamed ISO-8859-1, Windows-1252
+and UTF-16LE text converted; the UTF-16LE text kept its length, so only its
+charset shows the conversion.
 
 ## Actions
 

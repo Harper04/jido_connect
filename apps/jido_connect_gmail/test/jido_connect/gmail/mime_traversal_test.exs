@@ -856,7 +856,9 @@ defmodule Jido.Connect.Gmail.MIME.TraversalTest do
       end
     end
 
-    test "body text, containers and the root are not attachments" do
+    test "body text and containers are not attachments, also as the root of a message" do
+      # "" is a multipart and a text/plain root, 1.0 and 2.0 are the roots of
+      # enclosed messages.
       for {name, part_ids} <- [
             {"message_full_attachments", ["", "0", "0.0", "0.0.0", "0.0.1", "1", "2"]},
             {"message_full_forward_attached", ["0", "1.0", "1.0.0", "1.0.0.0", "2.0"]},
@@ -869,6 +871,33 @@ defmodule Jido.Connect.Gmail.MIME.TraversalTest do
 
         assert details == %{part_id: part_id}, "#{name} #{inspect(part_id)}"
         assert error.message == "Gmail message part is not an attachment"
+      end
+    end
+
+    test "a root that is itself an attachment is selectable by its part ID" do
+      # Variants as application/pdf: the root of the single-part message, part
+      # ID "", and the root 3.0 of the message enclosed in the charset
+      # message. Both keep their recorded inline data.
+      for {name, part_id, size} <- [
+            {"message_full_single_part", "", 30},
+            {"message_full_charsets", "3.0", 44}
+          ] do
+        variant =
+          map_parts(payload(name), fn
+            %{"partId" => ^part_id} = part ->
+              part
+              |> Map.put("mimeType", "application/pdf")
+              |> put_header("Content-Type", "application/pdf")
+
+            part ->
+              part
+          end)
+
+        data = find_part(variant, part_id)["body"]["data"]
+
+        assert {:ok,
+                %{part_id: ^part_id, mime_type: "application/pdf", size: ^size, filename: nil},
+                {:inline, ^data}} = Traversal.attachment(variant, part_id)
       end
     end
 
@@ -893,6 +922,31 @@ defmodule Jido.Connect.Gmail.MIME.TraversalTest do
 
       # The details name the part only; no attachment ID is made up.
       assert details == %{part_id: "4"}
+    end
+
+    test "empty data next to an attachment ID is no inline data; other data is" do
+      # Gmail's API reference allows empty data next to an attachmentId. The
+      # variants give data.bin, part 4, the data "" and the 4096 bytes that
+      # attachments.get returned for it in attachment_content_data_bin.2,
+      # each next to its recorded attachmentId.
+      payload = payload("message_full_attachments")
+      %{"attachmentId" => recorded_id, "size" => 4096} = find_part(payload, "4")["body"]
+
+      %{"data" => data, "size" => 4096} =
+        LiveSmoke.fixture!(:gmail, "attachment_content_data_bin.2")
+
+      with_data = fn data ->
+        map_parts(payload, fn
+          %{"partId" => "4"} = part -> put_in(part, ["body", "data"], data)
+          part -> part
+        end)
+      end
+
+      assert {:ok, %{part_id: "4", attachment_id: ^recorded_id}, {:external, ^recorded_id}} =
+               Traversal.attachment(with_data.(""), "4")
+
+      assert {:ok, %{part_id: "4", attachment_id: ^recorded_id}, {:inline, ^data}} =
+               Traversal.attachment(with_data.(data), "4")
     end
 
     test "inline data must be valid base64url of the part's size" do
@@ -988,9 +1042,39 @@ defmodule Jido.Connect.Gmail.MIME.TraversalTest do
       end
     end
 
-    test "a replacement character in inline text counts as a conversion" do
-      # A variant of part 8 whose UTF-8 text keeps its 50 bytes but holds
-      # U+FFFD, which Gmail may have put in place of invalid bytes.
+    test "empty inline text is the original whatever charset it declares" do
+      # Variants of the recorded empty.bin, part 5, as text/plain in
+      # ISO-8859-2 and in UTF-16LE: no conversion changes zero bytes.
+      payload = payload("message_full_attachments")
+
+      for charset <- ["iso-8859-2", "utf-16le"] do
+        variant =
+          map_parts(payload, fn
+            %{"partId" => "5"} = part ->
+              part
+              |> Map.put("mimeType", "text/plain")
+              |> put_header(
+                "Content-Type",
+                ~s(text/plain; charset="#{charset}"; name="empty.bin")
+              )
+
+            part ->
+              part
+          end)
+
+        assert find_part(variant, "5")["body"] == %{"data" => "", "size" => 0}
+
+        assert {:ok, %{part_id: "5", mime_type: "text/plain", size: 0}, {:inline, ""}} =
+                 Traversal.attachment(variant, "5"),
+               charset
+      end
+    end
+
+    test "UTF-8 text of the original length is the original, U+FFFD included" do
+      # A variant of part 8 whose UTF-8 text keeps its 50 bytes and holds
+      # U+FFFD as a character of the original. Gmail turns an invalid byte
+      # into a Windows-1252 character, not into U+FFFD; part 2 of
+      # message_full_charsets grew from 76 to 81 bytes that way.
       payload = payload("message_full_unnamed_attachments")
       text = "Gr\u{FFFD}ee in UTF-8, marker jcl-marker-unnamed-utf8.\n"
       assert byte_size(text) == 50
@@ -1001,33 +1085,54 @@ defmodule Jido.Connect.Gmail.MIME.TraversalTest do
           &update_body(&1, "8", %{"data" => Base.url_encode64(text), "size" => 50})
         )
 
-      assert {:error, %Error.ProviderError{reason: :attachment_converted}} =
+      assert {:ok, %{part_id: "8", size: 50}, {:inline, data}} =
                Traversal.attachment(variant, "8")
+
+      assert Base.url_decode64!(data) == text
     end
 
-    test "the charset decides: aliases and no charset count, other charsets do not" do
-      # Variants of the recorded ASCII-only part 9, declared as LATIN1, with no
-      # charset and as KOI8-R, a charset outside MIME.Charset.
-      payload = payload("message_full_unnamed_attachments")
+    test "7-bit text of the original length is the original in UTF-8 and single-byte charsets" do
+      # Variants of the recorded ASCII-only part 9 under every charset that
+      # counts, some spelled in upper case or as an alias, and with none.
+      charsets =
+        ~w(utf-8 UTF-8 utf8 us-ascii US-ASCII csASCII
+           iso-8859-1 LATIN1 iso-8859-2 iso-8859-3 iso-8859-4 iso-8859-5
+           iso-8859-6 iso-8859-7 iso-8859-8 iso-8859-9 iso-8859-10
+           iso-8859-13 iso-8859-14 iso-8859-15 Latin-9 iso-8859-16
+           windows-1250 windows-1251 windows-1252 cp1252 windows-1253
+           windows-1254 windows-1255 windows-1256 windows-1257 windows-1258
+           koi8-r KOI8-U)
 
-      for {content_type, expected} <- [
-            {~s(text/csv; charset="LATIN1"), :ok},
-            {"text/csv", :ok},
-            {~s(text/csv; charset="koi8-r"), :attachment_converted}
+      for content_type <- ["text/csv" | Enum.map(charsets, &~s(text/csv; charset="#{&1}"))] do
+        assert inline_text("9", content_type) == {:ok, "id;name\n1;Mueller\n2;Weiss\n"},
+               content_type
+      end
+    end
+
+    test "other charsets, and non-ASCII text outside UTF-8, count as converted" do
+      # Variants of the ASCII-only part 9 in charsets whose UTF-8 form can
+      # keep the length with other bytes: UTF-16 and UTF-32, the escape
+      # sequences of UTF-7 and ISO-2022-JP, multi-byte charsets, EBCDIC, and
+      # two names that no charset has.
+      for charset <-
+            ~w(utf-16 utf-16le utf-16be utf-32 utf-7 iso-2022-jp shift_jis euc-jp
+               gb18030 big5 ibm037 iso-8859-12 x-unknown) do
+        assert inline_text("9", ~s(text/csv; charset="#{charset}")) == :attachment_converted,
+               charset
+      end
+
+      # Variants of the UTF-8 part 8, 50 bytes with umlauts, declared in a
+      # single-byte charset or with none: Gmail's conversion from these
+      # turns every byte from 0x80 into two or more bytes, so non-ASCII text
+      # of the original length cannot be the original.
+      for content_type <- [
+            "text/plain",
+            ~s(text/plain; charset="us-ascii"),
+            ~s(text/plain; charset="iso-8859-1"),
+            ~s(text/plain; charset="windows-1252"),
+            ~s(text/plain; charset="koi8-r")
           ] do
-        variant =
-          map_parts(payload, fn
-            %{"partId" => "9"} = part -> put_header(part, "Content-Type", content_type)
-            part -> part
-          end)
-
-        result =
-          case Traversal.attachment(variant, "9") do
-            {:ok, _entry, {:inline, _data}} -> :ok
-            {:error, %Error.ProviderError{reason: reason}} -> reason
-          end
-
-        assert result == expected, content_type
+        assert inline_text("8", content_type) == :attachment_converted, content_type
       end
     end
   end
@@ -1080,6 +1185,21 @@ defmodule Jido.Connect.Gmail.MIME.TraversalTest do
   end
 
   defp manifest_fields, do: [:filename, :mime_type, :size, :disposition, :content_id]
+
+  # Looks up part `part_id` of the unnamed-attachment message with its
+  # Content-Type replaced; returns the decoded inline text or the error reason.
+  defp inline_text(part_id, content_type) do
+    variant =
+      map_parts(payload("message_full_unnamed_attachments"), fn
+        %{"partId" => ^part_id} = part -> put_header(part, "Content-Type", content_type)
+        part -> part
+      end)
+
+    case Traversal.attachment(variant, part_id) do
+      {:ok, _entry, {:inline, data}} -> {:ok, Base.url_decode64!(data)}
+      {:error, %Error.ProviderError{reason: reason}} -> reason
+    end
+  end
 
   defp update_body(%{"partId" => part_id} = part, part_id, body), do: %{part | "body" => body}
   defp update_body(part, _part_id, _body), do: part

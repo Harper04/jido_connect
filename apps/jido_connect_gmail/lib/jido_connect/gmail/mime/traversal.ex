@@ -72,27 +72,47 @@ defmodule Jido.Connect.Gmail.MIME.Traversal do
 
   `attachment/3` walks the payload like `traverse/2`, under the same bounds,
   and selects the part with a given `partId`: a manifest entry or a nested
-  message, whose manifest fields it returns. An unknown part ID returns a
+  message, whose manifest fields it returns. The root of a message counts
+  like any other part, so the `application/pdf` root of a single-part
+  message is selected with its part ID `""`. An unknown part ID returns a
   `Jido.Connect.Error.ValidationError` with reason `:unknown_part_id`, and a
-  body text part, a container or the root of a message reason
-  `:not_an_attachment`. Data in `body.data`, also when empty, comes back as
-  `{:inline, data}`, and only a part without it as
-  `{:external, attachment_id}`. A part with neither returns a provider error
-  with reason `:attachment_data_missing`.
+  body text part or a container reason `:not_an_attachment`.
+
+  Non-empty `body.data` comes back as `{:inline, data}`. A part with an
+  `attachmentId` and empty or no `body.data` comes back as
+  `{:external, attachment_id}`, since Gmail's API reference allows empty data
+  next to an `attachmentId`. Empty data without an `attachmentId`, as Gmail
+  returns an empty file, comes back as `{:inline, ""}`. A part with neither
+  data nor an `attachmentId` returns a provider error with reason
+  `:attachment_data_missing`.
 
   Inline data must be valid base64url and decode to `size` bytes, or the
   lookup returns reason `:invalid_base64url` or `:attachment_size_mismatch`.
+
   Gmail keeps a `text/*` part without a filename inline, also when the
   traversal lists it as an attachment, such as a `text/csv` part or a text
-  part with the disposition `attachment`, and returns its data converted to
-  UTF-8 like that of body text. Such a part has no `attachmentId`, so its
-  original bytes are not available. Inline `text/*` data counts as original
-  only when the part declares no charset or one that
-  `Jido.Connect.Gmail.MIME.Charset` supports, the data has `size` bytes and
-  holds no U+FFFD. Converting from these charsets changes the length
-  whenever it changes a byte, except where U+FFFD replaces invalid bytes.
-  Other inline `text/*` data returns reason `:attachment_converted`, also
-  UTF-16 text whose UTF-8 form happens to have the original length.
+  part with the disposition `attachment`. It returns the data converted to
+  UTF-8 like that of body text, while `size` keeps the original count. Such
+  a part has no `attachmentId`, so `attachments.get` cannot fetch it; Gmail
+  returns its original bytes only within the whole message in `format=raw`,
+  which the lookup does not read. Inline `text/*` data therefore counts as
+  the original only where the conversion cannot have changed it:
+
+    * Empty data, which has nothing to convert.
+    * Data of `size` bytes in a part that declares `utf-8`. Gmail keeps valid
+      UTF-8 and turns each invalid byte into a character of two or three
+      bytes.
+    * 7-bit ASCII data of `size` bytes in a part that declares no charset,
+      `us-ascii`, `iso-8859-1` to `iso-8859-10`, `iso-8859-13` to
+      `iso-8859-16`, `windows-1250` to `windows-1258`, `koi8-r` or `koi8-u`.
+      These charsets decode no byte from 0x80 as ASCII, so a converted byte
+      would have left longer or non-ASCII text.
+
+  Charset names match without regard to case, and the aliases that
+  `Jido.Connect.Gmail.MIME.Charset` lists count. All other inline `text/*`
+  data returns reason `:attachment_converted`: non-ASCII text in a charset
+  other than UTF-8, and any text in another charset, such as UTF-16, whose
+  UTF-8 form can keep the original length with other bytes.
 
   `verify_attachment_data/2` applies the base64url and size checks to the
   `data` that `attachments.get` returns for an entry, which holds the
@@ -119,7 +139,14 @@ defmodule Jido.Connect.Gmail.MIME.Traversal do
   alias Jido.Connect.Gmail.Normalizer
 
   @text_types ["text/plain", "text/html"]
-  @replacement_character "\uFFFD"
+
+  # ASCII-compatible single-byte charsets by their IANA names; see
+  # unconverted?/2.
+  @single_byte_charsets ~w(us-ascii iso-8859-1 iso-8859-2 iso-8859-3 iso-8859-4 iso-8859-5
+                           iso-8859-6 iso-8859-7 iso-8859-8 iso-8859-9 iso-8859-10
+                           iso-8859-13 iso-8859-14 iso-8859-15 iso-8859-16 windows-1250
+                           windows-1251 windows-1252 windows-1253 windows-1254 windows-1255
+                           windows-1256 windows-1257 windows-1258 koi8-r koi8-u)
 
   @type text_part :: %{
           part_id: String.t(),
@@ -314,16 +341,18 @@ defmodule Jido.Connect.Gmail.MIME.Traversal do
   defp selected_attachment(nil, part_id),
     do: lookup_error(:unknown_part_id, "Gmail message has no part with this part ID", part_id)
 
-  # Inline data comes first; an attachmentId counts only for a part without it.
+  # Non-empty data comes first. Gmail's API reference allows empty data next
+  # to an attachmentId, so empty data is inline only without one, as for an
+  # empty file.
   defp locate(part) do
     entry = manifest_entry(part)
 
     case part |> Data.get("body", %{}) |> Data.get("data") do
+      data when data in [nil, ""] and is_binary(entry.attachment_id) ->
+        {:ok, entry, {:external, entry.attachment_id}}
+
       data when is_binary(data) ->
         with :ok <- check_inline(part, entry, data), do: {:ok, entry, {:inline, data}}
-
-      nil when is_binary(entry.attachment_id) ->
-        {:ok, entry, {:external, entry.attachment_id}}
 
       nil ->
         provider_error(
@@ -337,18 +366,16 @@ defmodule Jido.Connect.Gmail.MIME.Traversal do
     end
   end
 
-  # Gmail converts the format=full data of a text/* part to UTF-8. Converting
-  # from a charset that MIME.Charset supports changes the length whenever it
-  # changes a byte, unless Gmail puts U+FFFD in place of invalid bytes; text
-  # of the same length without U+FFFD is therefore the original.
+  # Gmail converts the format=full data of a text/* part to UTF-8 and keeps
+  # body.size at the original count. Empty data has nothing to convert; other
+  # text counts as the original only when unconverted?/2 holds.
   defp check_inline(part, entry, data) do
     with {:ok, bytes} <- decode_base64url(data, entry.part_id) do
       cond do
-        not String.starts_with?(mime_type(part), "text/") ->
+        not String.starts_with?(mime_type(part), "text/") or bytes == "" ->
           check_size(bytes, entry)
 
-        byte_size(bytes) == entry.size and Charset.supported?(charset(part)) and
-            not String.contains?(bytes, @replacement_character) ->
+        byte_size(bytes) == entry.size and unconverted?(bytes, charset(part)) ->
           :ok
 
         true ->
@@ -360,6 +387,31 @@ defmodule Jido.Connect.Gmail.MIME.Traversal do
       end
     end
   end
+
+  # Whether `bytes` of the original length are the original, that is, whether
+  # Gmail's conversion to UTF-8 cannot have changed them. It holds for
+  #
+  #   * UTF-8: Gmail keeps valid UTF-8 and turns each invalid byte into its
+  #     Windows-1252 character of two or three bytes; part 2 of
+  #     message_full_charsets grew from 76 to 81 bytes that way.
+  #   * 7-bit data in an ASCII-compatible single-byte charset. These charsets
+  #     decode bytes below 0x80 as ASCII and no other byte as ASCII. A byte
+  #     from 0x80 leaves a non-ASCII character in the data, or nothing, which
+  #     shortens the data unless a non-ASCII character makes it longer.
+  #
+  # The second case assumes that Gmail never decodes a byte from 0x80 into an
+  # ASCII character such as "?". Other charsets stay out. UTF-16 and UTF-32
+  # text can keep its length in UTF-8, as part 6 of
+  # message_full_unnamed_attachments did, and multi-byte and escape-based
+  # charsets can turn several bytes into a character just as long.
+  defp unconverted?(bytes, charset) do
+    case Charset.canonical(charset) do
+      "utf-8" -> true
+      charset -> charset in @single_byte_charsets and ascii?(bytes)
+    end
+  end
+
+  defp ascii?(bytes), do: match?({:ok, _text}, Charset.decode(bytes, "us-ascii"))
 
   defp check_size(bytes, %{part_id: part_id, size: size}) do
     if byte_size(bytes) == size do
