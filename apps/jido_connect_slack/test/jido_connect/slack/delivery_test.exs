@@ -199,6 +199,28 @@ defmodule Jido.Connect.Slack.DeliveryTest do
       assert output == %{channel: @channel, ts: ts, message: message}
     end
 
+    # The README promises that such a success stays a success, so a host that
+    # retries on errors does not post twice. Slack has not been seen to answer
+    # like this: the body is the recorded channel post without its top-level
+    # channel and ts.
+    test "a success without channel and ts stays a success without them" do
+      %{"message" => %{"text" => text} = message} =
+        recorded = LiveSmoke.fixture!(:slack, "chat_post_message_channel")
+
+      stub_response(&Req.Test.json(&1, Map.drop(recorded, ["channel", "ts"])))
+
+      assert {:ok, output} =
+               Connect.invoke(
+                 Jido.Connect.Slack,
+                 "slack.message.post",
+                 %{channel: @channel, text: text},
+                 runtime(["chat:write"])
+               )
+
+      assert output == %{message: message}
+      assert_one_request()
+    end
+
     test "posting needs chat:write and no history or conversation-open scope" do
       other_scopes = [
         "channels:history",
