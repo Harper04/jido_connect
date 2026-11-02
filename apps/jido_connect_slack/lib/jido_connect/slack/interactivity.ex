@@ -63,10 +63,9 @@ defmodule Jido.Connect.Slack.Interactivity do
   Slack marks the container `is_ephemeral: true` and sends no `message`
   object, so the click names no message the normalizer could check. An
   org-wide install, which sends `is_enterprise_install: true` and no team,
-  fails with `:no_workspace`.
-  A missing or empty app, user, channel, message or button field, a value
-  that is no string, or a value or ID beyond Slack's limits fails with
-  `:invalid_block_action`. The container's `channel_id`, `message_ts` and
+  fails with `:no_workspace`. A missing or empty app, user, channel,
+  message or button field, a value that is no string, or a value or ID
+  beyond Slack's limits fails with `:invalid_block_action`. The container's `channel_id`, `message_ts` and
   `thread_ts` must match `channel.id`, `message.ts` and `message.thread_ts`,
   otherwise the reason is `:conflicting_block_action`. With the option
   `:api_app_id`, a click for another app fails with `:unexpected_app`.

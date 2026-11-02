@@ -7,13 +7,12 @@ defmodule Jido.Connect.Slack.Interactivity.BlockActions do
   # Only a click on one button in a message is taken. Every value is read at
   # a fixed payload path. A click on several actions, on another element,
   # outside a message or in an ephemeral message fails with
-  # `:unsupported_block_action`. A missing or
-  # empty required value, a value that is no string, or a step on a path
-  # that is no object fails with `:invalid_block_action`; a payload without
-  # a workspace fails with `:no_workspace`, a click that names two messages
-  # with `:conflicting_block_action`. The details name
-  # payload paths and never a value, so no button value leaves through an
-  # error.
+  # `:unsupported_block_action`. A missing or empty required value, a value
+  # that is no string, or a step on a path that is no object fails with
+  # `:invalid_block_action`; a payload without a workspace fails with
+  # `:no_workspace`, a click that names two messages with
+  # `:conflicting_block_action`. The details name payload paths and never a
+  # value, so no button value leaves through an error.
 
   alias Jido.Connect.{Data, Error}
   alias Jido.Connect.Slack.BlockAction
