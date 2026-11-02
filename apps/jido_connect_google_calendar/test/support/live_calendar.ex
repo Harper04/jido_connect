@@ -1,14 +1,15 @@
 defmodule Jido.Connect.Google.Calendar.TestSupport.LiveCalendar do
   @moduledoc false
 
-  # Runs Calendar actions through `Jido.Connect` with a connection and a
-  # credential lease around a live access token, so live smoke tests exercise
-  # the DSL, the scope check and the handlers, not only the client. The
-  # declared scopes gate the runtime check; the token itself may carry broader
-  # Google scopes.
+  # Runs Calendar actions and the event poll through `Jido.Connect` with a
+  # connection and a credential lease around a live access token, so live
+  # smoke tests exercise the DSL, the scope check and the handlers, not only
+  # the client. The declared scopes gate the runtime check; the token itself
+  # may carry broader Google scopes.
 
   alias Jido.Connect
   alias Jido.Connect.Google.Calendar
+  alias Jido.Connect.Google.Calendar.Client
   alias Jido.Connect.TestSupport.LiveSmoke
 
   @events_readonly_scope "https://www.googleapis.com/auth/calendar.events.readonly"
@@ -37,8 +38,18 @@ defmodule Jido.Connect.Google.Calendar.TestSupport.LiveCalendar do
     )
   end
 
-  @doc false
-  def context_and_lease(access_token, scopes) do
+  @doc "Runs `google.calendar.event.changed` once under the trigger's read-only scope."
+  def poll(config, checkpoint, access_token) do
+    {context, lease} = context_and_lease(access_token, [@events_readonly_scope])
+
+    Connect.poll(Calendar.integration(), "google.calendar.event.changed", config,
+      context: context,
+      credential_lease: lease,
+      checkpoint: checkpoint
+    )
+  end
+
+  defp context_and_lease(access_token, scopes) do
     connection =
       Connect.Connection.new!(%{
         id: "live-calendar",
@@ -69,5 +80,23 @@ defmodule Jido.Connect.Google.Calendar.TestSupport.LiveCalendar do
       })
 
     {context, lease}
+  end
+
+  @doc "Returns a per-run suffix in base32hex, the alphabet of Calendar event IDs."
+  def run_id do
+    5
+    |> :crypto.strong_rand_bytes()
+    |> Base.hex_encode32(case: :lower, padding: false)
+  end
+
+  @doc "Deletes an event without notifications and ignores the result, for cleanup."
+  def delete_quietly(calendar_id, event_id, access_token) do
+    _result =
+      Client.delete_event(
+        %{calendar_id: calendar_id, event_id: event_id, send_updates: "none"},
+        access_token
+      )
+
+    :ok
   end
 end
