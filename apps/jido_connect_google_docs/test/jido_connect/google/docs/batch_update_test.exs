@@ -294,7 +294,7 @@ defmodule Jido.Connect.Google.Docs.BatchUpdateTest do
     %{document_id: @document_id, requests: [two]}
   end
 
-  # The request #229 sent live, which Google rejected as an unknown field.
+  # Docs has no deleteTable request; Google rejects the name as an unknown field.
   defp envelope(:delete_table) do
     %{
       document_id: @document_id,
