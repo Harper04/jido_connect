@@ -893,7 +893,8 @@ defmodule Jido.Connect.GmailTest do
   test "list searches with a query need a read grant before the client is called" do
     {context, lease} = context_and_lease(gmail_client: ListSpyGmailClient)
 
-    for action_id <- ["google.gmail.messages.list", "google.gmail.threads.list"] do
+    for action_id <- ["google.gmail.messages.list", "google.gmail.threads.list"],
+        query <- ["subject:report", "  "] do
       assert {:error,
               %Connect.Error.AuthError{
                 reason: :missing_scopes,
@@ -902,7 +903,7 @@ defmodule Jido.Connect.GmailTest do
                Connect.invoke(
                  Gmail.integration(),
                  action_id,
-                 %{query: "subject:report"},
+                 %{query: query},
                  context: context,
                  credential_lease: lease
                )

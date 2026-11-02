@@ -2,15 +2,21 @@ defmodule Jido.Connect.Gmail.ScopeResolver do
   @moduledoc """
   Resolves Gmail scopes.
 
-  Metadata reads prefer `gmail.metadata`, while accepting broader read or
-  modify grants that hosts may already have.
+  Metadata reads other than `google.gmail.labels.list` require
+  `gmail.metadata` only when the connection holds no broader grant. When it
+  holds `gmail.modify`, `gmail.readonly` or `https://mail.google.com/`, the
+  first of them in that order is required, so a lease narrowed to
+  `gmail.metadata` fails with missing scopes. The label list keeps
+  `gmail.metadata` whenever it is granted.
 
   `google.gmail.messages.list` and `google.gmail.threads.list` also read the
   action input. Gmail rejects the `q` parameter under `gmail.metadata`, so a
-  list with a non-blank `query` resolves like a content read: to
+  list with a non-empty `query` resolves like a content read: to
   `gmail.modify`, `gmail.readonly` or `https://mail.google.com/` when one of
-  them is granted, otherwise to `gmail.readonly`. Without a query, or with a
-  `nil` or blank one, both list actions keep the metadata-read resolution.
+  them is granted, otherwise to `gmail.readonly`. The rule follows what the
+  client sends as `q`. The client drops only a `nil` or empty query, so a
+  query of whitespace counts as a search. Without a query, or with a `nil` or
+  empty one, both list actions keep the metadata-read resolution.
   """
 
   alias Jido.Connect.Data
@@ -205,7 +211,7 @@ defmodule Jido.Connect.Gmail.ScopeResolver do
 
   defp query_search?(input) do
     case Data.get(input, :query) do
-      query when is_binary(query) -> String.trim(query) != ""
+      query when is_binary(query) -> query != ""
       _no_query -> false
     end
   end
