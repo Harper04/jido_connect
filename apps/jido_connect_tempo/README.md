@@ -208,13 +208,14 @@ the status and `details.retry_after` from an integer `Retry-After` header:
 | 404 | `:not_found` |
 | 429 | `:rate_limited` |
 | 5xx | `:server_error` |
+| other | `:http_error` |
 
 `details.message` holds Tempo's error text from `{"errors": [{"message":
-...}]}`. Tempo answers 401 without a body. A 2xx response without valid JSON
-is `:invalid_response`; an error response with a malformed JSON body keeps
-its status, reason and `retry_after`. A transport failure, such as a
-timeout, is `:request_error`. Raw bodies are reduced to a value-free
-summary.
+...}]}`, several messages joined with `; `. Tempo answers 401 without a
+body. A 2xx response without valid JSON is `:invalid_response`; an error
+response with a malformed JSON body keeps its status, reason and
+`retry_after`. A transport failure, such as a timeout, is `:request_error`.
+Raw bodies are reduced to a value-free summary.
 
 ## Limits Owned by the Host
 

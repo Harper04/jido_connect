@@ -86,6 +86,44 @@ defmodule Jido.Connect.Tempo.Client.ResponseTest do
     assert Error.retryable?(error)
   end
 
+  # Statuses without a reason of their own, replayed with the recorded 400
+  # body.
+  test "another error status is an http error with Tempo's message" do
+    for status <- [409, 410, 422] do
+      assert {:error, %Error.ProviderError{reason: :http_error, status: ^status} = error} =
+               get_with(&Fixture.respond(&1, "bad_request", status: status))
+
+      assert error.details.message == "Non valid date 'not-a-date': format must be yyyy-MM-dd"
+    end
+  end
+
+  # The recorded 400 body with a second error, and with an error that has
+  # no message.
+  test "several Tempo messages are joined and an error without one is skipped" do
+    errors = [
+      %{"message" => "Non valid date 'not-a-date': format must be yyyy-MM-dd"},
+      %{"code" => "x"},
+      %{"message" => "to must not be before from"}
+    ]
+
+    assert {:error, %Error.ProviderError{reason: :bad_request} = error} =
+             get_with(fn conn ->
+               Fixture.respond(conn, "bad_request", body: &Map.put(&1, "errors", errors))
+             end)
+
+    assert error.details.message ==
+             "Non valid date 'not-a-date': format must be yyyy-MM-dd; to must not be before from"
+
+    assert {:error, %Error.ProviderError{reason: :bad_request} = error} =
+             get_with(fn conn ->
+               Fixture.respond(conn, "bad_request",
+                 body: &Map.put(&1, "errors", [%{"code" => "x"}])
+               )
+             end)
+
+    assert error.details.message == "provider returned an error response"
+  end
+
   # The recorded text/html 404 body, replayed with status 200.
   test "a successful response without a JSON body is an invalid response" do
     assert {:error, %Error.ProviderError{reason: :invalid_response, status: 200} = error} =
