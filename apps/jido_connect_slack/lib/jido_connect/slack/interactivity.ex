@@ -42,9 +42,27 @@ defmodule Jido.Connect.Slack.Interactivity do
   not kept.
 
   The payload is handed to a normalizer for its `type` together with the
-  options. No type has a normalizer yet, so `normalized_signal` stays `nil`.
+  options. Only `block_actions` has one: a click on one button in a message
+  becomes the signal that `Jido.Connect.Slack.BlockAction` describes. Every
+  other payload, and a `block_actions` payload the normalizer rejects,
+  keeps `normalized_signal: nil`; `normalize_signal/2` returns the reason.
   Verification makes no HTTP request, does not call `response_url` and does
   not answer Slack; the host acknowledges the request.
+
+  ## Block actions
+
+  A `block_actions` payload yields a signal when its `container.type` is
+  `message`, it carries exactly one action and that action is a `button`.
+  Several actions, another element or another container fail with
+  `:unsupported_block_action`. An org-wide install, which sends
+  `is_enterprise_install: true` and no team, fails with `:no_workspace`.
+  A missing or empty app, user, channel, message or button field, a value
+  that is no string, or a value or ID beyond Slack's limits fails with
+  `:invalid_block_action`. The container's `channel_id`, `message_ts` and
+  `thread_ts` must match `channel.id`, `message.ts` and `message.thread_ts`,
+  otherwise the reason is `:conflicting_block_action`. With the option
+  `:api_app_id`, a click for another app fails with `:unexpected_app`.
+  Error details name payload paths, never a value.
   """
 
   alias Jido.Connect.{Error, WebhookDelivery}
@@ -74,6 +92,8 @@ defmodule Jido.Connect.Slack.Interactivity do
       Defaults to the system time.
     * `:seen_delivery_ids` - delivery IDs already processed by the host.
       Defaults to `[]`.
+    * `:api_app_id` - the host's Slack app ID. When given, a block action
+      for another app yields no signal.
 
   All options are passed on to the payload type normalizer.
   """
@@ -97,6 +117,20 @@ defmodule Jido.Connect.Slack.Interactivity do
            }) do
       {:ok, put_normalized_signal(delivery, opts)}
     end
+  end
+
+  @doc """
+  Normalizes the payload of a verified interactivity delivery and returns
+  its signal or the reason it has none.
+
+  `verify_delivery/4` keeps `normalized_signal: nil` when this fails; call
+  this function on such a delivery to learn why. `opts` are those of
+  `verify_delivery/4`.
+  """
+  @spec normalize_signal(WebhookDelivery.t(), keyword()) ::
+          {:ok, map()} | {:error, Error.ProviderError.t()}
+  def normalize_signal(%WebhookDelivery{event: type, payload: payload}, opts \\ []) do
+    Normalizer.normalize_signal(type, payload, opts)
   end
 
   defp check_body_size(body, max) when is_integer(max) and max >= 0 do
@@ -133,10 +167,9 @@ defmodule Jido.Connect.Slack.Interactivity do
   defp team_id(%{"team" => %{"id" => team_id}}), do: team_id
   defp team_id(_payload), do: nil
 
-  defp put_normalized_signal(%WebhookDelivery{event: type, payload: payload} = delivery, opts) do
-    with {:ok, signal} <- Normalizer.normalize_signal(type, payload, opts) do
-      WebhookDelivery.put_signal(delivery, signal)
-    else
+  defp put_normalized_signal(%WebhookDelivery{} = delivery, opts) do
+    case normalize_signal(delivery, opts) do
+      {:ok, signal} -> WebhookDelivery.put_signal(delivery, signal)
       {:error, _reason} -> delivery
     end
   end
