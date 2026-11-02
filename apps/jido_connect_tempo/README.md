@@ -128,7 +128,8 @@ refresh scheduling.
 
    The form post goes to `https://api.tempo.io/oauth/token/`. `token` holds
    `access_token`, `refresh_token`, `expires_in` (seconds) and `scope` (a
-   list of Tempo grants). A response without either token is an error.
+   list of Tempo grants). A successful response that is not a JSON object,
+   or lacks either token, is an `:invalid_response` error.
    `expires_in` is `nil` when Tempo sends no positive integer; the expiry is
    then unknown. `scope` is `nil` when Tempo sends no `scope` string; an
    empty string is an empty list.

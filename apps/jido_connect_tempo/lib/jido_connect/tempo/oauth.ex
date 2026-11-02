@@ -16,8 +16,9 @@ defmodule Jido.Connect.Tempo.OAuth do
   Both return `access_token`, `refresh_token`, `expires_in` and `scope`, the
   granted Tempo scopes as a list. A refresh replaces both tokens: Tempo
   invalidates the old access and refresh token, so the host must store both
-  new tokens before it uses either. A response without either token is an
-  error. Once Tempo has sent both tokens it has rotated the pair, so other
+  new tokens before it uses either. A successful response that is not a
+  JSON object, or lacks either token, is an `:invalid_response` error. Once
+  Tempo has sent both tokens it has rotated the pair, so other
   fields do not discard them: `expires_in` is `nil` unless it is a positive
   integer, and the expiry is then unknown; `scope` is `nil` unless it is a
   string, and the host then keeps the labels it recorded before. The token
@@ -40,6 +41,7 @@ defmodule Jido.Connect.Tempo.OAuth do
   @token_path "/oauth/token/"
   @locked_options [:base_url, :url, :auth, :redirect, :redirect_trusted]
   @token_fields [access_token: "access_token", refresh_token: "refresh_token"]
+  @request_failed "Tempo OAuth token request failed"
 
   @type token :: %{
           access_token: String.t(),
@@ -121,9 +123,17 @@ defmodule Jido.Connect.Tempo.OAuth do
     |> Keyword.put(:redirect, false)
   end
 
+  defp token_response({:ok, %{status: status}} = response) do
+    with {:ok, body} <- Response.handle(response, message: @request_failed) do
+      token(body, status)
+    end
+  end
+
+  defp token_response(response), do: Response.handle(response, message: @request_failed)
+
   # Once Tempo answers with both tokens it has rotated the pair, so only a
   # missing token fails the response; an unusable expiry or scope is nil.
-  defp token_response({:ok, %{status: status, body: %{} = body}}) when status in 200..299 do
+  defp token(%{} = body, status) do
     case for({field, key} <- @token_fields, not token?(body[key]), do: field) do
       [] ->
         {:ok,
@@ -142,8 +152,10 @@ defmodule Jido.Connect.Tempo.OAuth do
     end
   end
 
-  defp token_response(response) do
-    Response.handle(response, message: "Tempo OAuth token request failed")
+  defp token(_body, status) do
+    Response.invalid_response("Tempo OAuth token response was not a JSON object", nil,
+      status: status
+    )
   end
 
   defp token?(value), do: is_binary(value) and value != ""

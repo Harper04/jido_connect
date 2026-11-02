@@ -246,6 +246,18 @@ defmodule Jido.Connect.Tempo.OAuthTest do
       assert {:ok, %{scope: []}} = OAuth.refresh("stored-refresh-token", @opts)
     end
 
+    # The observed token wrapped in a JSON array.
+    test "a refresh response that is not a JSON object is an invalid response" do
+      Req.Test.expect(__MODULE__, fn conn -> Req.Test.json(conn, [observed_token()]) end)
+
+      assert {:error,
+              %Error.ProviderError{provider: :tempo, reason: :invalid_response, status: 200} =
+                error} = OAuth.refresh("stored-refresh-token", @opts)
+
+      refute inspect(error) =~ "observed-refresh-token-placeholder"
+      refute_secrets(error, ["stored-refresh-token"])
+    end
+
     test "an invalid refresh token is a normalized error without the token" do
       Req.Test.expect(__MODULE__, &Fixture.respond(&1, "oauth_invalid_refresh_token"))
 
