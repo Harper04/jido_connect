@@ -64,6 +64,14 @@ defmodule Jido.Connect.Atlassian.ADFStrictTextTest do
       document =
         doc([
           @heading,
+          # https://developer.atlassian.com/cloud/jira/platform/apis/document/structure/
+          %{
+            "type" => "paragraph",
+            "content" => [
+              %{"type" => "text", "text" => "Hello "},
+              %{"type" => "text", "text" => "world", "marks" => [%{"type" => "strong"}]}
+            ]
+          },
           @hard_break_paragraph,
           @bullet_list,
           %{"type" => "paragraph", "content" => [@mention]},
@@ -92,7 +100,7 @@ defmodule Jido.Connect.Atlassian.ADFStrictTextTest do
 
       assert ADF.to_text(document) ==
                {:ok,
-                "Heading 1\nHello\nworld\n- Hello world\n@Bradley Ayers\n---\nhttps://atlassian.com\nHello world\n\nvar foo = {};\nvar bar = [];"}
+                "Heading 1\nHello world\nHello\nworld\n- Hello world\n@Bradley Ayers\n---\nhttps://atlassian.com\nHello world\n\nvar foo = {};\nvar bar = [];"}
     end
 
     test "keeps failing closed on unsupported nodes, non-HTTPS links and malformed roots" do
@@ -100,6 +108,42 @@ defmodule Jido.Connect.Atlassian.ADFStrictTextTest do
 
       assert ADF.to_text(doc([%{"type" => "paragraph", "content" => [@http_link_text]}])) ==
                :error
+
+      no_target = %{
+        @http_link_text
+        | "marks" => [%{"type" => "link", "attrs" => %{"href" => nil}}]
+      }
+
+      assert ADF.to_text(doc([%{"type" => "paragraph", "content" => [no_target]}])) == :error
+
+      # The annotation mark of
+      # https://developer.atlassian.com/cloud/jira/platform/apis/document/nodes/media/
+      annotated = %{
+        @http_link_text
+        | "marks" => [
+            %{
+              "type" => "annotation",
+              "attrs" => %{
+                "id" => "c4cbe18e-9902-4734-bf9b-1426a81ef785",
+                "annotationType" => "inlineComment"
+              }
+            }
+          ]
+      }
+
+      assert ADF.to_text(doc([%{"type" => "paragraph", "content" => [annotated]}])) == :error
+
+      malformed_marks = %{@http_link_text | "marks" => %{"type" => "strong"}}
+
+      assert ADF.to_text(doc([%{"type" => "paragraph", "content" => [malformed_marks]}])) ==
+               :error
+
+      dated_item = %{
+        "type" => "listItem",
+        "content" => [%{"type" => "paragraph", "content" => [@date]}]
+      }
+
+      assert ADF.to_text(doc([%{"type" => "bulletList", "content" => [dated_item]}])) == :error
 
       assert ADF.to_text(%{"type" => "doc", "content" => []}) == :error
       assert ADF.to_text("not a document") == :error
@@ -147,6 +191,38 @@ defmodule Jido.Connect.Atlassian.ADFStrictTextTest do
                  }
                ]
              }
+    end
+
+    test "round-trips quotes, fenced code, rules and ordered lists and keeps unsafe links as text" do
+      markdown = """
+      # Runbook
+
+      First line
+      second line
+
+      1. One
+      2. Two
+
+      > Quoted text
+
+      ```elixir
+      :ok
+      ```
+
+      ---
+
+      [Unsafe](http://example.com) and [Port](https://example.com:8443/x) and [Safe](https://example.com/path)
+      """
+
+      assert {:ok, document} = ADF.from_markdown(markdown)
+
+      assert Enum.map(document["content"], & &1["type"]) ==
+               ~w(heading paragraph orderedList blockquote codeBlock rule paragraph)
+
+      assert ADF.to_text(document) ==
+               {:ok,
+                "Runbook\nFirst line\nsecond line\n- One\n- Two\nQuoted text\n\n:ok\n---\n" <>
+                  "[Unsafe](http://example.com) and [Port](https://example.com:8443/x) and Safe"}
     end
 
     test "rejects Markdown beyond the configured length and non-strings" do
