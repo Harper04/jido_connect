@@ -60,7 +60,7 @@ defmodule Jido.Connect.Slack.CatalogPacksTest do
     :ok
   end
 
-  test "reviewed packs expose only the nine accepted canonical Slack actions" do
+  test "reviewed packs expose only the ten accepted canonical Slack actions" do
     reader = CatalogPacks.reader()
     editor = CatalogPacks.editor()
 
@@ -70,6 +70,7 @@ defmodule Jido.Connect.Slack.CatalogPacksTest do
     assert reader.allowed_tools == [
              "slack.message.unread.list",
              "slack.thread.replies",
+             "slack.conversation.history",
              "slack.presence.get",
              "slack.emoji.list"
            ]
@@ -96,7 +97,7 @@ defmodule Jido.Connect.Slack.CatalogPacksTest do
       end
     end)
 
-    for id <- ["slack.message.post", "slack.thread.replies"] do
+    for id <- ["slack.message.post", "slack.thread.replies", "slack.conversation.history"] do
       assert {:ok, %{auth_profile: :bot, auth_profiles: [:bot, :user]}} =
                Connect.action(Jido.Connect.Slack, id)
     end
