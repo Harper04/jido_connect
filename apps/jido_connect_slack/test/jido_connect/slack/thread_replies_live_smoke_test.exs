@@ -26,7 +26,15 @@ defmodule Jido.Connect.Slack.ThreadRepliesLiveSmokeTest do
 
   With `JIDO_CONNECT_RECORD=1` the bot token's pages are recorded. The second
   test records two pages of two replies, a parent without replies and an
-  unknown thread for the offline tests.
+  unknown thread for the offline tests. `thread_replies_window.json` and
+  `thread_replies_window.2.json` are the two pages of a read with `limit: 2`,
+  `inclusive: true`, `oldest` set to the oldest reply of the prepared thread
+  and `latest` to its fourth oldest reply. The fixtures keep no query; the
+  bounds are the smallest and the largest reply `ts` across both files, and
+  the test prints them. The parent without replies is the newest message
+  before the prepared thread that has no subtype, thread, files or edit.
+  Slack answers it with the parent alone and an unknown `ts` with
+  `thread_not_found`, not with an empty page.
   """
 
   use ExUnit.Case, async: false
@@ -148,6 +156,8 @@ defmodule Jido.Connect.Slack.ThreadRepliesLiveSmokeTest do
     assert sorted_ts(replies(first, parent) ++ replies(second, parent)) == window
     assert {first.reply_count, first.latest_reply} == {root["reply_count"], root["latest_reply"]}
 
+    IO.puts("live_smoke slack: window of limit 2: oldest #{oldest}, latest #{latest}, inclusive")
+
     record("thread_replies_no_replies")
 
     assert {:ok, %{messages: [%{ts: ^lone_ts}], reply_count: 0, has_more: false}} =
@@ -256,9 +266,9 @@ defmodule Jido.Connect.Slack.ThreadRepliesLiveSmokeTest do
     messages
   end
 
-  # The newest message before the prepared thread without subtype, thread,
-  # files or edit. Posts after the thread do not change the choice, so a new
-  # recording keeps the same parent without replies.
+  # The newest message before the prepared thread that has no subtype,
+  # thread, files or edit. Posts after the thread do not change the choice,
+  # so a new recording keeps the same parent without replies.
   defp lone_message_ts!(token, channel, parent) do
     assert %{status: 200, body: %{"ok" => true, "messages" => messages}} =
              LiveSlack.reference_request(token, :get, "conversations.history",
