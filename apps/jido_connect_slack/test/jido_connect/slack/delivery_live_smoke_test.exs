@@ -21,10 +21,7 @@ defmodule Jido.Connect.Slack.DeliveryLiveSmokeTest do
 
   alias Jido.Connect
   alias Jido.Connect.Slack.Client
-
-  @slack_api "https://slack.com/api"
-  @req_options {:jido_connect_slack, :slack_req_options}
-  @unrecorded_root Path.join(System.tmp_dir!(), "jido_connect_slack_unrecorded")
+  alias Jido.Connect.Slack.TestSupport.LiveSlack
 
   @link "https://example.com/jido-connect/delivery-check"
   @text "Delivery check from the jido_connect_slack live test: " <>
@@ -52,23 +49,25 @@ defmodule Jido.Connect.Slack.DeliveryLiveSmokeTest do
     token = env["SLACK_BOT_TOKEN"]
     channel = env["SLACK_PUBLIC_CHANNEL_ID"]
     thread_ts = env["SLACK_THREAD_TS"]
-    authorizing_user = authorizing_user!(env)
+    authorizing_user = LiveSlack.user_id!(env["SLACK_USER_TOKEN"])
 
     # The lease carries only the access token, so the default client runs.
-    skip_recording()
+    LiveSlack.skip_recording()
+
+    open_input = %{users: [authorizing_user]}
 
     assert {:ok, %{channel: dm}} =
-             invoke("slack.conversation.open", %{users: [authorizing_user]}, token, ["im:write"])
+             LiveSlack.invoke("slack.conversation.open", open_input, token, ["im:write"])
 
     assert dm == env["SLACK_DM_CHANNEL_ID"]
 
-    record("chat_post_message_channel")
+    LiveSlack.record("chat_post_message_channel")
     channel_post = post!(token, %{channel: channel, text: @text})
 
-    record("chat_post_message_thread_reply")
+    LiveSlack.record("chat_post_message_thread_reply")
     reply = post!(token, %{channel: channel, text: @text, thread_ts: thread_ts})
 
-    skip_recording()
+    LiveSlack.skip_recording()
     dm_post = post!(token, %{channel: dm, text: @text})
 
     for {post, target} <- [{channel_post, channel}, {reply, channel}, {dm_post, dm}] do
@@ -114,18 +113,18 @@ defmodule Jido.Connect.Slack.DeliveryLiveSmokeTest do
 
   test "records conversations.open for a DM and a group DM and two refusals", %{env: env} do
     token = env["SLACK_BOT_TOKEN"]
-    authorizing_user = authorizing_user!(env)
+    authorizing_user = LiveSlack.user_id!(env["SLACK_USER_TOKEN"])
     # The parameters slack.conversation.open sends with its defaults.
     defaults = %{return_im: false, prevent_creation: false}
 
-    record("conversations_open_im", fields: @conversation_fields)
+    LiveSlack.record("conversations_open_im", fields: @conversation_fields)
 
     assert {:ok, %{channel: dm}} =
              Client.open_conversation(Map.put(defaults, :users, [authorizing_user]), token)
 
     assert dm == env["SLACK_DM_CHANNEL_ID"]
 
-    record("conversations_open_mpim", fields: @conversation_fields)
+    LiveSlack.record("conversations_open_mpim", fields: @conversation_fields)
 
     assert {:ok, %{channel: mpim, conversation: %{is_mpim: true}}} =
              Client.open_conversation(
@@ -135,12 +134,12 @@ defmodule Jido.Connect.Slack.DeliveryLiveSmokeTest do
 
     assert mpim == env["SLACK_MPIM_CHANNEL_ID"]
 
-    record("conversations_open_user_not_found")
+    LiveSlack.record("conversations_open_user_not_found")
 
     assert {:error, %Connect.Error.ProviderError{status: 200, reason: "user_not_found"}} =
              Client.open_conversation(Map.put(defaults, :users, [@unknown_user]), token)
 
-    record("chat_post_message_not_in_channel")
+    LiveSlack.record("chat_post_message_not_in_channel")
     no_access = env["SLACK_NO_ACCESS_CHANNEL_ID"]
 
     case Client.post_message(%{channel: no_access, text: @text, reply_broadcast: false}, token) do
@@ -148,7 +147,7 @@ defmodule Jido.Connect.Slack.DeliveryLiveSmokeTest do
         :ok
 
       {:ok, %{ts: ts}} ->
-        delete!(token, no_access, ts)
+        LiveSlack.delete_message!(token, no_access, ts)
         flunk("the bot posted to #{no_access}, which it has left; the post was deleted")
 
       {:error, %Connect.Error.ProviderError{reason: reason}} ->
@@ -156,59 +155,13 @@ defmodule Jido.Connect.Slack.DeliveryLiveSmokeTest do
     end
   end
 
-  defp record(name, opts \\ []), do: LiveSmoke.record(@req_options, :slack, name, opts)
-
-  # The recorder has no pause, so while recording, responses that no offline
-  # test replays go to a scratch directory that is removed when the test exits.
-  defp skip_recording do
-    if LiveSmoke.recording?() do
-      on_exit({__MODULE__, :scratch}, fn -> File.rm_rf!(@unrecorded_root) end)
-      LiveSmoke.record(@req_options, :slack, "unrecorded", root: @unrecorded_root)
-    end
-
-    :ok
-  end
-
   # Posts through the action and deletes the post when the test exits.
   defp post!(token, input) do
-    assert {:ok, %{ts: ts} = post} = invoke("slack.message.post", input, token, ["chat:write"])
-    on_exit(fn -> delete!(token, input.channel, ts) end)
+    assert {:ok, %{ts: ts} = post} =
+             LiveSlack.invoke("slack.message.post", input, token, ["chat:write"])
+
+    LiveSlack.delete_on_exit(token, input.channel, ts)
     post
-  end
-
-  defp invoke(action_id, input, token, scopes) do
-    connection =
-      Connect.Connection.new!(%{
-        id: "slack-live-bot",
-        provider: :slack,
-        profile: :bot,
-        tenant_id: "live-smoke",
-        owner_type: :tenant,
-        owner_id: "live-smoke",
-        status: :connected,
-        scopes: scopes
-      })
-
-    Connect.invoke(Jido.Connect.Slack, action_id, input,
-      context:
-        Connect.Context.new!(%{
-          tenant_id: "live-smoke",
-          actor: %{id: "live-smoke", type: :user},
-          connection: connection
-        }),
-      credential_lease:
-        Connect.CredentialLease.new!(%{
-          connection_id: connection.id,
-          expires_at: DateTime.add(DateTime.utc_now(), 300, :second),
-          scopes: scopes,
-          fields: %{access_token: token}
-        })
-    )
-  end
-
-  defp authorizing_user!(env) do
-    assert {:ok, %{"user_id" => user}} = Client.auth_test(env["SLACK_USER_TOKEN"])
-    user
   end
 
   defp stored_message!(token, channel, ts) do
@@ -219,7 +172,7 @@ defmodule Jido.Connect.Slack.DeliveryLiveSmokeTest do
 
   defp channel_history(token, channel, ts) do
     %{status: 200, body: %{"ok" => true, "messages" => messages}} =
-      reference_request(token, :get, "conversations.history",
+      LiveSlack.reference_request(token, :get, "conversations.history",
         params: [channel: channel, oldest: ts, latest: ts, inclusive: true, limit: 1]
       )
 
@@ -237,38 +190,11 @@ defmodule Jido.Connect.Slack.DeliveryLiveSmokeTest do
 
   defp stored_reply!(token, channel, thread_ts, ts) do
     %{status: 200, body: %{"ok" => true, "messages" => messages}} =
-      reference_request(token, :get, "conversations.replies",
+      LiveSlack.reference_request(token, :get, "conversations.replies",
         params: [channel: channel, ts: thread_ts, oldest: ts, latest: ts, inclusive: true]
       )
 
     assert [reply] = Enum.filter(messages, &(&1["ts"] == ts))
     reply
-  end
-
-  # A post left behind changes the prepared conversations that the history
-  # and thread checks count, so a failed delete fails the test. The message
-  # names only the HTTP status and Slack's error code. A confirmed delete
-  # prints the message ID for the run's evidence.
-  defp delete!(token, channel, ts) do
-    case reference_request(token, :post, "chat.delete", json: %{channel: channel, ts: ts}) do
-      %{status: 200, body: %{"ok" => true}} ->
-        IO.puts("live_smoke slack: deleted post #{ts} in #{channel}")
-
-      %{status: status, body: body} ->
-        flunk(
-          "chat.delete left the delivery check post #{ts} in #{channel}: " <>
-            "HTTP #{status}, #{slack_error(body)}; delete it before the next live run"
-        )
-    end
-  end
-
-  defp slack_error(%{"error" => error}) when is_binary(error), do: error
-  defp slack_error(_body), do: "no Slack error code"
-
-  # Calls Slack directly, without the package's client and Req options.
-  defp reference_request(token, method, path, options) do
-    [method: method, url: "#{@slack_api}/#{path}", auth: {:bearer, token}, retry: false]
-    |> Keyword.merge(options)
-    |> Req.request!()
   end
 end
