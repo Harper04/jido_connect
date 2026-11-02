@@ -475,6 +475,35 @@ defmodule Jido.Connect.Gmail.ClientTest do
     refute inspect(message) =~ "body-bytes"
   end
 
+  test "requests the three change types as repeated historyTypes without a label filter" do
+    %{"history" => [_only, _archive], "nextPageToken" => next_page_token} =
+      page = LiveSmoke.fixture!(:gmail, "message_changed_history")
+
+    Req.Test.expect(__MODULE__, fn conn ->
+      assert conn.request_path == "/gmail/v1/users/me/history"
+
+      assert conn.query_string |> URI.query_decoder() |> Enum.sort() == [
+               {"historyTypes", "labelAdded"},
+               {"historyTypes", "labelRemoved"},
+               {"historyTypes", "messageDeleted"},
+               {"maxResults", "2"},
+               {"startHistoryId", "15659"}
+             ]
+
+      Req.Test.json(conn, page)
+    end)
+
+    assert {:ok, %{history: [_only, _archive], next_page_token: ^next_page_token}} =
+             Client.list_history(
+               %{
+                 start_history_id: "15659",
+                 page_size: 2,
+                 history_types: ["messageDeleted", "labelAdded", "labelRemoved"]
+               },
+               "token"
+             )
+  end
+
   test "trash and untrash requests carry an empty body, so Google receives a Content-Length" do
     # Mint sends Content-Length only with a request body, and Google answers a
     # POST without one with 411 Length Required, as the live change poll test
