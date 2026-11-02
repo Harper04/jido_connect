@@ -13,6 +13,10 @@ defmodule Jido.Connect.Google.Drive.Link do
     * `docs.google.com/{document,spreadsheets,presentation}/d/<id>/...` and the
       same with `/u/<n>` before `/d`
 
+  "Publish to the web" links such as
+  `docs.google.com/spreadsheets/d/e/<token>/pubhtml` carry a publish token
+  instead of a file ID and are rejected as unsupported.
+
   The resource key comes from the `resourcekey` query parameter. Other query
   parameters and the fragment are ignored. The result uses the input names of
   `google.drive.file.get`, `google.drive.file.export` and
@@ -79,6 +83,15 @@ defmodule Jido.Connect.Google.Drive.Link do
   defp path_id(@drive_host, ["drive", "u", user, "folders", id]),
     do: with_user_index(user, id)
 
+  # "Publish to the web" links put `e/<publish token>` after `/d/`. The token
+  # names no file, so these links must not reach the ID clauses below.
+  defp path_id(@docs_host, [editor, "d", "e" | _rest]) when editor in @docs_editors,
+    do: unsupported_published()
+
+  defp path_id(@docs_host, [editor, "u", _user, "d", "e" | _rest])
+       when editor in @docs_editors,
+       do: unsupported_published()
+
   defp path_id(@docs_host, [editor, "d", id | _rest]) when editor in @docs_editors,
     do: {:ok, id}
 
@@ -131,6 +144,9 @@ defmodule Jido.Connect.Google.Drive.Link do
         :invalid_resource_key,
         "Google Drive link has a malformed or conflicting resource key"
       )
+
+  defp unsupported_published,
+    do: unsupported("Published Google Docs links do not name a file and are not supported")
 
   defp unsupported(message), do: error(:unsupported_drive_link, message)
 

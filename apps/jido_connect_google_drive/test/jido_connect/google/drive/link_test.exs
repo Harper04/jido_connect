@@ -10,6 +10,8 @@ defmodule Jido.Connect.Google.Drive.LinkTest do
   @other_id "1ZyX-wVu_9tSrQpOnM8lK"
   @key "0-AbCdEf_GhIjKl12345"
   @other_key "0-ZyXwVu_TsRqPo98765"
+  # "Publish to the web" token: it follows `/d/e/` and names no file.
+  @publish_token "2PACX-1vQAbCdEf_GhIjKl12345-ZyXwVu_TsRqPo98765"
 
   # Every shape of the spec, once without and once with a `resourcekey`.
   # Other query parameters and fragments are ignored.
@@ -74,6 +76,15 @@ defmodule Jido.Connect.Google.Drive.LinkTest do
     {"https://drive.google.com/file/d/#{@id}/copy", :unsupported_drive_link},
     {"https://drive.google.com/drive/u/me/folders/#{@id}", :unsupported_drive_link},
     {"https://docs.google.com/forms/d/#{@id}/edit", :unsupported_drive_link},
+    {"https://docs.google.com/spreadsheets/d/e/#{@publish_token}/pubhtml",
+     :unsupported_drive_link},
+    {"https://docs.google.com/spreadsheets/d/e/#{@publish_token}/pub?output=csv",
+     :unsupported_drive_link},
+    {"https://docs.google.com/document/d/e/#{@publish_token}/pub", :unsupported_drive_link},
+    {"https://docs.google.com/presentation/d/e/#{@publish_token}/pub?start=false",
+     :unsupported_drive_link},
+    {"https://docs.google.com/spreadsheets/u/0/d/e/#{@publish_token}/pubhtml?resourcekey=#{@key}",
+     :unsupported_drive_link},
     {"https://drive.google.com/open", :missing_file_id},
     {"https://drive.google.com/open?id=&resourcekey=#{@key}", :missing_file_id},
     {"https://drive.google.com/open?id=ab%2Fcd", :missing_file_id},

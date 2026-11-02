@@ -92,6 +92,10 @@ It makes no HTTP request. It accepts these `https` shapes:
 - `docs.google.com/{document,spreadsheets,presentation}/d/<id>/...`, also with
   `/u/<n>` before `/d`
 
+"Publish to the web" links such as
+`docs.google.com/spreadsheets/d/e/<token>/pubhtml` carry a publish token
+instead of a file ID and are rejected.
+
 Other query parameters and the fragment are ignored. Other hosts and shapes,
 `http`, missing or conflicting IDs and malformed or conflicting resource keys
 return a `Jido.Connect.Error.ValidationError` with reason
