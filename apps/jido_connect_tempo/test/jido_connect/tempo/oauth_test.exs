@@ -165,6 +165,11 @@ defmodule Jido.Connect.Tempo.OAuthTest do
     end
   end
 
+  # No refresh response was recorded or observed: a live refresh would replace
+  # the stored tokens. These tests assume the observed exchange shape, as
+  # Tempo's OpenAPI says only that a refresh response "will contain a new
+  # access token and a new refresh token". Its example field `token_type`
+  # ("Bearer") is not read.
   describe "refresh/2" do
     test "posts the refresh form and returns both replacement tokens" do
       Req.Test.expect(__MODULE__, fn conn ->

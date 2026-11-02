@@ -1,5 +1,5 @@
 {
-  "source": "Observed, not recorded. Token response of the Tempo OAuth code exchange on the Atlassian test site on 2026-10-30: access_token, refresh_token, expires_in 2591999 and a space-separated scope of <area>:view and <area>:manage for every area. A live exchange needs a browser authorization, and a live refresh replaces the stored tokens, so neither is recorded. Token values are placeholders; the order of the scope entries was not noted.",
+  "source": "Observed, not recorded. Token response of the Tempo OAuth code exchange on the Atlassian test site on 2026-10-30: access_token, refresh_token, expires_in 2591999 and a space-separated scope of <area>:view and <area>:manage for every area. A live exchange needs a browser authorization, and a live refresh replaces the stored tokens, so neither is recorded. No refresh response was observed: the refresh tests assume this exchange shape, as Tempo's OpenAPI says only that a refresh response \"will contain a new access token and a new refresh token\". Tempo's OpenAPI example also carries token_type \"Bearer\"; whether the observed response had it was not noted, and the helpers do not read it. Token values are placeholders; the order of the scope entries was not noted.",
   "status": 200,
   "body": {
     "access_token": "observed-access-token-placeholder",
