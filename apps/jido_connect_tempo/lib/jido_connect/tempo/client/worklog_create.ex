@@ -23,6 +23,12 @@ defmodule Jido.Connect.Tempo.Client.WorklogCreate do
   `:period_locked`; any other 400 or 403 keeps its status reason. The other
   error rules are those of `Jido.Connect.Tempo.Client.Response.handle/2`
   with `mutation?: true`.
+
+  Tempo quotes rejected input in its error text, as in `Non valid time
+  '25:00:00'`. Before an error keeps that text in `details.message`, the
+  description, every attribute value and the author's account ID are
+  replaced by `[redacted]`, the longest first. The reason is taken from the
+  text before that.
   """
 
   alias Jido.Connect.Error
@@ -67,10 +73,22 @@ defmodule Jido.Connect.Tempo.Client.WorklogCreate do
          {:ok, body} <-
            Transport.post(request, "/4/worklogs",
              json: body(worklog),
-             reasons: [@period_locked]
+             reasons: [@period_locked],
+             redact: redact(worklog)
            ) do
       confirm(body, worklog)
     end
+  end
+
+  # Tempo quotes rejected input in its error text, as in `Non valid time
+  # '25:00:00'`. The longest value goes first, so a shorter value that is
+  # part of it cannot leave the rest of it in the text.
+  defp redact(worklog) do
+    values = Enum.map(Map.get(worklog, :attributes, []), & &1.value)
+
+    [worklog.author_account_id, Map.get(worklog, :description) | values]
+    |> Enum.filter(&is_binary/1)
+    |> Enum.sort_by(&byte_size/1, :desc)
   end
 
   # Tempo answered 2xx, so it may have created a worklog. Only one that

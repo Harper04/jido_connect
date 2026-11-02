@@ -51,4 +51,6 @@
   when Req options enable retries; a 3xx, a 5xx, a malformed or mismatched
   success and a lost response are `delivery: :sent_outcome_unknown`, and
   Tempo's 403 for a period whose timesheet is not open is `:period_locked`.
+  Where Tempo's error text quotes the description, an attribute value or the
+  author's account ID, the error holds `[redacted]` instead.
 - Add the writer catalog pack `:tempo_writer`; the read packs are unchanged.

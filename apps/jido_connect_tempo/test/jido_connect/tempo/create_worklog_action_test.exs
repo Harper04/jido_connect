@@ -347,7 +347,7 @@ defmodule Jido.Connect.Tempo.CreateWorklogActionTest do
   end
 
   describe "privacy" do
-    test "logs, telemetry and errors hold no token and no description" do
+    test "logs, telemetry and errors hold no token, description or attribute value" do
       handler = "tempo-create-#{System.unique_integer([:positive])}"
       test_pid = self()
 
@@ -366,20 +366,36 @@ defmodule Jido.Connect.Tempo.CreateWorklogActionTest do
 
       on_exit(fn -> :telemetry.detach(handler) end)
 
-      Req.Test.stub(__MODULE__, &Fixture.respond(&1, "worklog_create.3"))
+      # The recorded 403 of a locked period with an echo of the description
+      # and the attribute value appended, as Tempo quotes rejected input.
+      input = Map.put(@input, :attributes, [%{"key" => "_Phase_", "value" => "build-275"}])
+
+      Req.Test.stub(__MODULE__, fn conn ->
+        Fixture.respond(conn, "worklog_create.3",
+          body:
+            &update_in(&1, ["errors"], fn errors ->
+              errors ++
+                [
+                  %{"message" => "Non valid description '#{@marker}'"},
+                  %{"message" => "Non valid value 'build-275' for work attribute '_Phase_'"}
+                ]
+            end)
+        )
+      end)
+
       context = context(:api_token)
 
       log =
         capture_log(fn ->
-          {:ok, prepared} = prepare(context, @input)
+          {:ok, prepared} = prepare(context, input)
 
           assert {:error, %Error.ProviderError{reason: :period_locked} = error} =
-                   commit(context, prepared, @input)
+                   commit(context, prepared, input)
 
           send(test_pid, {:error, error})
 
           assert {:error, %Error.ProviderError{}} =
-                   Connect.invoke(Tempo, @action, @input,
+                   Connect.invoke(Tempo, @action, input,
                      context: context,
                      credential_lease: lease(context),
                      direct_mutation_mode: :allow
@@ -392,7 +408,7 @@ defmodule Jido.Connect.Tempo.CreateWorklogActionTest do
       assert log =~ "Direct mutation invocation is deprecated"
 
       for text <- [log, inspect(events), inspect(error), inspect(Error.to_map(error))],
-          secret <- [@api_token, @marker] do
+          secret <- [@api_token, @marker, "build-275"] do
         refute text =~ secret
       end
     end

@@ -410,6 +410,63 @@ defmodule Jido.Connect.Tempo.Client.WorklogCreateTest do
         assert reason in [:bad_request, :forbidden]
       end
     end
+
+    # Tempo quotes rejected input, as in the recorded `Non valid time
+    # '25:00:00'`. This is that recorded 400 with only its errors changed to
+    # quote the description, an attribute value and the author. The
+    # attribute value `create` is part of the description, so the longer
+    # value has to be replaced first.
+    test "a 400 that quotes the description, an attribute value or the author redacts them" do
+      Req.Test.expect(__MODULE__, fn conn ->
+        Fixture.respond(conn, "worklog_create_invalid_time",
+          body:
+            &put_in(&1, ["errors"], [
+              %{"message" => "Non valid description '#{@marker}'"},
+              %{"message" => "Non valid value 'create' for work attribute '_Phase_'"},
+              %{"message" => "Non valid author '#{@account}'"}
+            ])
+        )
+      end)
+
+      assert {:error,
+              %Error.ProviderError{reason: :bad_request, status: 400, delivery: :rejected} =
+                error} = Client.create_worklog(request(), echoed(value: "create"))
+
+      assert error.details.message ==
+               "Non valid description '[redacted]'; " <>
+                 "Non valid value '[redacted]' for work attribute '_Phase_'; " <>
+                 "Non valid author '[redacted]'"
+
+      for text <- [inspect(error), inspect(Error.to_map(error))],
+          value <- [@marker, "'create'", @account] do
+        refute text =~ value
+      end
+    end
+
+    # The recorded 403 of a locked period with the echo of the description
+    # appended. The attribute value `open` occurs in the lock text, so the
+    # label has to come from Tempo's text before it is redacted.
+    test "a 403 of a locked period that quotes the input stays :period_locked" do
+      Req.Test.expect(__MODULE__, fn conn ->
+        Fixture.respond(conn, "worklog_create.3",
+          body:
+            &update_in(&1, ["errors"], fn errors ->
+              errors ++ [%{"message" => "Non valid description '#{@marker}'"}]
+            end)
+        )
+      end)
+
+      assert {:error, %Error.ProviderError{reason: :period_locked, status: 403} = error} =
+               Client.create_worklog(request(), echoed(value: "open"))
+
+      assert error.details.message ==
+               "The timesheet status must be [redacted] for the period; " <>
+                 "Non valid description '[redacted]'"
+
+      for text <- [inspect(error), inspect(Error.to_map(error))] do
+        refute text =~ @marker
+      end
+    end
   end
 
   describe "no automatic second POST" do
@@ -444,6 +501,11 @@ defmodule Jido.Connect.Tempo.Client.WorklogCreateTest do
       start_date: "2026-10-29",
       time_spent_seconds: 3661
     }
+  end
+
+  # The valid input with the description and one attribute of `value`.
+  defp echoed(value: value) do
+    Map.merge(valid(), %{description: @marker, attributes: [%{key: "_Phase_", value: value}]})
   end
 
   defp payload(conn) do

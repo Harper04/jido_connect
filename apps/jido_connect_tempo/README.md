@@ -444,8 +444,12 @@ August 2026 period this way; it is the signal that
 recorded text gets the label: an unknown 400 or another 403 keeps its status
 reason, and a period closed in Period Management may answer with a text that
 was not observed. After `:sent_outcome_unknown` the worklog may exist; read
-the day back with `tempo.worklogs.list_own` before booking it again. Errors
-hold neither the description nor the attribute values.
+the day back with `tempo.worklogs.list_own` before booking it again.
+
+Errors hold neither the description nor the attribute values. Tempo quotes
+rejected input in its error text, as in `Non valid time '25:00:00'`; where
+that text quotes the description, an attribute value or the author's account
+ID, `details.message` shows `[redacted]` in its place.
 
 ## OAuth Flow
 
