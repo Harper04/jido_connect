@@ -125,8 +125,10 @@ defmodule Jido.Connect.Google.Meet.ClientTest do
         ~s( AND start_time >= "2026-05-14T00:00:00Z") <>
         ~s( AND start_time <= "2026-05-15T00:00:00Z")
 
-    # The client forwards the filter without evaluating it. The response is a
-    # recorded page of one record and a next page token, taken at page size 1.
+    # The client forwards the filter without evaluating it, so the response
+    # need not match it. This page of one record and a next page token was
+    # recorded at page size 1 with the transcript poller's `end_time>=`
+    # filter, and its record started on 2026-10-30.
     recorded = LiveSmoke.fixture!(:google_meet, "conference_records_window")
     [recorded_record] = recorded["conferenceRecords"]
 
