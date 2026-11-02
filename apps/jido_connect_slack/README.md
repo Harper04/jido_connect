@@ -116,11 +116,12 @@ Inputs:
 
 - `channel` and `ts`, the timestamp of the thread's parent message, are
   required.
-- `conversation_type` is optional and one of `public_channel`,
-  `private_channel`, `im` and `mpim`. It only selects the required scope
+- `conversation_type` is optional and takes `public_channel`,
+  `private_channel`, `im` or `mpim`. It only selects the required scope
   (`channels:history`, `groups:history`, `im:history` or `mpim:history`) and
-  is not sent to Slack. Without it, the channel ID decides: a `G` ID needs
-  `groups:history`, a `D` ID `im:history` and every other ID
+  is not sent to Slack. The action does not reject other values; they fall
+  back to `channels:history`. Without it, the channel ID decides: a `G` ID
+  needs `groups:history`, a `D` ID `im:history` and every other ID
   `channels:history`. Private channels and group DMs can carry `C` IDs, so
   pass the type for them.
 - `cursor`, `oldest`, `latest` and `inclusive` (default `false`) go to Slack
