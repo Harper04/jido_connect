@@ -6,6 +6,10 @@ defmodule Jido.Connect.Slack.Webhook.Normalizer do
 
   @human_message_subtypes ["file_share", "thread_broadcast"]
 
+  # The message triggers declare these as the enum of their `subtype` field.
+  @doc false
+  def human_message_subtypes, do: @human_message_subtypes
+
   def normalize_signal(%WebhookDelivery{event: event, payload: payload} = delivery) do
     with {:ok, signal} <- normalize_signal(event, payload) do
       {:ok, Map.put(signal, :delivery, delivery_metadata(delivery))}

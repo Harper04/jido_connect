@@ -4,7 +4,7 @@ defmodule Jido.Connect.Slack.Triggers.Events.Messages do
   use Spark.Dsl.Fragment, of: Jido.Connect
 
   # The subtypes the webhook normalizer accepts as new human messages.
-  @human_message_subtypes ["file_share", "thread_broadcast"]
+  @human_message_subtypes Jido.Connect.Slack.Webhook.Normalizer.human_message_subtypes()
 
   @subtype "Slack's subtype of a new message a person writes: file_share for a message with files, thread_broadcast for a thread reply also sent to the channel. Plain messages have none."
   @shared_messages "Messages shared natively into a direct message, one per attachment with is_share: channel and ts of the shared message, its author as user, its text and from_url. The person who shared them is the signal's user."
