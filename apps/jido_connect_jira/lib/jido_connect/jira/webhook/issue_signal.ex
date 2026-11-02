@@ -3,9 +3,14 @@ defmodule Jido.Connect.Jira.Webhook.IssueSignal do
   Normalizes `jira:issue_created` and `jira:issue_updated` deliveries into
   `jira.issue.changed` signals.
 
-  - `issue_event_type_name` passes Jira's value through unchanged. Status
-    changes arrive as `issue_generic`, assignee and due-date changes as
-    `issue_updated`.
+  - `issue_event_type_name` passes Jira's value through unchanged. It names
+    the Jira event that fired, which depends on the operation and on the
+    workflow transition, so status, assignee and due-date changes are read
+    from the changelog items. In one capture run on 2026-10-30, with a
+    simplified workflow and fields changed by REST edits, a status change
+    arrived as `issue_generic` and assignee and due-date changes as
+    `issue_updated`. Other workflows and the assign operation can send other
+    names, such as `issue_assigned`, `issue_resolved` or `issue_work_started`.
   - `actor_id` and `actor_name` come from the top-level `user`.
   - `assigned` is `true` when `fields.assignee` holds a user and `false` when
     Jira sends `"assignee": null`; it is absent when the fields leave the

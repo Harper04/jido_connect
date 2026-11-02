@@ -251,9 +251,14 @@ for a base64 digest and do not match the header Jira sends.
 Issue events produce `jira.issue.changed` signals with:
 
 - `event_type`, `change_type` (`"created"` or `"updated"`)
-- `issue_event_type_name`: Jira's value, unchanged. Administrator webhooks send
-  status changes as `issue_generic` and assignee and due-date changes as
-  `issue_updated`.
+- `issue_event_type_name`: Jira's value, unchanged. It names the Jira event
+  that fired, which depends on the operation and on the workflow transition;
+  read status, assignee and due-date changes from the changelog items. In one
+  capture run on 2026-10-30, with a simplified workflow and fields changed by
+  REST edits, administrator webhooks sent a status change as `issue_generic`
+  and assignee and due-date changes as `issue_updated`. Other workflows and
+  the assign operation can send other names, such as `issue_assigned`,
+  `issue_resolved` or `issue_work_started`.
 - `actor_id`, `actor_name`: account ID and display name of the top-level `user`
 - `issue_id`, `issue_key`, `project_key`, `project_name`, `summary`,
   `status_name`, `issue_type_name`, `priority_name`, `labels`

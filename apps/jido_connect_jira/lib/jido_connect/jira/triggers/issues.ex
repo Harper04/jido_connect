@@ -42,8 +42,9 @@ defmodule Jido.Connect.Jira.Triggers.Issues do
 
         field(:issue_event_type_name, :string,
           description:
-            "Jira's issue_event_type_name, unchanged: issue_generic for status changes, " <>
-              "issue_updated for assignee and due-date changes."
+            "Jira's issue_event_type_name, unchanged. It names the Jira event that fired, " <>
+              "which depends on the operation and on the workflow transition; read status, " <>
+              "assignee and due-date changes from changelog items."
         )
 
         field(:actor_id, :string, description: "Account ID of the top-level user.")

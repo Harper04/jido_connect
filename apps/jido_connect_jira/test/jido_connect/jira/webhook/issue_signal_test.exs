@@ -263,10 +263,20 @@ defmodule Jido.Connect.Jira.Webhook.IssueSignalTest do
       assert %{type: {:array, :string}, description: matched} = fields.matched_webhook_ids
       assert matched =~ "Administrator webhooks"
 
-      assert %{type: :string} = fields.issue_event_type_name
       assert %{type: :string} = fields.actor_id
       assert %{type: :string} = fields.actor_name
       refute Map.has_key?(fields, :webhook_id)
+    end
+
+    test "jira.issue.changed maps no change to an event name and points to changelog items" do
+      fields = Map.new(trigger("jira.issue.changed").signal, &{&1.name, &1})
+
+      # Jira names the event that fired, which depends on the operation and
+      # the workflow, so the catalog must not promise a name per change.
+      assert %{type: :string, description: description} = fields.issue_event_type_name
+      assert description =~ "changelog items"
+      refute description =~ "issue_generic"
+      refute description =~ "issue_updated"
     end
   end
 

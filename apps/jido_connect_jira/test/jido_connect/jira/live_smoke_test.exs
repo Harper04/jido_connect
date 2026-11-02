@@ -330,18 +330,19 @@ defmodule Jido.Connect.Jira.LiveSmokeTest do
     assert [_ | _] = deliveries
   end
 
-  # Jira's event names for the changes of a capture run, as administrator
-  # webhooks delivered them on 2026-10-30, and the changelog field each
-  # change carries.
+  # The changelog field each kind of change carries. The test fixes no event
+  # name per kind: `issue_event_type_name` names the Jira event that fired,
+  # which depends on the operation and the workflow transition, so the signal
+  # is compared with the delivery's own value.
   @issue_kinds %{
-    issue_created: {"issue_created", nil},
-    assignee_set: {"issue_updated", ["assignee"]},
-    assignee_changed: {"issue_updated", ["assignee"]},
-    assignee_cleared: {"issue_updated", ["assignee"]},
-    status_changed: {"issue_generic", ["status"]},
-    duedate_set: {"issue_updated", ["duedate"]},
-    duedate_moved: {"issue_updated", ["duedate"]},
-    duedate_cleared: {"issue_updated", ["duedate"]}
+    issue_created: nil,
+    assignee_set: ["assignee"],
+    assignee_changed: ["assignee"],
+    assignee_cleared: ["assignee"],
+    status_changed: ["status"],
+    duedate_set: ["duedate"],
+    duedate_moved: ["duedate"],
+    duedate_cleared: ["duedate"]
   }
 
   @tag env!(["JIRA_WEBHOOK_SECRET", "JIRA_CAPTURE_DIR"])
@@ -395,10 +396,9 @@ defmodule Jido.Connect.Jira.LiveSmokeTest do
   end
 
   defp assert_live_signal(kind, signal, payload) when is_map_key(@issue_kinds, kind) do
-    {event_type_name, field_ids} = Map.fetch!(@issue_kinds, kind)
+    field_ids = Map.fetch!(@issue_kinds, kind)
     items = get_in(payload, ["changelog", "items"])
 
-    assert signal.issue_event_type_name == event_type_name
     assert signal.issue_event_type_name == payload["issue_event_type_name"]
     assert signal.actor_id == get_in(payload, ["user", "accountId"])
     assert signal.actor_name == get_in(payload, ["user", "displayName"])
