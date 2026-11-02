@@ -392,6 +392,95 @@ defmodule Jido.Connect.Slack.BlockActionsTest do
     end
   end
 
+  describe "the slack.interactivity.block_actions trigger" do
+    @signal_fields [
+      :api_app_id,
+      :team_id,
+      :enterprise_id,
+      :user_id,
+      :user_team_id,
+      :channel_id,
+      :message_ts,
+      :thread_ts,
+      :action_id,
+      :block_id,
+      :value,
+      :action_ts
+    ]
+
+    test "takes bot auth and workspace access, needs no scope and names the block action fields" do
+      assert {:ok, trigger} =
+               Jido.Connect.trigger(Jido.Connect.Slack, "slack.interactivity.block_actions")
+
+      assert %{
+               kind: :webhook,
+               resource: :block_action,
+               verb: :watch,
+               data_classification: :workspace_content,
+               auth_profile: :bot,
+               policies: [:workspace_access],
+               scopes: [],
+               scope_resolver: nil,
+               handler: Jido.Connect.Slack.Handlers.Triggers.BlockActionsInteraction,
+               verification: %{
+                 kind: :slack_signed_request,
+                 signature_header: "x-slack-signature",
+                 timestamp_header: "x-slack-request-timestamp"
+               },
+               dedupe: %{
+                 key: [
+                   :team_id,
+                   :channel_id,
+                   :message_ts,
+                   :user_id,
+                   :block_id,
+                   :action_id,
+                   :value,
+                   :action_ts
+                 ]
+               }
+             } = trigger
+
+      assert Enum.map(trigger.signal, & &1.name) == @signal_fields
+
+      assert Enum.map(BlockAction.schema().fields, &elem(&1, 0)) |> Enum.sort() ==
+               Enum.sort(@signal_fields)
+
+      required = for field <- trigger.signal, field.required?, do: field.name
+
+      assert required ==
+               @signal_fields -- [:enterprise_id, :user_team_id, :thread_ts]
+    end
+
+    test "compiles into a metadata-only sensor" do
+      sensor = Jido.Connect.Slack.Sensors.BlockActions
+
+      assert sensor.trigger_id() == "slack.interactivity.block_actions"
+      assert sensor.signal_type() == "slack.interactivity.block_actions"
+      assert sensor.runtime_mode() == :metadata_only
+      assert %{runtime_mode: :metadata_only} = sensor.jido_connect_projection()
+    end
+
+    test "accepts the signal of every captured click and of a click in a thread" do
+      assert {:ok, %{signal_schema: schema}} =
+               Jido.Connect.trigger(Jido.Connect.Slack, "slack.interactivity.block_actions")
+
+      # Derived from the first click: the message as a reply in the prepared
+      # thread of a workspace in an enterprise organization.
+      threaded =
+        derive_click(fn payload ->
+          payload
+          |> put_in(["container", "thread_ts"], "1793371034.447499")
+          |> Map.put("enterprise", %{"id" => "E0000000001"})
+        end)
+
+      for capture <- [threaded | Enum.map(@clicks, &capture!/1)] do
+        assert {:ok, %WebhookDelivery{normalized_signal: %{} = signal}} = replay(capture)
+        assert {:ok, ^signal} = Zoi.parse(schema, signal)
+      end
+    end
+  end
+
   describe "receipt of a click" do
     test "keeps token, response_url, trigger_id and the signing key out of deliveries, errors and logs" do
       attach_http_probe()
