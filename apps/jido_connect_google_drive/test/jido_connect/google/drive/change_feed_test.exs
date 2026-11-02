@@ -40,6 +40,12 @@ defmodule Jido.Connect.Google.Drive.ChangeFeedTest do
     end)
   end
 
+  test "the google.drive.file.changed description does not claim creations" do
+    trigger = Enum.find(Drive.integration().triggers, &(&1.id == "google.drive.file.changed"))
+
+    refute trigger.description =~ ~r/creat/i
+  end
+
   describe "google.drive.collection.changes" do
     test "matches added direct children and not a file inside a subfolder" do
       expect_folder_lookup("collection_changes_added")
