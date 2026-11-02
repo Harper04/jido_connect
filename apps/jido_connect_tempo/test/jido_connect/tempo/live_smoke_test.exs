@@ -17,8 +17,11 @@ defmodule Jido.Connect.Tempo.LiveSmokeTest do
 
   alias Jido.Connect.{Connection, Error}
   alias Jido.Connect.Tempo.Client.{Pagination, Request, Transport}
+  alias Jido.Connect.Tempo.OAuth
 
   @recorder {:jido_connect_tempo, :tempo_req_options}
+  @oauth_recorder {:jido_connect_tempo, :tempo_oauth_req_options}
+  @oauth ["TEMPO_OAUTH_CLIENT_ID", "TEMPO_OAUTH_CLIENT_SECRET", "TEMPO_OAUTH_REDIRECT_URI"]
   @october [params: [from: "2026-10-01", to: "2026-10-31"]]
   @jira ["JIRA_SITE", "JIRA_EMAIL", "JIRA_API_TOKEN"]
 
@@ -115,6 +118,39 @@ defmodule Jido.Connect.Tempo.LiveSmokeTest do
     assert count > 50, "expected more than one page of 50 worklogs, got #{count}"
     own? = Enum.all?(worklogs, &(get_in(&1, ["author", "accountId"]) == request.account_id))
     assert own?, "every worklog belongs to the test user"
+  end
+
+  # A live code exchange needs a browser authorization, and a live refresh
+  # replaces the stored tokens, so only the token endpoint's rejections are
+  # recorded, with an invented code and an invented refresh token.
+  @tag env!(@oauth)
+  test "the token endpoint rejects an invented authorization code", %{env: env} do
+    LiveSmoke.record(@oauth_recorder, :tempo, "oauth_invalid_code")
+
+    assert {:error,
+            %Error.ProviderError{provider: :tempo, reason: :forbidden, status: 403} = error} =
+             OAuth.exchange_code("jido-connect-invented-code", oauth_opts(env))
+
+    refute_leak(error, env["TEMPO_OAUTH_CLIENT_SECRET"])
+  end
+
+  @tag env!(@oauth)
+  test "the token endpoint rejects an invented refresh token", %{env: env} do
+    LiveSmoke.record(@oauth_recorder, :tempo, "oauth_invalid_refresh_token")
+
+    assert {:error,
+            %Error.ProviderError{provider: :tempo, reason: :forbidden, status: 403} = error} =
+             OAuth.refresh("jido-connect-invented-refresh-token", oauth_opts(env))
+
+    refute_leak(error, env["TEMPO_OAUTH_CLIENT_SECRET"])
+  end
+
+  defp oauth_opts(env) do
+    [
+      client_id: env["TEMPO_OAUTH_CLIENT_ID"],
+      client_secret: env["TEMPO_OAUTH_CLIENT_SECRET"],
+      redirect_uri: env["TEMPO_OAUTH_REDIRECT_URI"]
+    ]
   end
 
   defp refute_leak(error, secret) do
