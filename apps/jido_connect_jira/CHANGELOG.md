@@ -69,7 +69,8 @@
   raise. `timestamp_to_iso8601/1` returns `nil` for epochs out of range.
   Unsupported event errors no longer repeat the event name in `details`.
 - Keep `comment_body: ""` on webhook comment signals whose body projects to
-  an empty text.
+  an empty text, so an empty comment stays apart from a delivery without a
+  body, as `Comment` keeps `body: ""`.
 
 ## 0.1.0
 

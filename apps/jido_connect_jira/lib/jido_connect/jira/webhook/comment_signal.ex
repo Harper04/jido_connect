@@ -13,8 +13,10 @@ defmodule Jido.Connect.Jira.Webhook.CommentSignal do
   rendered with the shared projection in `:degrade` mode and
   `comment_body_unsupported_nodes` lists the skipped node and mark types; a
   plain-string body, as administrator webhooks send it, passes through with
-  an empty list. A body that projects to `""` keeps `comment_body: ""`. A body
-  that is not valid ADF fails with `:invalid_webhook_event`.
+  an empty list. A body that projects to `""` keeps `comment_body: ""`, so an
+  empty comment stays apart from a delivery without a body, which has neither
+  body field; `Jido.Connect.Jira.Comment` follows the same rule. A body that
+  is not valid ADF fails with `:invalid_webhook_event`.
 
   A missing `comment` or `issue`, a missing comment or issue `id`, and an
   `author` or `updateAuthor` that is neither an object nor `null` fail with

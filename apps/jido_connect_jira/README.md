@@ -305,7 +305,8 @@ stricter presence rules:
 `comment_body` follows the rich-text rules below. Administrator webhooks send
 the body as a plain string, which passes through with an empty
 `comment_body_unsupported_nodes`. A body that projects to an empty text keeps
-`comment_body: ""`.
+`comment_body: ""`, so an empty comment stays apart from a delivery without a
+body, which has neither body field.
 
 `normalize_event/1` never raises on a malformed payload. It returns a
 `Jido.Connect.Error.ProviderError` with reason `:invalid_webhook_event` for:
