@@ -25,6 +25,9 @@ defmodule Jido.Connect.Slack.DeliveryTest do
   @second_user "U0CDEL6734M"
   @dm "D0CD4G48UFR"
   @mpim "C0CDELYPYKF"
+  @channel "C0CEEB41FU0"
+  @thread_ts "1793371034.447499"
+  @link "https://example.com/jido-connect/delivery-check"
 
   setup {Req.Test, :verify_on_exit!}
 
@@ -144,6 +147,83 @@ defmodule Jido.Connect.Slack.DeliveryTest do
                "return_im" => false,
                "prevent_creation" => false
              }
+    end
+  end
+
+  describe "slack.message.post" do
+    test "a thread reply sends the exact text with its link, a string thread_ts and reply_broadcast false" do
+      %{"ts" => ts, "message" => %{"text" => text} = message} =
+        LiveSmoke.fixture!(:slack, "chat_post_message_thread_reply")
+
+      assert byte_size(text) > 512
+      assert text =~ "<#{@link}|open the delivery check>"
+
+      expect_fixture("chat_post_message_thread_reply")
+
+      assert {:ok, output} =
+               Connect.invoke(
+                 Jido.Connect.Slack,
+                 "slack.message.post",
+                 %{channel: @channel, text: text, thread_ts: @thread_ts},
+                 runtime(["chat:write"])
+               )
+
+      assert_received {:slack_request, "POST", "/api/chat.postMessage", body}
+
+      assert body == %{
+               "channel" => @channel,
+               "text" => text,
+               "thread_ts" => @thread_ts,
+               "reply_broadcast" => false
+             }
+
+      assert output == %{channel: @channel, ts: ts, message: message}
+      assert %{"thread_ts" => @thread_ts} = message
+      refute Map.has_key?(message, "subtype")
+    end
+
+    test "a text-only post sends reply_broadcast false and no thread_ts" do
+      %{"ts" => ts, "message" => %{"text" => text} = message} =
+        LiveSmoke.fixture!(:slack, "chat_post_message_channel")
+
+      expect_fixture("chat_post_message_channel")
+
+      assert {:ok, output} =
+               Connect.invoke(
+                 Jido.Connect.Slack,
+                 "slack.message.post",
+                 %{channel: @channel, text: text},
+                 runtime(["chat:write"])
+               )
+
+      assert_received {:slack_request, "POST", "/api/chat.postMessage", body}
+      assert body == %{"channel" => @channel, "text" => text, "reply_broadcast" => false}
+      assert output == %{channel: @channel, ts: ts, message: message}
+    end
+
+    test "posting needs chat:write and no history or conversation-open scope" do
+      other_scopes = [
+        "channels:history",
+        "groups:history",
+        "im:history",
+        "mpim:history",
+        "im:write",
+        "mpim:write"
+      ]
+
+      %{"message" => %{"text" => text}} = LiveSmoke.fixture!(:slack, "chat_post_message_channel")
+      input = %{channel: @channel, text: text}
+
+      assert {:error,
+              %Connect.Error.AuthError{reason: :missing_scopes, missing_scopes: ["chat:write"]}} =
+               Connect.invoke(
+                 Jido.Connect.Slack,
+                 "slack.message.post",
+                 input,
+                 runtime(other_scopes)
+               )
+
+      refute_received {:slack_request, _method, _path, _body}
     end
   end
 
