@@ -78,6 +78,61 @@ defmodule Jido.Connect.Google.Docs.DocumentTabsTest do
     assert indexes(document.body) == [{nil, 1}, {1, 22}, {22, 23}]
   end
 
+  # Each case edits the recorded tabbed response so that one tab, or the list
+  # holding it, no longer has the provider's shape.
+  for {edit, description} <- [
+        top_level_tab_not_a_map: "a top-level tab is not a map",
+        top_level_title_not_a_string: "a top-level tab's title is not a string",
+        tabs_not_a_list: "tabs is not a list",
+        child_tab_not_a_map: "the nested child tab is not a map",
+        child_body_not_a_map: "the nested child tab's documentTab.body is not a map",
+        child_properties_not_a_map: "the nested child tab's tabProperties is not a map",
+        child_tabs_not_a_list: "the second tab's childTabs is not a list"
+      ] do
+    test "returns an invalid response error when #{description}" do
+      body =
+        :google_docs
+        |> LiveSmoke.fixture!("document_with_tabs_content")
+        |> malform(unquote(edit))
+
+      Req.Test.expect(__MODULE__, &Req.Test.json(&1, body))
+
+      assert {:error, %Connect.Error.ProviderError{reason: :invalid_response}} =
+               get_document(%{document_id: @document_id, include_tabs_content: true})
+    end
+  end
+
+  defp malform(body, :top_level_tab_not_a_map),
+    do: put_in(body, ["tabs", Access.at(0)], "not a tab")
+
+  defp malform(body, :top_level_title_not_a_string),
+    do: put_in(body, ["tabs", Access.at(0), "tabProperties", "title"], %{"text" => "First"})
+
+  defp malform(body, :tabs_not_a_list),
+    do: put_in(body, ["tabs"], %{"tab" => hd(body["tabs"])})
+
+  defp malform(body, :child_tab_not_a_map),
+    do: put_in(body, ["tabs", Access.at(1), "childTabs", Access.at(0)], "not a tab")
+
+  defp malform(body, :child_body_not_a_map),
+    do:
+      put_in(
+        body,
+        ["tabs", Access.at(1), "childTabs", Access.at(0), "documentTab", "body"],
+        "not a body"
+      )
+
+  defp malform(body, :child_properties_not_a_map),
+    do:
+      put_in(
+        body,
+        ["tabs", Access.at(1), "childTabs", Access.at(0), "tabProperties"],
+        "not properties"
+      )
+
+  defp malform(body, :child_tabs_not_a_list),
+    do: update_in(body, ["tabs", Access.at(1), "childTabs"], &%{"tab" => hd(&1)})
+
   defp indexes(%{"content" => content}),
     do: Enum.map(content, &{&1["startIndex"], &1["endIndex"]})
 
