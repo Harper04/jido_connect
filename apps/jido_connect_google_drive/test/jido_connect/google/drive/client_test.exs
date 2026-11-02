@@ -44,8 +44,8 @@ defmodule Jido.Connect.Google.Drive.ClientTest do
   end
 
   # Drive sent `modifiedTime` for both files of the recorded listing. This test
-  # removes it from the unstarred file on the first page, so the second file
-  # has no modification time.
+  # removes it from the unstarred file on the first page, so the first file has
+  # no modification time and the starred file on the second page keeps its own.
   test "lists files" do
     first_page =
       update_in(
