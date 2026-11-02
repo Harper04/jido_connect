@@ -127,22 +127,15 @@ defmodule Jido.Connect.Google.Calendar.LiveEventReadTest do
   @description_bytes 963
   @description_sha256 "beb1162d76d851842e2818b68a9f04cc225f9a0775cfd2247faf12bb75e866dd"
 
-  @agenda_attachment %{
-    "fileId" => "1i5aMCLZPDfy6fwljuDgz0IJiPM_ZuEBzNO2d1eBDBxM",
-    "fileUrl" =>
-      "https://docs.google.com/document/d/1i5aMCLZPDfy6fwljuDgz0IJiPM_ZuEBzNO2d1eBDBxM/edit?usp=drivesdk",
-    "title" => "jcl-live agenda",
-    "mimeType" => "application/vnd.google-apps.document"
-  }
-  @handout_attachment %{
-    "fileUrl" =>
-      "https://drive.google.com/file/d/1nez1Lc_Comf4uYXPg4ZAGpHuW0C8REQy/view?usp=drivesdk&jcl=a%20b",
-    "title" => "jcl-live handout.txt",
-    "mimeType" => "text/plain"
-  }
+  # Titles and MIME types come from the seed script; the Drive and Meet IDs
+  # change with every reseed and come from the environment.
+  @agenda_title "jcl-live agenda"
+  @agenda_mime_type "application/vnd.google-apps.document"
+  @handout_title "jcl-live handout.txt"
+  @handout_mime_type "text/plain"
+  # The seed script appends this query to the handout link; Google keeps the escape.
+  @handout_query_suffix "&jcl=a%20b"
   @attachment_keys ["fileId", "fileUrl", "title", "mimeType"]
-  @conference_id "sof-qtak-vtd"
-  @hangout_link "https://meet.google.com/sof-qtak-vtd"
 
   describe "google.calendar.event.get on the prepared meeting" do
     @tag env!([
@@ -169,18 +162,41 @@ defmodule Jido.Connect.Google.Calendar.LiveEventReadTest do
       assert attendee_emails(event) == expected_attendees(env)
     end
 
-    @tag env!(["GOOGLE_ACCESS_TOKEN", "GOOGLE_CALENDAR_ID", "GOOGLE_CALENDAR_EVENT_ID"])
+    @tag env!([
+           "GOOGLE_ACCESS_TOKEN",
+           "GOOGLE_CALENDAR_ID",
+           "GOOGLE_CALENDAR_EVENT_ID",
+           "GOOGLE_CALENDAR_AGENDA_FILE_ID",
+           "GOOGLE_CALENDAR_HANDOUT_URL",
+           "GOOGLE_CALENDAR_CONFERENCE_ID"
+         ])
     test "reads attachment and conference references without fetching them", %{env: env} do
       event = get_meeting!(env)
+      agenda_id = env["GOOGLE_CALENDAR_AGENDA_FILE_ID"]
+      handout_url = env["GOOGLE_CALENDAR_HANDOUT_URL"]
+      conference_id = env["GOOGLE_CALENDAR_CONFERENCE_ID"]
 
-      assert [agenda] = Enum.filter(event.attachments, &(&1["title"] == "jcl-live agenda"))
-      assert Map.take(agenda, @attachment_keys) == @agenda_attachment
+      assert [agenda] = Enum.filter(event.attachments, &(&1["title"] == @agenda_title))
 
-      assert [handout] = Enum.filter(event.attachments, &(&1["title"] == "jcl-live handout.txt"))
-      assert Map.take(handout, @attachment_keys) == @handout_attachment
+      assert Map.take(agenda, @attachment_keys) == %{
+               "fileId" => agenda_id,
+               "fileUrl" => "https://docs.google.com/document/d/#{agenda_id}/edit?usp=drivesdk",
+               "title" => @agenda_title,
+               "mimeType" => @agenda_mime_type
+             }
 
-      assert event.conference_data["conferenceId"] == @conference_id
-      assert event.hangout_link == @hangout_link
+      assert [handout] = Enum.filter(event.attachments, &(&1["title"] == @handout_title))
+
+      assert Map.take(handout, @attachment_keys) == %{
+               "fileUrl" => handout_url,
+               "title" => @handout_title,
+               "mimeType" => @handout_mime_type
+             }
+
+      assert String.ends_with?(handout["fileUrl"], @handout_query_suffix)
+
+      assert event.conference_data["conferenceId"] == conference_id
+      assert event.hangout_link == "https://meet.google.com/" <> conference_id
     end
   end
 

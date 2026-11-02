@@ -126,6 +126,9 @@ as seed input belong to the scripts that create the test data.
 | `GOOGLE_GMAIL_RECIPIENT` | setting | Second mailbox for sent mail |
 | `GOOGLE_CALENDAR_ID` | setting | Test calendar |
 | `GOOGLE_CALENDAR_EVENT_ID` | setting | Event with attendees, attachments and Meet data |
+| `GOOGLE_CALENDAR_AGENDA_FILE_ID` | setting | Google Docs agenda attached to that event |
+| `GOOGLE_CALENDAR_HANDOUT_URL` | setting | URL-only attachment of that event, ending in `&jcl=a%20b` |
+| `GOOGLE_CALENDAR_CONFERENCE_ID` | setting | Meet conference ID of that event |
 | `GOOGLE_MEET_CONFERENCE_RECORD` | setting | Past meeting with transcript and recording |
 | `GOOGLE_MEET_TRANSCRIPT` | setting | Transcript of that meeting |
 | `GOOGLE_MEET_RECORDING` | setting | Recording of that meeting |
