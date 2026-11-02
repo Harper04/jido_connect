@@ -226,10 +226,11 @@ Events API `url_verification` callbacks can be handled with
 retry with `x-slack-retry-num` is a duplicate for `:seen_delivery_ids`.
 Verification and normalization are separate: a delivery whose signature
 verifies keeps `normalized_signal: nil` when the package does not normalize
-its event, such as an edit, a deletion, a join notice or a URL challenge.
-The same holds when normalization fails, as for a message with a malformed
-share. `Jido.Connect.Slack.Webhook.normalize_signal/2` returns the reason,
-for example `:unsupported_message_subtype` or `:invalid_shared_message`.
+its event, such as a join notice, a URL challenge or a `message_changed`
+event that is no edit. The same holds when normalization fails, as for a
+message with a malformed share. `Jido.Connect.Slack.Webhook.normalize_signal/2`
+returns the reason, for example `:unsupported_message_subtype`,
+`:not_an_edit` or `:invalid_shared_message`.
 
 ### Message events
 
@@ -273,8 +274,10 @@ new messages that people write:
   under the channel's trigger and under `slack.event.message.thread_reply`,
   with `subtype: "thread_broadcast"`.
 
-Every other subtype, such as `message_changed`, `message_deleted`,
-`channel_join` or `bot_message`, returns `:unsupported_message_subtype`.
+Every other subtype, such as `channel_join` or `bot_message`, returns
+`:unsupported_message_subtype`. So do `message_changed` and
+`message_deleted`; edits and deletions have triggers of their own, see
+[Edits and deletions](#edits-and-deletions).
 Signals of plain messages carry no `subtype`. The subtype does not tell
 people from bots: an app posting with `chat.postMessage` sends messages
 without a subtype, and they normalize like a person's. To skip the bot's own
@@ -318,6 +321,62 @@ or `attachments` that are not a list make normalization fail with
 `:invalid_shared_message`, whose details name the payload path, never a
 value. A DM without a shared attachment has no `shared_messages`. The
 package declares no message shortcut.
+
+### Edits and deletions
+
+Slack reports an edit as a `message` event with the subtype
+`message_changed` and a deletion as one with `message_deleted`, through the
+same four subscriptions as new messages. Eight triggers take them, two per
+conversation class:
+
+| Slack subscription | Scope | Edit | Deletion |
+| --- | --- | --- | --- |
+| `message.channels` | `channels:history` | `slack.event.message.channels.changed` | `slack.event.message.channels.deleted` |
+| `message.groups` | `groups:history` | `slack.event.message.groups.changed` | `slack.event.message.groups.deleted` |
+| `message.im` | `im:history` | `slack.event.message.im.changed` | `slack.event.message.im.deleted` |
+| `message.mpim` | `mpim:history` | `slack.event.message.mpim.changed` | `slack.event.message.mpim.deleted` |
+
+They need no further subscription, scope or manifest event. Like the
+message triggers, each takes only its own `channel_type`, and the public
+channel triggers also take an event without one. The generic `message`
+event and `normalize_event/1` take edits and deletions of every class; the
+message triggers reject both subtypes.
+
+Only a `message_changed` event whose `message` carries `edited` is an edit.
+Slack sends the same subtype when it unfurls a link, when a thread parent
+gets a new reply count and when a broadcast reply's thread root changes.
+These return `:not_an_edit`, and their verified delivery keeps
+`normalized_signal: nil`.
+
+The signal, described by `Jido.Connect.Slack.MessageChange`, names the
+original message by `channel` and `ts`: `message.ts` of an edit and
+`deleted_ts` of a deletion. `notification_ts` and `event_ts` belong to the
+notification. Every edit and deletion has its own `event_id`, also two
+edits of one message, and the triggers dedupe on `team_id` and `event_id`.
+IDs and timestamps stay Slack's strings.
+
+- An edit carries the text after the edit as `text`, in full, and as `""`
+  when only blocks or attachments remain. It names the author as `user`,
+  `bot_id` and `app_id`, the thread as `thread_ts`, and the editor and edit
+  time from `message.edited` as `editor` and `edited_ts`. An edit through
+  `chat.update` names the bot user as author and editor.
+- A deletion carries no text. Its author and `thread_ts` come from
+  `previous_message` when Slack sends it; without it the signal names only
+  the message. Slack does not say who deleted a message.
+
+A missing or empty team, event, channel or source `ts`, a field that is no
+string, or a `message` or `previous_message` that is no object fail with
+`:invalid_message_change`. A `previous_message` whose `ts` differs from the
+source `ts` fails with `:conflicting_message_change`. The details name
+payload paths, never a value. The package does not order edits, apply them
+to a stored message or drop deleted ones; the host can order the edits of
+one message by `edited_ts`.
+
+The changes captured from the test workspace were two edits and a deletion
+of a message in each conversation class and of a thread reply, each by the
+person who wrote it, and bot edits through `chat.update`, one of them to an
+empty text beside an attachment. An edit by another person than the author
+and a deletion without `previous_message` were not captured.
 
 ## Interactivity
 
