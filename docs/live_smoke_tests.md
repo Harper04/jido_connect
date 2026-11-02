@@ -135,6 +135,8 @@ as seed input belong to the scripts that create the test data.
 | `GOOGLE_MEET_CONFERENCE_RECORD` | setting | Past meeting with transcript and recording |
 | `GOOGLE_MEET_TRANSCRIPT` | setting | Transcript of that meeting |
 | `GOOGLE_MEET_RECORDING` | setting | Recording of that meeting |
+| `GOOGLE_MEET_RECORDING_FILE_ID` | setting | Drive file of that recording, also attached to `GOOGLE_CALENDAR_EVENT_ID` |
+| `GOOGLE_MEET_NOTES_DOCUMENT_ID` | setting | Google Doc of that transcript; in the test tenant it is the meeting notes document attached to `GOOGLE_CALENDAR_EVENT_ID`, with the transcript as a tab |
 | `GOOGLE_MEET_POLL_EVENT_ID` | setting | Calendar event of the fresh meeting for the poll check |
 | `GOOGLE_DRIVE_SHARED_LINK_URL` | setting | Link-shared file with a resource key |
 | `GOOGLE_DRIVE_SHORTCUT_ID` | setting | Shortcut to that file |
