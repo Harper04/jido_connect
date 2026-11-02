@@ -112,6 +112,32 @@ defmodule Jido.Connect.Tempo.Client.RequestTest do
     end
   end
 
+  # Tempo's links name https://api.tempo.io even on a regional origin.
+  describe "tempo_link?/2" do
+    test "accepts a link on any Tempo origin with the expected path" do
+      for origin <- ["https://api.tempo.io", "https://api.eu.tempo.io", "https://api.us.tempo.io"] do
+        assert Request.tempo_link?(origin <> "/4/accounts/26?expand=x", "/4/accounts/26")
+      end
+
+      assert Request.tempo_link?(
+               "https://api.tempo.io/4/worklogs/user/712020%3Aa",
+               "/4/worklogs/user/712020:a"
+             )
+    end
+
+    test "rejects another origin, scheme, port or path and a relative link" do
+      for link <- [
+            "https://collector.example.com/4/accounts/26",
+            "http://api.tempo.io/4/accounts/26",
+            "https://api.tempo.io:8443/4/accounts/26",
+            "https://api.tempo.io/4/accounts/27",
+            "/4/accounts/26"
+          ] do
+        refute Request.tempo_link?(link, "/4/accounts/26")
+      end
+    end
+  end
+
   describe "from_runtime/1" do
     test "builds a request from a handler runtime map" do
       context =

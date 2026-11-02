@@ -10,11 +10,11 @@ defmodule Jido.Connect.Tempo.Client.Pagination do
   The next page is rebuilt from the validated metadata: the same path and
   query parameters at the connection's origin, with `offset` advanced by the
   page's `count`. The `next` link is only checked, never requested. It must
-  name one of the Tempo origins in `Jido.Connect.Tempo.Client.Request.origins/0`
-  and the requested path. Tempo's links name `https://api.tempo.io` even on a
-  regional origin (recorded 2026-11-02), so a link on another Tempo origin is
-  accepted while the request stays at the connection's origin. Any other
-  origin or path is a `:foreign_next_link` error without a request.
+  pass `Jido.Connect.Tempo.Client.Request.tempo_link?/2` for the requested
+  path: Tempo's links name `https://api.tempo.io` even on a regional origin,
+  so a link on another Tempo origin is accepted while the request stays at
+  the connection's origin. Any other origin or path is a `:foreign_next_link`
+  error without a request.
 
   Bounds, each a positive integer option with a default from `defaults/0`:
 
@@ -87,7 +87,7 @@ defmodule Jido.Connect.Tempo.Client.Pagination do
     next_offset = state.offset + page.count
 
     cond do
-      not next_link?(page.next, path) ->
+      not Request.tempo_link?(page.next, path) ->
         error(:foreign_next_link, "Tempo next link leaves the Tempo origins or the path", %{})
 
       MapSet.member?(state.seen, next_offset) ->
@@ -124,13 +124,6 @@ defmodule Jido.Connect.Tempo.Client.Pagination do
   defp page(_body, _state), do: invalid_page()
 
   defp invalid_page, do: error(:invalid_pagination, "Tempo page metadata was invalid", %{})
-
-  defp next_link?(link, path) do
-    uri = URI.parse(link)
-
-    uri.scheme == "https" and uri.port == 443 and "https://#{uri.host}" in Request.origins() and
-      URI.decode(uri.path || "") == URI.decode(path)
-  end
 
   defp error(reason, message, details) do
     Response.invalid_response(message, nil, reason: reason, details: details)

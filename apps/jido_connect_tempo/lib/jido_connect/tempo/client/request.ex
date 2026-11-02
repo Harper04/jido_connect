@@ -30,6 +30,24 @@ defmodule Jido.Connect.Tempo.Client.Request do
   @spec origins() :: [String.t()]
   def origins, do: @origins
 
+  @doc """
+  Returns whether `link`, from a Tempo response, names a Tempo origin and
+  `path`.
+
+  The link must use HTTPS on the default port, name one of `origins/0` and
+  have the decoded path `path`; its query is not checked. Tempo's links name
+  `https://api.tempo.io` even on a regional origin (recorded 2026-11-02), so
+  any Tempo origin is accepted. A caller never sends a request to the link
+  itself: it rebuilds the request at the connection's origin.
+  """
+  @spec tempo_link?(String.t(), String.t()) :: boolean()
+  def tempo_link?(link, path) when is_binary(link) and is_binary(path) do
+    uri = URI.parse(link)
+
+    uri.scheme == "https" and uri.port == 443 and "https://#{uri.host}" in @origins and
+      URI.decode(uri.path || "") == URI.decode(path)
+  end
+
   @doc "Builds request data from the selected connection and leased credentials."
   @spec new(Connection.t(), map()) :: {:ok, t()} | {:error, Error.AuthError.t()}
   def new(%Connection{provider: :tempo} = connection, credentials) when is_map(credentials) do
