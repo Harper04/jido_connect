@@ -1,8 +1,8 @@
 defmodule Jido.Connect.Gmail.LiveSmokeTest do
   @moduledoc """
   Live self-test of the harness against the Google Workspace test account:
-  the client reads the mailbox profile. The offline poll tests initialize
-  their checkpoint from the history ID of its recording, `profile.json`.
+  the client reads the mailbox profile. Its recording, `profile.json`, is the
+  profile that the offline tests of the change poll read.
 
       mix test --only live_smoke
 

@@ -5,12 +5,12 @@ defmodule Jido.Connect.Gmail.AttachmentsLiveSmokeTest do
 
       mix test --only live_smoke
 
-  `google.gmail.message.attachment.content.get` must return every attachment
-  of the prepared message byte-exact, whether Gmail keeps its data inline or
-  behind an `attachmentId`, an attached original and an attachment inside it,
-  the empty original inline and the header-only one, and unnamed attachments
-  only with their original bytes. It must refuse the parts that Gmail
-  converted to UTF-8 and a part that is no attachment.
+  `google.gmail.message.attachment.content.get` must return the exact bytes of
+  every attachment of the prepared message, whether Gmail keeps them inline or
+  behind an `attachmentId`. It must also return an attached original and an
+  attachment inside it, the empty original inline and the header-only one, and
+  unnamed attachments with their original bytes, and it must refuse the parts
+  that Gmail converted to UTF-8 and a part that is no attachment.
 
   The tests read `GOOGLE_ACCESS_TOKEN`, `GOOGLE_GMAIL_ATTACHMENT_MESSAGE_ID`,
   `GOOGLE_GMAIL_FORWARD_ATTACHED_ID`, `GOOGLE_GMAIL_FORWARD_OPAQUE_ID` and
