@@ -7,8 +7,8 @@ defmodule Jido.Connect.Gmail.MIME.TraversalTest do
 
   # The payloads are format=full responses recorded from the prepared messages
   # of the live test account; content_live_smoke_test.exs records them and
-  # checks that the live payloads still traverse the same way. A test that needs a shape
-  # Gmail does not produce derives it from a recording and says so.
+  # checks that the live payloads still traverse the same way. A test that needs
+  # a shape Gmail does not produce derives it from a recording and says so.
 
   describe "body text parts" do
     test "a single-part message is one text part with Gmail's empty part ID" do

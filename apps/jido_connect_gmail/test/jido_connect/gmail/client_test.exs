@@ -1039,9 +1039,9 @@ defmodule Jido.Connect.Gmail.ClientTest do
   end
 
   describe "content requests" do
-    # The response bodies are format=full responses recorded from the prepared
-    # messages of the live test account; content_live_smoke_test.exs records
-    # them.
+    # The format=full bodies are responses recorded from the prepared messages
+    # of the live test account; content_live_smoke_test.exs records them, and
+    # discovery_live_smoke_test.exs records the error body.
 
     test "gets a message with format=full and without metadataHeaders" do
       recorded = LiveSmoke.fixture!(:gmail, "message_full_forward_attached")

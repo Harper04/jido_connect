@@ -151,7 +151,8 @@ defmodule Jido.Connect.Gmail.AttachmentsLiveSmokeTest do
     {context, lease} = LiveGmail.read_grant(access_token)
 
     # Not recorded: "traverses the unnamed-attachment message like its
-    # recording" records the format=full response.
+    # recording" in content_live_smoke_test.exs records the format=full
+    # response.
     for {part_id, size, sha256} <- @unnamed_files do
       attachment = attachment_content!(message_id, part_id, access_token)
 
