@@ -22,8 +22,10 @@ defmodule Jido.Connect.Tempo.Client.Transport do
 
   Automatic retries are off by default; a caller may enable them through
   `:req_options`. Failures carry `retry_after` for the host's own retry
-  policy. Req does not decode response bodies; `Response` decodes JSON
-  itself, so a malformed error body keeps its status.
+  policy. JSON bodies are decoded by the step of
+  `Response.attach_json_decoder/1`, not by Req, so a malformed error body
+  keeps its status and a response step added by an adapter, such as the
+  live smoke recorder's, sees the decoded body.
   """
 
   alias Jido.Connect.Provider.Transport
@@ -45,7 +47,7 @@ defmodule Jido.Connect.Tempo.Client.Transport do
       |> Keyword.merge(Application.get_env(:jido_connect_tempo, :tempo_req_options, []))
       |> Keyword.merge(Keyword.get(opts, :req_options, []))
       |> Keyword.drop(@locked_options)
-      |> Keyword.merge(redirect: false, decode_body: false)
+      |> Keyword.put(:redirect, false)
 
     request.api_origin
     |> Transport.bearer_request(Request.token(request),
@@ -53,6 +55,7 @@ defmodule Jido.Connect.Tempo.Client.Transport do
       req_options: req_options
     )
     |> Req.Request.append_request_steps(tempo_origin_guard: origin_guard(request.api_origin))
+    |> Response.attach_json_decoder()
   end
 
   @doc """

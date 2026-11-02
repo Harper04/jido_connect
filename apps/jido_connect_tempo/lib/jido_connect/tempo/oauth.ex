@@ -118,6 +118,7 @@ defmodule Jido.Connect.Tempo.OAuth do
     [base_url: @origin]
     |> CoreOAuth.req()
     |> Req.merge(req_options())
+    |> Response.attach_json_decoder()
     |> Req.post(url: @token_path, form: form)
     |> token_response(message: @request_failed, redact: [client_secret, grant_secret])
   end
@@ -126,7 +127,7 @@ defmodule Jido.Connect.Tempo.OAuth do
     [retry: false]
     |> Keyword.merge(Application.get_env(:jido_connect_tempo, :tempo_oauth_req_options, []))
     |> Keyword.drop(@locked_options)
-    |> Keyword.merge(redirect: false, decode_body: false)
+    |> Keyword.put(:redirect, false)
   end
 
   # The secrets are redacted from Tempo's error text before the error keeps

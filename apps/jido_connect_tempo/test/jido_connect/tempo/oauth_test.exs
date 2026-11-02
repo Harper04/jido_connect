@@ -330,6 +330,20 @@ defmodule Jido.Connect.Tempo.OAuthTest do
     end
   end
 
+  # The live smoke recorder appends its response step when it runs as the
+  # adapter; it must see the decoded body to redact the token fields.
+  test "a response step an adapter appends sees the decoded token body" do
+    Application.put_env(:jido_connect_tempo, :tempo_oauth_req_options,
+      adapter: Jido.Connect.Tempo.LateStepAdapter
+    )
+
+    assert {:ok, _token} = OAuth.exchange_code("code-1", @opts)
+    assert_received {:late_step_body, %{"access_token" => _, "refresh_token" => _}}
+
+    assert {:ok, _token} = OAuth.refresh("stored-refresh-token", @opts)
+    assert_received {:late_step_body, %{"access_token" => _, "refresh_token" => _}}
+  end
+
   defp observed_token, do: Fixture.observed!("oauth_token")["body"]
 
   defp put_field(body, key, :absent), do: Map.delete(body, key)

@@ -48,6 +48,40 @@ defmodule Jido.Connect.Tempo.Fixture do
   defp body(body), do: Jason.encode!(body)
 end
 
+defmodule Jido.Connect.Tempo.LateStepAdapter do
+  @moduledoc false
+
+  # A Req adapter shaped like the live smoke recorder: when it runs, it
+  # appends a response step behind every step attached when the request was
+  # built, and that step sends the body it sees to the calling process as
+  # `{:late_step_body, body}`. Instead of calling Tempo it answers with a JSON
+  # response under the recorded content type: the observed token for the
+  # token endpoint, the recorded periods for any other path.
+
+  alias Jido.Connect.Tempo.Fixture
+
+  def run(request) do
+    request = Req.Request.append_response_steps(request, late_step: &report_body/1)
+    {request, response(request.url.path)}
+  end
+
+  defp report_body({request, response}) do
+    send(self(), {:late_step_body, response.body})
+    {request, response}
+  end
+
+  defp response("/oauth/token/"), do: json(Fixture.observed!("oauth_token")["body"])
+  defp response(_path), do: json(Fixture.recorded!("periods")["body"])
+
+  defp json(body) do
+    Req.Response.new(
+      status: 200,
+      headers: [{"content-type", "application/json"}],
+      body: Jason.encode!(body)
+    )
+  end
+end
+
 # Ensure Req.Test.Ownership is running so that client tests can run without the
 # full application supervision tree.
 unless Process.whereis(Req.Test.Ownership) do

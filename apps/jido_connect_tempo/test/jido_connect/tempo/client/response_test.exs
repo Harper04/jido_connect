@@ -129,6 +129,7 @@ defmodule Jido.Connect.Tempo.Client.ResponseTest do
     assert {:error, %Error.ProviderError{reason: :invalid_response, status: 200} = error} =
              get_with(&Fixture.respond(&1, "not_found_html", status: 200))
 
+    assert error.message == "Tempo API response was not JSON"
     assert error.details.body_summary == %{type: :binary, bytes: 10}
   end
 
@@ -144,6 +145,7 @@ defmodule Jido.Connect.Tempo.Client.ResponseTest do
                |> Plug.Conn.send_resp(200, truncated)
              end)
 
+    assert error.message == "Tempo API response was not valid JSON"
     refute inspect(error) =~ "2026-10-01"
   end
 

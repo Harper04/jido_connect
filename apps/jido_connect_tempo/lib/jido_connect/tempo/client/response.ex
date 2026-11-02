@@ -24,19 +24,41 @@ defmodule Jido.Connect.Tempo.Client.Response do
   such as a timeout, is `:request_error` with the reason code in
   `details.reason`. Raw bodies are reduced to a value-free summary.
 
-  This module decodes JSON bodies itself; the Tempo requests turn Req's
-  decoding off. An error response whose JSON body is malformed therefore
-  keeps its status, reason and `retry_after`, with only the body size.
+  Every Tempo request decodes JSON in its own response step, attached by
+  `attach_json_decoder/1` when the request is built, instead of Req's
+  `decode_body`. A body that does not decode stays raw, so an error response
+  whose JSON body is malformed keeps its status, reason and `retry_after`,
+  with only the body size.
   """
 
   alias Jido.Connect.Error
   alias Jido.Connect.Provider.Transport
 
   @message "Tempo API request failed"
+  @json_step :tempo_decode_json
+  @invalid_json :tempo_invalid_json
+
+  @doc """
+  Turns Req's body decoding off and appends Tempo's JSON decoding step.
+
+  The step decodes a non-empty `application/json` or `+json` body. Since it
+  is attached when the request is built, it runs before any response step
+  an adapter appends while the request runs, such as the live smoke
+  recorder's, so that step sees the decoded body. A body that does not
+  decode stays raw and is marked for `handle/2`; Req's own decode error
+  would drop the status and the headers.
+  """
+  @spec attach_json_decoder(Req.Request.t()) :: Req.Request.t()
+  def attach_json_decoder(%Req.Request{} = request) do
+    request
+    |> Req.merge(decode_body: false)
+    |> Req.Request.append_response_steps([{@json_step, &decode_json/1}])
+  end
 
   @doc """
   Returns the decoded JSON body of a successful response or a normalized error.
 
+  Expects a response of a request prepared by `attach_json_decoder/1`.
   Options: `:message`, the error message; `:redact`, values replaced by
   `[redacted]` in Tempo's error text before the error is built and that
   text is cut to 256 bytes; and `:delivery`, which overrides the delivery
@@ -46,28 +68,24 @@ defmodule Jido.Connect.Tempo.Client.Response do
   @spec handle(term(), keyword()) :: {:ok, map() | list()} | {:error, Error.ProviderError.t()}
   def handle(response, opts \\ [])
 
+  def handle({:ok, %{status: status, body: body}}, _opts)
+      when status in 200..299 and (is_map(body) or is_list(body)) do
+    {:ok, body}
+  end
+
+  def handle({:ok, %{status: status, body: body} = response}, opts) when status in 200..299 do
+    message =
+      if invalid_json?(response),
+        do: "Tempo API response was not valid JSON",
+        else: "Tempo API response was not JSON"
+
+    invalid_response(Keyword.get(opts, :message, message), body, status: status)
+  end
+
+  # An error body that is not valid JSON stays raw: the error keeps the
+  # status, Retry-After and the body size.
   def handle({:ok, %{status: status} = response}, opts) when is_integer(status) do
-    case decode(response) do
-      {:ok, %{body: body}} when status in 200..299 and (is_map(body) or is_list(body)) ->
-        {:ok, body}
-
-      {:ok, %{body: body}} when status in 200..299 ->
-        invalid_response(Keyword.get(opts, :message, "Tempo API response was not JSON"), body,
-          status: status
-        )
-
-      {:error, %{body: body}} when status in 200..299 ->
-        invalid_response(
-          Keyword.get(opts, :message, "Tempo API response was not valid JSON"),
-          body,
-          status: status
-        )
-
-      # An error body that is not valid JSON stays raw: the error keeps the
-      # status, Retry-After and the body size.
-      {_decoded, response} ->
-        http_error(response, opts)
-    end
+    http_error(response, opts)
   end
 
   def handle(response, opts) do
@@ -107,20 +125,24 @@ defmodule Jido.Connect.Tempo.Client.Response do
     Transport.provider_error({:ok, response}, error_opts)
   end
 
-  # Req leaves bodies undecoded (`decode_body: false`), since its decode error
-  # would drop the status and the headers.
-  defp decode(%{body: body} = response) when is_binary(body) and body != "" do
+  defp decode_json({request, %Req.Response{body: body} = response})
+       when is_binary(body) and body != "" do
     if json?(response) do
       case Jason.decode(body) do
-        {:ok, decoded} -> {:ok, %{response | body: decoded}}
-        {:error, _error} -> {:error, response}
+        {:ok, decoded} -> {request, %{response | body: decoded}}
+        {:error, _error} -> {request, Req.Response.put_private(response, @invalid_json, true)}
       end
     else
-      {:ok, response}
+      {request, response}
     end
   end
 
-  defp decode(response), do: {:ok, response}
+  defp decode_json(request_response), do: request_response
+
+  defp invalid_json?(%Req.Response{} = response),
+    do: Req.Response.get_private(response, @invalid_json, false)
+
+  defp invalid_json?(_response), do: false
 
   defp json?(%Req.Response{} = response) do
     response
@@ -130,8 +152,6 @@ defmodule Jido.Connect.Tempo.Client.Response do
       media_type == "application/json" or String.ends_with?(media_type, "+json")
     end)
   end
-
-  defp json?(_response), do: false
 
   defp reason(status) when status in 300..399, do: :redirect_not_followed
   defp reason(400), do: :bad_request

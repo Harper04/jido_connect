@@ -145,6 +145,16 @@ defmodule Jido.Connect.Tempo.Client.TransportTest do
     refute_received {:seen, _host}
   end
 
+  # The live smoke recorder appends its response step when it runs as the
+  # adapter; it must see the decoded body to sanitize keys such as accountId.
+  test "a response step an adapter appends sees the decoded JSON body" do
+    put_req_options(adapter: Jido.Connect.Tempo.LateStepAdapter)
+    request = request!(:api_token, "https://api.us.tempo.io", "tok")
+
+    assert {:ok, %{"periods" => [_period]}} = Transport.get(request, "/4/periods", @october)
+    assert_received {:late_step_body, %{"periods" => [_period]}}
+  end
+
   defp put_req_options(options) do
     previous = Application.fetch_env(:jido_connect_tempo, :tempo_req_options)
     Application.put_env(:jido_connect_tempo, :tempo_req_options, options)
