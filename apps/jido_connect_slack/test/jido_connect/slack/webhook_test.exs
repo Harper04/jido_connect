@@ -383,11 +383,34 @@ defmodule Jido.Connect.Slack.WebhookTest do
       assert {:error, %Error.ProviderError{reason: :not_thread_reply}} =
                Webhook.normalize_signal("message.thread_reply", payload)
 
-      # Derived: the captured file share without its `files` list.
+      # Derived: the captured file share without its `files` list, and with
+      # file entries whose ID is empty, missing or no string.
       without_files = update_in(payload, ["event"], &Map.delete(&1, "files"))
 
       assert {:ok, Map.delete(signal, :file_ids)} ==
                Webhook.normalize_signal("message.channels", without_files)
+
+      [file] = payload["event"]["files"]
+      unusable = [%{"id" => ""}, Map.delete(file, "id"), %{"id" => 7}]
+
+      assert {:ok, %{file_ids: ["F0CE8HZ718U"]}} =
+               Webhook.normalize_signal(
+                 "message.channels",
+                 put_in(payload, ["event", "files"], unusable ++ [file])
+               )
+
+      assert {:ok, Map.delete(signal, :file_ids)} ==
+               Webhook.normalize_signal(
+                 "message.channels",
+                 put_in(payload, ["event", "files"], unusable)
+               )
+
+      # Derived: the captured plain message with the captured `files` list,
+      # but without the `file_share` subtype.
+      plain_with_files = put_in(payload!("message_public"), ["event", "files"], [file])
+
+      assert {:ok, plain} = Webhook.normalize_signal("message.channels", plain_with_files)
+      refute Map.has_key?(plain, :file_ids)
     end
 
     test "a broadcast reply normalizes as channel message and as thread reply" do
