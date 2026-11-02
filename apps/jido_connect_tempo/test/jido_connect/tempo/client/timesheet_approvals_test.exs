@@ -152,24 +152,29 @@ defmodule Jido.Connect.Tempo.Client.TimesheetApprovalsTest do
       refute inspect(error) =~ "account-2"
     end
 
-    # The recorded approval with `period.to` replaced.
+    # The recorded approval with `period.to` or `period.from` replaced.
     test "an approval of another period fails" do
-      Req.Test.expect(__MODULE__, fn conn ->
-        Fixture.respond(conn, "timesheet_approval",
-          body: &put_in(&1, ["period", "to"], "2026-10-15")
-        )
-      end)
+      for {field, value, returned} <- [
+            {"to", "2026-10-15", {"2026-10-01", "2026-10-15"}},
+            {"from", "2026-10-02", {"2026-10-02", "2026-10-31"}}
+          ] do
+        Req.Test.expect(__MODULE__, fn conn ->
+          Fixture.respond(conn, "timesheet_approval", body: &put_in(&1, ["period", field], value))
+        end)
 
-      assert {:error,
-              %Error.ProviderError{
-                reason: :approval_period_mismatch,
-                details: %{
-                  from: "2026-10-01",
-                  to: "2026-10-31",
-                  period_from: "2026-10-01",
-                  period_to: "2026-10-15"
-                }
-              }} = get(request(), @october)
+        {period_from, period_to} = returned
+
+        assert {:error,
+                %Error.ProviderError{
+                  reason: :approval_period_mismatch,
+                  details: %{
+                    from: "2026-10-01",
+                    to: "2026-10-31",
+                    period_from: ^period_from,
+                    period_to: ^period_to
+                  }
+                }} = get(request(), @october)
+      end
     end
   end
 
