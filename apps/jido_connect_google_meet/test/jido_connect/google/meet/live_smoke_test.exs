@@ -220,7 +220,7 @@ defmodule Jido.Connect.Google.Meet.LiveSmokeTest do
       JSON.encode!(%{
         "version" => 1,
         "watermark" => DateTime.to_iso8601(@prepared_window_start),
-        "settled_at_watermark" => [],
+        "settled" => [],
         "pending" => []
       })
 

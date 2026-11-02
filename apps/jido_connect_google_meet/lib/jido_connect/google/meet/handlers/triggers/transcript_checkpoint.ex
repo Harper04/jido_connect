@@ -2,10 +2,14 @@ defmodule Jido.Connect.Google.Meet.Handlers.Triggers.TranscriptCheckpoint do
   @moduledoc false
 
   # The checkpoint of `google.meet.transcript.available`: a watermark on
-  # conference end times, the settled records that ended exactly at the
-  # watermark, and the records still waiting for a generated transcript.
-  # Hosts persist it as the JSON string `encode/1` returns. The package
-  # README documents the shape and the bounds.
+  # conference end times, the records at or after the watermark that need no
+  # further check, and the records still waiting for a generated transcript.
+  # A record needs no further check once it is settled or has left the
+  # pending set by age or count; such records are kept under `settled` with
+  # their end time. The watermark never passes a pending record, so a record
+  # that ends before a pending one but is listed later is still found.
+  # Hosts persist the checkpoint as the JSON string `encode/1` returns. The
+  # package README documents the shape and the bounds.
 
   alias Jido.Connect.Error
   alias Jido.Connect.Google.Checkpoint
@@ -17,7 +21,7 @@ defmodule Jido.Connect.Google.Meet.Handlers.Triggers.TranscriptCheckpoint do
   @max_pending 50
   @max_pending_age_seconds 24 * 60 * 60
 
-  defstruct [:watermark, settled_at_watermark: [], pending: []]
+  defstruct [:watermark, settled: [], pending: []]
 
   @doc "Starts a checkpoint whose watermark is `now`."
   def new(%DateTime{} = now), do: %__MODULE__{watermark: now}
@@ -34,9 +38,9 @@ defmodule Jido.Connect.Google.Meet.Handlers.Triggers.TranscriptCheckpoint do
     ~s(end_time>="#{DateTime.to_iso8601(watermark)}" AND start_time>="1970-01-01T00:00:00Z")
   end
 
-  @doc "True when the record is pending or settled at the watermark."
+  @doc "True when the record is pending or needs no further check."
   def known?(%__MODULE__{} = checkpoint, name) do
-    name in checkpoint.settled_at_watermark or
+    Enum.any?(checkpoint.settled, &(&1.name == name)) or
       Enum.any?(checkpoint.pending, &(&1.name == name))
   end
 
@@ -44,36 +48,41 @@ defmodule Jido.Connect.Google.Meet.Handlers.Triggers.TranscriptCheckpoint do
   Advances the checkpoint over the records checked in one poll.
 
   Each checked record carries `name`, `end_time`, `emitted` and `settled?`.
-  The watermark moves to the latest end time. Open records stay pending
-  within the count and age bounds. Records that settle or leave the pending
-  set at the watermark are kept by name, so the inclusive window filter lists
-  them again without effect.
+  Open records stay pending within the count and age bounds. Settled records
+  and records that leave the pending set are done. Without pending records
+  the watermark moves to the latest end time of a done record; with them, to
+  the latest end time of a done record before the oldest pending one. It
+  never moves back. Done records at or after the watermark stay under
+  `settled`, so the inclusive window filter lists them again without effect.
   """
   def advance(%__MODULE__{} = checkpoint, checked, %DateTime{} = now) do
-    watermark = Enum.reduce(checked, checkpoint.watermark, &latest(&1.end_time, &2))
     {open, settled} = Enum.split_with(checked, &(not &1.settled?))
     {pending, dropped} = bound_pending(open, now)
-
-    carried =
-      if DateTime.compare(watermark, checkpoint.watermark) == :eq,
-        do: checkpoint.settled_at_watermark,
-        else: []
-
-    at_watermark =
-      for record <- settled ++ dropped, DateTime.compare(record.end_time, watermark) == :eq do
-        record.name
-      end
+    done = checkpoint.settled ++ Enum.map(settled ++ dropped, &done/1)
+    watermark = watermark(checkpoint.watermark, done, pending)
 
     %__MODULE__{
       watermark: watermark,
-      settled_at_watermark: Enum.uniq(carried ++ at_watermark),
+      settled:
+        done
+        |> Enum.filter(&(DateTime.compare(&1.end_time, watermark) != :lt))
+        |> Enum.sort_by(&{DateTime.to_unix(&1.end_time, :microsecond), &1.name}),
       pending: Enum.map(pending, &Map.take(&1, [:name, :end_time, :emitted]))
     }
   end
 
+  defp watermark(current, done, []), do: latest(current, done)
+
+  defp watermark(current, done, pending) do
+    oldest_pending = pending |> Enum.map(& &1.end_time) |> Enum.min(DateTime)
+    latest(current, Enum.filter(done, &(DateTime.compare(&1.end_time, oldest_pending) == :lt)))
+  end
+
+  defp latest(current, records),
+    do: Enum.max([current | Enum.map(records, & &1.end_time)], DateTime)
+
   defp bound_pending(open, now) do
-    cutoff = DateTime.add(now, -@max_pending_age_seconds, :second)
-    {recent, aged} = Enum.split_with(open, &(DateTime.compare(&1.end_time, cutoff) != :lt))
+    {recent, aged} = Enum.split_with(open, &recent?(&1, now))
 
     {pending, overflow} =
       recent
@@ -83,19 +92,26 @@ defmodule Jido.Connect.Google.Meet.Handlers.Triggers.TranscriptCheckpoint do
     {pending, aged ++ overflow}
   end
 
+  defp recent?(record, now) do
+    cutoff = DateTime.add(now, -@max_pending_age_seconds, :second)
+    DateTime.compare(record.end_time, cutoff) != :lt
+  end
+
+  defp done(record), do: Map.take(record, [:name, :end_time])
+
   @doc "Decodes a checkpoint string written by `encode/1`."
   def decode(checkpoint) when is_binary(checkpoint) do
     with {:ok,
           %{
             "version" => @version,
             "watermark" => watermark,
-            "settled_at_watermark" => settled,
+            "settled" => settled,
             "pending" => pending
           }} <- JSON.decode(checkpoint),
          {:ok, watermark} <- parse_time(watermark),
-         true <- names?(settled),
-         {:ok, pending} <- decode_pending(pending) do
-      {:ok, %__MODULE__{watermark: watermark, settled_at_watermark: settled, pending: pending}}
+         {:ok, settled} <- decode_entries(settled, &decode_settled/1),
+         {:ok, pending} <- decode_entries(pending, &decode_pending/1) do
+      {:ok, %__MODULE__{watermark: watermark, settled: settled, pending: pending}}
     else
       _invalid -> invalid_checkpoint()
     end
@@ -108,7 +124,10 @@ defmodule Jido.Connect.Google.Meet.Handlers.Triggers.TranscriptCheckpoint do
     JSON.encode!(%{
       "version" => @version,
       "watermark" => DateTime.to_iso8601(checkpoint.watermark),
-      "settled_at_watermark" => checkpoint.settled_at_watermark,
+      "settled" =>
+        Enum.map(checkpoint.settled, fn record ->
+          %{"name" => record.name, "end_time" => DateTime.to_iso8601(record.end_time)}
+        end),
       "pending" =>
         Enum.map(checkpoint.pending, fn record ->
           %{
@@ -130,31 +149,40 @@ defmodule Jido.Connect.Google.Meet.Handlers.Triggers.TranscriptCheckpoint do
 
   def parse_time(_value), do: :error
 
-  defp decode_pending(pending) when is_list(pending) do
-    Enum.reduce_while(pending, {:ok, []}, fn
-      %{"name" => name, "end_time" => end_time, "emitted" => emitted}, {:ok, acc}
-      when is_binary(name) ->
-        with {:ok, end_time} <- parse_time(end_time),
-             true <- names?(emitted) do
-          {:cont, {:ok, [%{name: name, end_time: end_time, emitted: emitted} | acc]}}
-        else
-          _invalid -> {:halt, :error}
-        end
-
-      _invalid, _acc ->
-        {:halt, :error}
+  defp decode_entries(entries, decode) when is_list(entries) do
+    Enum.reduce_while(entries, {:ok, []}, fn entry, {:ok, acc} ->
+      case decode.(entry) do
+        {:ok, entry} -> {:cont, {:ok, [entry | acc]}}
+        :error -> {:halt, :error}
+      end
     end)
     |> case do
-      {:ok, pending} -> {:ok, Enum.reverse(pending)}
+      {:ok, entries} -> {:ok, Enum.reverse(entries)}
       :error -> :error
     end
   end
 
-  defp decode_pending(_pending), do: :error
+  defp decode_entries(_entries, _decode), do: :error
+
+  defp decode_settled(%{"name" => name, "end_time" => end_time}) when is_binary(name) do
+    with {:ok, end_time} <- parse_time(end_time), do: {:ok, %{name: name, end_time: end_time}}
+  end
+
+  defp decode_settled(_entry), do: :error
+
+  defp decode_pending(%{"name" => name, "end_time" => end_time, "emitted" => emitted})
+       when is_binary(name) do
+    with {:ok, end_time} <- parse_time(end_time),
+         true <- names?(emitted) do
+      {:ok, %{name: name, end_time: end_time, emitted: emitted}}
+    else
+      _invalid -> :error
+    end
+  end
+
+  defp decode_pending(_entry), do: :error
 
   defp names?(names), do: is_list(names) and Enum.all?(names, &is_binary/1)
-
-  defp latest(time, other), do: if(DateTime.compare(time, other) == :gt, do: time, else: other)
 
   defp invalid_checkpoint do
     {:error,

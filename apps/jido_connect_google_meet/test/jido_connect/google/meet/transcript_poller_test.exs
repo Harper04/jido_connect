@@ -36,7 +36,7 @@ defmodule Jido.Connect.Google.Meet.TranscriptPollerTest do
         assert %{
                  "version" => 1,
                  "watermark" => watermark,
-                 "settled_at_watermark" => [],
+                 "settled" => [],
                  "pending" => []
                } = JSON.decode!(checkpoint)
 
@@ -72,7 +72,7 @@ defmodule Jido.Connect.Google.Meet.TranscriptPollerTest do
       assert JSON.decode!(checkpoint) == %{
                "version" => 1,
                "watermark" => prepared["endTime"],
-               "settled_at_watermark" => [prepared["name"]],
+               "settled" => [settled_entry(prepared)],
                "pending" => []
              }
     end
@@ -111,14 +111,64 @@ defmodule Jido.Connect.Google.Meet.TranscriptPollerTest do
       watermark = time!(earlier["endTime"])
 
       assert {:ok, %{signals: [signal], checkpoint: checkpoint}} =
-               poll(checkpoint(watermark, [earlier["name"]]))
+               poll(checkpoint(watermark, [settled_entry(earlier)]))
 
       assert signal == expected_signal(prepared, prepared_transcript)
 
-      assert %{"watermark" => watermark, "settled_at_watermark" => [settled], "pending" => []} =
+      assert %{"watermark" => watermark, "settled" => [settled], "pending" => []} =
                JSON.decode!(checkpoint)
 
-      assert {watermark, settled} == {prepared["endTime"], prepared["name"]}
+      assert {watermark, settled} == {prepared["endTime"], settled_entry(prepared)}
+    end
+  end
+
+  describe "watermark behind pending records" do
+    test "a record listed after a later pending record is still emitted" do
+      now = DateTime.utc_now()
+      [prepared, _earlier] = recorded_records()
+      watermark = DateTime.add(now, -3, :hour)
+      a = record_at(prepared, "a", DateTime.add(now, -2, :hour))
+      b = record_at(prepared, "b", DateTime.add(now, -1, :hour))
+      [a_transcript] = transcripts_for(a)["transcripts"]
+      [b_transcript] = transcripts_for(b)["transcripts"]
+      b_not_ready = with_state(transcripts_for(b), "ENDED")
+      b_pending = pending_entry(b["name"], b["endTime"])
+
+      # B is listed first; A, which ended earlier, is not visible yet.
+      serve(records: {:window, [b]}, transcripts: %{b["name"] => pages([b_not_ready])})
+
+      assert {:ok, %{signals: [], checkpoint: checkpoint}} = poll(checkpoint(watermark))
+      assert JSON.decode!(checkpoint) == JSON.decode!(checkpoint(watermark, [], [b_pending]))
+
+      serve(
+        records: {:window, [a, b]},
+        transcripts: %{
+          a["name"] => pages([transcripts_for(a)]),
+          b["name"] => pages([b_not_ready])
+        }
+      )
+
+      assert {:ok, %{signals: [signal], checkpoint: checkpoint}} = poll(checkpoint)
+      assert signal == expected_signal(a, a_transcript)
+
+      assert JSON.decode!(checkpoint) ==
+               JSON.decode!(checkpoint(time!(a["endTime"]), [settled_entry(a)], [b_pending]))
+
+      assert {:ok, %{signals: [], checkpoint: ^checkpoint}} = poll(checkpoint)
+
+      # B's transcript is generated later; the watermark moves on to B.
+      serve(
+        records: {:window, [a, b]},
+        transcripts: %{b["name"] => pages([transcripts_for(b)])}
+      )
+
+      assert {:ok, %{signals: [signal], checkpoint: checkpoint}} = poll(checkpoint)
+      assert signal == expected_signal(b, b_transcript)
+
+      assert JSON.decode!(checkpoint) ==
+               JSON.decode!(checkpoint(time!(b["endTime"]), [settled_entry(b)]))
+
+      assert {:ok, %{signals: [], checkpoint: ^checkpoint}} = poll(checkpoint)
     end
   end
 
@@ -160,7 +210,7 @@ defmodule Jido.Connect.Google.Meet.TranscriptPollerTest do
         assert {:ok, _signal} = Zoi.parse(signal_schema(), signal)
 
         assert JSON.decode!(checkpoint) ==
-                 JSON.decode!(checkpoint(watermark, [prepared["name"]]))
+                 JSON.decode!(checkpoint(watermark, [settled_entry(prepared)]))
 
         assert {:ok, %{signals: [], checkpoint: ^checkpoint}} = poll(checkpoint)
       end
@@ -197,7 +247,7 @@ defmodule Jido.Connect.Google.Meet.TranscriptPollerTest do
 
       assert {:ok, %{signals: [signal], checkpoint: checkpoint}} = poll(checkpoint)
       assert signal == expected_signal(prepared, second_transcript)
-      assert %{"pending" => [], "settled_at_watermark" => [_settled]} = JSON.decode!(checkpoint)
+      assert %{"pending" => [], "settled" => [_settled]} = JSON.decode!(checkpoint)
     end
   end
 
@@ -224,8 +274,8 @@ defmodule Jido.Connect.Google.Meet.TranscriptPollerTest do
                expected_signal(prepared, second_transcript)
              ]
 
-      assert %{"pending" => [], "settled_at_watermark" => [settled]} = JSON.decode!(checkpoint)
-      assert settled == prepared["name"]
+      assert %{"pending" => [], "settled" => [settled]} = JSON.decode!(checkpoint)
+      assert settled == settled_entry(prepared)
     end
 
     test "a later page that repeats a record is drained without a second signal" do
@@ -383,10 +433,10 @@ defmodule Jido.Connect.Google.Meet.TranscriptPollerTest do
   end
 
   describe "checkpoint bounds" do
-    test "the pending set keeps the 50 most recent records" do
+    test "the pending set keeps the 50 most recent records; the dropped one moves the watermark" do
       [prepared, _earlier] = recorded_records()
       now = DateTime.utc_now()
-      watermark = DateTime.add(now, -5, :minute)
+      watermark = DateTime.add(now, -61, :minute)
 
       pending =
         for n <- 1..50 do
@@ -405,32 +455,44 @@ defmodule Jido.Connect.Google.Meet.TranscriptPollerTest do
       assert {:ok, %{signals: [], checkpoint: checkpoint}} =
                poll(checkpoint(watermark, [], pending))
 
-      assert %{"pending" => kept, "settled_at_watermark" => []} = JSON.decode!(checkpoint)
+      assert %{"watermark" => watermark, "pending" => kept, "settled" => [dropped]} =
+               JSON.decode!(checkpoint)
+
       assert Enum.map(kept, & &1["name"]) == Enum.take(names, 50)
-      refute "#{prepared["name"]}-50" in Enum.map(kept, & &1["name"])
+
+      oldest = List.last(pending)
+      assert dropped == settled_entry(oldest["name"], oldest["end_time"])
+      assert watermark == oldest["end_time"]
     end
 
-    test "a pending record older than 24 hours leaves the pending set" do
+    test "a pending record older than 24 hours leaves the pending set and releases the watermark" do
       [prepared, _earlier] = recorded_records()
       now = DateTime.utc_now()
-      fresh = record_at(prepared, "fresh", DateTime.add(now, -23, :hour))
       aged = record_at(prepared, "aged", DateTime.add(now, -25, :hour))
+      settled = record_at(prepared, "settled", DateTime.add(now, -24, :hour))
+      fresh = record_at(prepared, "fresh", DateTime.add(now, -23, :hour))
       not_ready = with_state(fixture("transcripts"), "ENDED")
 
       serve(
-        records: {:window, [fresh]},
+        records: {:window, [settled, fresh]},
         transcripts: %{fresh["name"] => pages([not_ready]), aged["name"] => pages([not_ready])}
       )
 
+      # The aged record held the watermark at its end time.
       checkpoint =
-        checkpoint(time!(fresh["endTime"]), [], [
-          pending_entry(fresh["name"], time!(fresh["endTime"])),
-          pending_entry(aged["name"], time!(aged["endTime"]))
+        checkpoint(time!(aged["endTime"]), [settled_entry(settled)], [
+          pending_entry(fresh["name"], fresh["endTime"]),
+          pending_entry(aged["name"], aged["endTime"])
         ])
 
       assert {:ok, %{signals: [], checkpoint: checkpoint}} = poll(checkpoint)
-      assert %{"pending" => [kept], "settled_at_watermark" => []} = JSON.decode!(checkpoint)
-      assert kept["name"] == fresh["name"]
+
+      assert JSON.decode!(checkpoint) ==
+               JSON.decode!(
+                 checkpoint(time!(settled["endTime"]), [settled_entry(settled)], [
+                   pending_entry(fresh["name"], fresh["endTime"])
+                 ])
+               )
     end
 
     test "a record leaving by age at the watermark is not checked again" do
@@ -447,7 +509,8 @@ defmodule Jido.Connect.Google.Meet.TranscriptPollerTest do
       assert {:ok, %{signals: [], checkpoint: checkpoint}} =
                poll(checkpoint(watermark, [], [pending_entry(aged["name"], watermark)]))
 
-      assert JSON.decode!(checkpoint) == JSON.decode!(checkpoint(watermark, [aged["name"]]))
+      assert JSON.decode!(checkpoint) ==
+               JSON.decode!(checkpoint(watermark, [settled_entry(aged)]))
 
       serve(records: {:window, [aged]})
 
@@ -466,7 +529,7 @@ defmodule Jido.Connect.Google.Meet.TranscriptPollerTest do
       assert {:ok, %{signals: [], checkpoint: checkpoint}} = poll(checkpoint(@before_recorded))
 
       assert JSON.decode!(checkpoint) ==
-               JSON.decode!(checkpoint(time!(prepared["endTime"]), [prepared["name"]]))
+               JSON.decode!(checkpoint(time!(prepared["endTime"]), [settled_entry(prepared)]))
     end
   end
 
@@ -479,7 +542,8 @@ defmodule Jido.Connect.Google.Meet.TranscriptPollerTest do
             JSON.encode!(Map.put(valid, "version", 2)),
             JSON.encode!(Map.delete(valid, "pending")),
             JSON.encode!(Map.put(valid, "watermark", "yesterday")),
-            JSON.encode!(Map.put(valid, "settled_at_watermark", [1])),
+            JSON.encode!(Map.put(valid, "settled", [1])),
+            JSON.encode!(Map.put(valid, "settled", [settled_entry("abc", "yesterday")])),
             JSON.encode!(Map.put(valid, "pending", [%{"name" => "conferenceRecords/abc"}])),
             JSON.encode!(Map.put(valid, "pending", [pending_entry("abc", "yesterday")])),
             valid
@@ -553,6 +617,15 @@ defmodule Jido.Connect.Google.Meet.TranscriptPollerTest do
     end)
   end
 
+  # The recorded transcript of the prepared record, moved under `record`.
+  defp transcripts_for(record) do
+    [prepared, _earlier] = recorded_records()
+
+    update_transcripts(fixture("transcripts"), fn transcript ->
+      Map.update!(transcript, "name", &String.replace(&1, prepared["name"], record["name"]))
+    end)
+  end
+
   defp combined(body, other) do
     Map.update!(body, "transcripts", &(&1 ++ other["transcripts"]))
   end
@@ -576,6 +649,10 @@ defmodule Jido.Connect.Google.Meet.TranscriptPollerTest do
 
   defp pending_entry(name, end_time), do: pending_entry(name, DateTime.to_iso8601(end_time))
 
+  defp settled_entry(record), do: settled_entry(record["name"], record["endTime"])
+
+  defp settled_entry(name, end_time), do: %{"name" => name, "end_time" => end_time}
+
   defp renamed(resource, n), do: Map.update!(resource, "name", &"#{&1}-#{n}")
 
   defp update_transcripts(body, fun), do: Map.update!(body, "transcripts", &Enum.map(&1, fun))
@@ -594,7 +671,7 @@ defmodule Jido.Connect.Google.Meet.TranscriptPollerTest do
     JSON.encode!(%{
       "version" => 1,
       "watermark" => DateTime.to_iso8601(watermark),
-      "settled_at_watermark" => settled,
+      "settled" => settled,
       "pending" => pending
     })
   end
