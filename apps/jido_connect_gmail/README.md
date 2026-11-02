@@ -110,6 +110,11 @@ The connector prefers narrow Gmail scopes:
 - `gmail.labels` for label definition create, update, and delete operations.
 - `gmail.readonly` or `gmail.modify` can satisfy metadata-read tools when a
   host already has broader grants.
+- `google.gmail.messages.list` and `google.gmail.threads.list` with a
+  non-blank `query` need `gmail.readonly`, or an already granted
+  `gmail.modify` or `https://mail.google.com/`, because Gmail rejects the `q`
+  parameter under `gmail.metadata`. Without a query, both stay in
+  `gmail.metadata`.
 - `gmail.readonly` or `gmail.modify` for label get and attachment body retrieval.
 - `gmail.send` for direct send, with `gmail.compose` or `gmail.modify` accepted
   when already granted.
