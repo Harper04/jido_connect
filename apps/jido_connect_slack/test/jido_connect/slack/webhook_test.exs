@@ -234,7 +234,7 @@ defmodule Jido.Connect.Slack.WebhookTest do
                    %{
                      team_id: "T0CEE692400",
                      user: "U0CDPFT1RDJ",
-                     text: signal.text,
+                     text: payload!(name)["event"]["text"],
                      event_ts: ids.ts
                    },
                    ids
@@ -289,6 +289,45 @@ defmodule Jido.Connect.Slack.WebhookTest do
                Webhook.normalize_signal("message.im", source_only)
     end
 
+    test "multiline text arrives unchanged in messages, mentions and shares" do
+      # Derived: captured deliveries whose text has line breaks and an empty
+      # line, signed again with the replay secret.
+      multiline = fn text -> String.replace(text, ". ", ".\n") <> "\n\nSecond paragraph." end
+
+      rows = [
+        {"message_public", "message.channels"},
+        {"message_im", "message.im"},
+        {"message_thread_reply", "message.thread_reply"},
+        {"app_mention", "app_mention"}
+      ]
+
+      for {name, event} <- rows do
+        text = multiline.(payload!(name)["event"]["text"])
+        assert byte_size(text) > 512 and text =~ ".\nThis message" and text =~ "\n\n"
+
+        capture = derive(name, &put_in(&1, ["event", "text"], text))
+
+        assert {:ok, %WebhookDelivery{normalized_signal: %{text: ^text}}} = replay(capture),
+               name
+
+        assert {:ok, %{text: ^text}} =
+                 Webhook.normalize_signal(event, Jason.decode!(capture["body"]))
+      end
+
+      [%{"text" => shared_text}] = payload!("message_im_shared_public")["event"]["attachments"]
+      text = multiline.(shared_text)
+
+      capture =
+        derive("message_im_shared_public", fn payload ->
+          update_in(payload, ["event", "attachments"], fn [shared] ->
+            [Map.put(shared, "text", text)]
+          end)
+        end)
+
+      assert {:ok, %WebhookDelivery{normalized_signal: %{shared_messages: [%{text: ^text}]}}} =
+               replay(capture)
+    end
+
     test "a reply normalizes as a thread reply, a parent or an unthreaded message does not" do
       payload = payload!("message_thread_reply")
 
@@ -303,6 +342,7 @@ defmodule Jido.Connect.Slack.WebhookTest do
               } = signal} = Webhook.normalize_signal("message.thread_reply", payload)
 
       assert_capture_text(text, "thread-reply", 705)
+      assert text == payload["event"]["text"]
       refute Map.has_key?(signal, :subtype)
       assert {:ok, ^signal} = Webhook.normalize_signal("message.channels", payload)
 
@@ -365,7 +405,7 @@ defmodule Jido.Connect.Slack.WebhookTest do
                channel: "C0CEEB41FU0",
                channel_type: "channel",
                user: "U0CDPFT1RDJ",
-               text: signal.text,
+               text: payload["event"]["text"],
                ts: "1793627849.603099",
                thread_ts: "1793627736.679599",
                event_ts: "1793627849.603099",
@@ -393,6 +433,7 @@ defmodule Jido.Connect.Slack.WebhookTest do
         assert {:ok, ^signal} = Webhook.normalize_signal("message.im", payload!(name))
         assert %{shared_messages: [%{text: text} = shared]} = signal
         assert_capture_text(text, label, bytes)
+        assert [%{"text" => ^text}] = payload!(name)["event"]["attachments"]
 
         # The sanitizer replaced the workspace URL in `from_url`.
         assert shared == %{
@@ -480,7 +521,7 @@ defmodule Jido.Connect.Slack.WebhookTest do
                event_id: "Ev0CE6SUA42V",
                channel: "C0CEEB41FU0",
                user: "U0CDPFT1RDJ",
-               text: mention.text,
+               text: payload!("app_mention")["event"]["text"],
                ts: "1793628489.450879"
              }
 
@@ -497,6 +538,7 @@ defmodule Jido.Connect.Slack.WebhookTest do
                text: "<@U0CDHUEBVEJ> " <> ^text
              } = message
 
+      assert message.text == payload!("message_mention")["event"]["text"]
       refute Map.has_key?(message, :subtype)
 
       assert {:error, %Error.ProviderError{reason: :unsupported_event}} =
