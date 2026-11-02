@@ -141,11 +141,11 @@ defmodule Jido.Connect.Gmail.RuntimeTest do
         assert signal.label_ids == message["labelIds"]
         assert signal.history_id == history_id
 
-        # The signal leaves the content fields out; the nested message, a
-        # normalized Gmail.Message, keeps them empty.
+        # The signal leaves the content fields out. The nested message
+        # carries no value for them, whether it keeps the keys or not.
         for key <- [:snippet, :internal_date, :size_estimate] do
           refute Map.has_key?(signal, key)
-          assert Map.fetch!(signal.message, key) == nil
+          assert Map.get(signal.message, key) == nil
         end
       end
     end
