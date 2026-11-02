@@ -226,6 +226,7 @@ defmodule Jido.Connect.Tempo.Client.WorklogsTest do
       for {change, field} <- [
             {&Map.delete(&1, "tempoWorklogId"), "tempoWorklogId"},
             {&Map.put(&1, "tempoWorklogId", "79166"), "tempoWorklogId"},
+            {&Map.put(&1, "tempoWorklogId", 0), "tempoWorklogId"},
             {&Map.delete(&1, "author"), "author.accountId"},
             {&put_in(&1, ["author", "accountId"], ""), "author.accountId"},
             {&Map.put(&1, "author", "account-1"), "author.accountId"},
@@ -234,8 +235,10 @@ defmodule Jido.Connect.Tempo.Client.WorklogsTest do
             {&Map.delete(&1, "timeSpentSeconds"), "timeSpentSeconds"},
             {&Map.put(&1, "timeSpentSeconds", 1801.5), "timeSpentSeconds"},
             {&Map.put(&1, "timeSpentSeconds", "1801"), "timeSpentSeconds"},
+            {&Map.put(&1, "timeSpentSeconds", -1), "timeSpentSeconds"},
             {&Map.delete(&1, "issue"), "issue.id"},
             {&put_in(&1, ["issue", "id"], "46097"), "issue.id"},
+            {&put_in(&1, ["issue", "id"], 0), "issue.id"},
             {fn _worklog -> "79166" end, "worklog"}
           ] do
         expect_pages(@pages, last: change)
@@ -256,7 +259,12 @@ defmodule Jido.Connect.Tempo.Client.WorklogsTest do
             {&Map.put(&1, "billableSeconds", -1), "billableSeconds"},
             {&Map.put(&1, "startTime", "25:00:00"), "startTime"},
             {&Map.put(&1, "startDateTimeUtc", "yesterday"), "startDateTimeUtc"},
+            {&Map.put(&1, "createdAt", "yesterday"), "createdAt"},
             {&put_in(&1, ["attributes", "values"], [%{"value" => "x"}]), "attributes.values"},
+            {&put_in(&1, ["attributes", "values"], [%{"key" => "", "value" => "x"}]),
+             "attributes.values"},
+            {&put_in(&1, ["attributes", "values"], [%{"key" => "_JclHours_", "value" => 5}]),
+             "attributes.values"},
             {&put_in(&1, ["attributes", "values"], %{}), "attributes.values"}
           ] do
         expect_pages(@pages, last: change)
