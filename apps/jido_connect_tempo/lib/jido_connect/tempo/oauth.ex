@@ -85,8 +85,15 @@ defmodule Jido.Connect.Tempo.OAuth do
   @doc """
   Exchanges a refresh token for a new access and refresh token.
 
-  Requires `:client_id`, `:client_secret` and `:redirect_uri`. The refresh
-  token passed in is invalid afterwards, whatever the result.
+  Requires `:client_id`, `:client_secret` and `:redirect_uri`.
+
+  Treat the refresh token passed in as lost once Tempo may have seen the
+  request: after any response from Tempo, and after an error with
+  `delivery: :sent_outcome_unknown`, such as a timeout. A retry with that
+  token cannot be relied on then, whatever `Jido.Connect.Error.retry_guidance/1`
+  says; the host stores the new tokens or asks the user to authorize again.
+  Only an error with `delivery: :not_sent`, such as a refused connection,
+  leaves the token valid.
   """
   @spec refresh(String.t(), keyword()) :: {:ok, token()} | {:error, Error.ProviderError.t()}
   def refresh(refresh_token, opts) when is_binary(refresh_token) and is_list(opts) do

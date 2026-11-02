@@ -150,7 +150,11 @@ labels it recorded before. A refresh response without a new refresh token
 is an error; a missing or malformed `expires_in` or `scope` does not discard
 the new tokens, since Tempo has already rotated them. A failed or lost
 refresh can leave the connection without a valid refresh token; the user
-must then authorize again.
+must then authorize again. Treat the old refresh token as lost after any
+response from Tempo and after an error with
+`delivery: :sent_outcome_unknown`, such as a timeout, whatever the error's
+retry guidance says. Only an error with `delivery: :not_sent`, such as a
+refused connection, leaves it valid.
 
 Rejections, such as Tempo's 403 for an invalid code or refresh token, are
 `Jido.Connect.Error.ProviderError`s without the client secret, the code or
