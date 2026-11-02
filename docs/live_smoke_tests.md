@@ -26,7 +26,7 @@ The env files hold plain `NAME=value` lines, so `set -a` exports them to
 `GOOGLE_ACCESS_TOKEN` and `GOOGLE_GMAIL_METADATA_ACCESS_TOKEN` from the refresh
 tokens before each run.
 
-The Slack, Jira and Confluence packages declare `plug` as a test-only
+The Slack, Jira, Confluence and Tempo packages declare `plug` as a test-only
 dependency, which conflicts with a transitive dependency when Mix runs inside
 the app directory. Run them from the umbrella root instead:
 
@@ -37,9 +37,9 @@ MIX_ENV=test mix do --app jido_connect_slack test --only live_smoke
 The packages that load the harness are `jido_connect_gmail`,
 `jido_connect_google_calendar`, `jido_connect_google_meet`,
 `jido_connect_google_drive`, `jido_connect_google_docs`, `jido_connect_slack`,
-`jido_connect_jira` and `jido_connect_confluence`. Each has a
-`live_smoke_test.exs` with one read-only self-test. New packages adopt the same
-`test_helper.exs` lines when they are created:
+`jido_connect_jira`, `jido_connect_confluence` and `jido_connect_tempo`. Each
+has a `live_smoke_test.exs` with at least one read-only test. New packages
+adopt the same `test_helper.exs` lines when they are created:
 
 ```elixir
 ExUnit.start(exclude: [:live_smoke])
