@@ -46,6 +46,34 @@ defmodule Jido.Connect.Slack.Client.Response do
 
   def handle_thread_replies_response(response, _params), do: handle_error_response(response)
 
+  def handle_conversation_history_response(
+        {:ok, %{status: status, body: %{"ok" => true} = body}},
+        params
+      )
+      when status in 200..299 do
+    with messages when is_list(messages) <- Map.get(body, "messages"),
+         {:ok, messages} <- normalize_history_messages(messages, params),
+         next_cursor when is_binary(next_cursor) <-
+           get_in(body, ["response_metadata", "next_cursor"]) || "",
+         has_more when is_boolean(has_more) <- Map.get(body, "has_more", false),
+         {:ok, page} <-
+           put_is_limited(
+             %{messages: messages, next_cursor: next_cursor, has_more: has_more},
+             body
+           ) do
+      {:ok, page}
+    else
+      _other ->
+        Transport.invalid_success_response(
+          "Slack conversation history response was invalid",
+          body
+        )
+    end
+  end
+
+  def handle_conversation_history_response(response, _params),
+    do: handle_error_response(response)
+
   def handle_search_messages_response({:ok, %{status: status, body: %{"ok" => true} = body}})
       when status in 200..299 do
     with messages when is_map(messages) <- Map.get(body, "messages", %{}),
@@ -694,4 +722,31 @@ defmodule Jido.Connect.Slack.Client.Response do
 
   defp retry_after(response),
     do: ProviderResponse.from_result!(:slack, {:ok, response}).retry_after
+
+  defp normalize_history_messages(messages, params) do
+    Enum.reduce_while(messages, {:ok, []}, fn message, {:ok, normalized} ->
+      case normalize_history_message(message, params) do
+        {:ok, message} -> {:cont, {:ok, [message | normalized]}}
+        {:error, _reason} = error -> {:halt, error}
+      end
+    end)
+    |> case do
+      {:ok, normalized} -> {:ok, Enum.reverse(normalized)}
+      error -> error
+    end
+  end
+
+  # Slack sends `is_limited` only for some workspaces; keep it only then.
+  defp put_is_limited(page, body) do
+    case Map.fetch(body, "is_limited") do
+      :error ->
+        {:ok, page}
+
+      {:ok, is_limited} when is_boolean(is_limited) ->
+        {:ok, Map.put(page, :is_limited, is_limited)}
+
+      {:ok, _other} ->
+        {:error, :invalid_is_limited}
+    end
+  end
 end
