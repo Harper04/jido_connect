@@ -559,7 +559,13 @@ defmodule Jido.Connect.Google.Drive.ClientTest do
     refute Map.has_key?(content, :content_base64)
   end
 
-  test "downloads binary files" do
+  test "downloads a recording's MP4 bytes as base64 with their byte count" do
+    # The recorded download of the test meeting's MP4 keeps its headers and
+    # byte count but not its bytes. The body here is the head of an MP4 file,
+    # an `ftyp` box whose size field begins with NUL bytes.
+    recorded = recorded_download!("file_download_recording")
+    body = <<0, 0, 0, 24, "ftyp", "isom", 0, 0, 2, 0, "isom", "mp41">>
+
     Req.Test.stub(__MODULE__, fn conn ->
       assert conn.method == "GET"
       assert conn.request_path == "/v3/files/file123"
@@ -567,19 +573,61 @@ defmodule Jido.Connect.Google.Drive.ClientTest do
       assert conn.query_params["supportsAllDrives"] == "true"
       assert Plug.Conn.get_req_header(conn, "accept") == ["*/*"]
 
-      conn
-      |> Plug.Conn.put_resp_content_type("application/pdf")
-      |> Plug.Conn.resp(200, <<0, 1, 2>>)
+      replay_download(conn, recorded, body)
     end)
 
     assert {:ok, content} =
              Client.download_file(%{file_id: "file123", supports_all_drives: true}, "token")
 
     assert content.file_id == "file123"
-    assert content.mime_type == "application/pdf"
-    assert content.content_base64 == "AAEC"
+    assert content.mime_type == "video/mp4"
+    assert Base.decode64!(content.content_base64) == body
+    assert content.size == byte_size(body)
     assert content.encoding == "base64"
     assert content.binary == true
+    refute Map.has_key?(content, :content)
+  end
+
+  test "downloads a UTF-8 text file unchanged with its byte count" do
+    recorded = recorded_download!("file_download")
+    body = recorded["body"]
+
+    Req.Test.stub(__MODULE__, fn conn ->
+      assert conn.request_path == "/v3/files/file123"
+      assert conn.query_params == %{"alt" => "media"}
+
+      replay_download(conn, recorded, body)
+    end)
+
+    assert {:ok, content} = Client.download_file(%{file_id: "file123"}, "token")
+
+    assert content.mime_type == "text/plain"
+    assert content.content == body
+    assert content.size == byte_size(body)
+    assert content.encoding == "utf-8"
+    assert content.binary == false
+    refute Map.has_key?(content, :content_base64)
+  end
+
+  # `LiveSmoke.fixture!/2` returns only the body of a recording, and the body
+  # of a recorded binary download is null.
+  defp recorded_download!(name) do
+    "../../../fixtures/google_drive/recorded/#{name}.json"
+    |> Path.expand(__DIR__)
+    |> Elixir.File.read!()
+    |> Jason.decode!()
+  end
+
+  # Answers with the recorded status and headers around `body`, leaving out
+  # the length and checksum headers of the recorded bytes.
+  defp replay_download(conn, recorded, body) do
+    headers =
+      for {name, values} <- Map.drop(recorded["headers"], ["content-length", "x-goog-hash"]),
+          do: {name, Enum.join(values, ", ")}
+
+    conn
+    |> Plug.Conn.merge_resp_headers(headers)
+    |> Plug.Conn.resp(recorded["status"], body)
   end
 
   test "deletes files" do
