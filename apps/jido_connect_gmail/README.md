@@ -173,19 +173,22 @@ signal. Like the other metadata reads, the trigger needs `gmail.metadata`, or
 the first of `gmail.modify`, `gmail.readonly` and `https://mail.google.com/`
 that the connection holds.
 
-Gmail reports the usual mailbox actions as distinct changes, as the live test
-account showed:
+Gmail reports the usual mailbox actions as distinct changes. The live tests
+recorded the following, unless noted:
 
 - Archive removes `INBOX`: one `label_removed` signal with
   `changed_label_ids: ["INBOX"]`.
 - Moving a message to Trash adds `TRASH`: a `label_added` signal with
-  `changed_label_ids: ["TRASH"]`. For a message in the inbox Gmail writes a
-  second record that removes `INBOX`, so a `label_removed` signal with
-  `["INBOX"]` follows.
+  `changed_label_ids: ["TRASH"]`. Trash also takes a message out of the
+  inbox: Gmail's answer to trashing an inbox message no longer lists `INBOX`.
+  Not recorded: on 2026-11-02 Gmail wrote that removal as a second history
+  record, so a `label_removed` signal with `["INBOX"]` followed.
 - Restoring from Trash removes `TRASH`: a `label_removed` signal with
-  `["TRASH"]`. Gmail does not add `INBOX` back.
+  `["TRASH"]`. Gmail does not add `INBOX` back; its answer to restoring a
+  message that Trash took out of the inbox lists no `INBOX`.
 - Permanent delete, which bypasses Trash, is a `message_deleted` signal with
-  empty `changed_label_ids` and `label_ids`.
+  empty `changed_label_ids`. `label_ids` holds the labels that Gmail reports
+  with the deletion; the recorded message had none left, so it was empty.
 
 An expired or unknown history ID fails the poll with reason
 `:checkpoint_expired`, and a repeated `nextPageToken` with

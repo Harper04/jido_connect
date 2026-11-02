@@ -117,18 +117,9 @@ defmodule Jido.Connect.Gmail.Handlers.Triggers.HistoryPoller do
   defp map_expired(result, _checkpoint), do: result
 
   defp dedupe(signals, keys) do
-    {_seen, unique} =
-      Enum.reduce(signals, {MapSet.new(), []}, fn signal, {seen, acc} ->
-        key = Enum.map(keys, &Map.get(signal, &1))
-
-        cond do
-          is_nil(Map.get(signal, :message_id)) -> {seen, acc}
-          MapSet.member?(seen, key) -> {seen, acc}
-          true -> {MapSet.put(seen, key), [signal | acc]}
-        end
-      end)
-
-    Enum.reverse(unique)
+    signals
+    |> Enum.reject(&is_nil(Map.get(&1, :message_id)))
+    |> Enum.uniq_by(fn signal -> Enum.map(keys, &Map.get(signal, &1)) end)
   end
 
   defp client(%{gmail_client: client}) when is_atom(client), do: client

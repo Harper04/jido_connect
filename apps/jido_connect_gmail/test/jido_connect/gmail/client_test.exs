@@ -7,25 +7,38 @@ defmodule Jido.Connect.Gmail.ClientTest do
 
   defmodule RecordedBodyAdapter do
     # Req adapter that reports the method, path and body of each request to
-    # the calling test process and answers with the recorded single-part
-    # message, or the recorded conversation for a thread path.
+    # the calling test process and answers with the recording of the same
+    # method and path: the live trash and untrash answers for the disposable
+    # message and its one-message thread.
 
-    alias Jido.Connect.TestSupport.LiveSmoke
+    @recordings ~w(message_trash message_untrash thread_trash thread_untrash)
 
     def run(request) do
       send(self(), {:gmail_request, request.method, request.url.path, request.body})
+      method = request.method |> Atom.to_string() |> String.upcase()
 
-      fixture =
-        if String.contains?(request.url.path, "/threads/"),
-          do: "thread_full_conversation",
-          else: "message_full_single_part"
+      %{"status" => status, "headers" => headers, "body" => body} =
+        Enum.find_value(@recordings, fn name ->
+          recording = recording!(name)
+
+          if recording["request"] == %{"method" => method, "path" => request.url.path},
+            do: recording
+        end) || raise "no recording of #{method} #{request.url.path}"
 
       {request,
        Req.Response.new(
-         status: 200,
-         headers: %{"content-type" => ["application/json; charset=UTF-8"]},
-         body: Jason.encode!(LiveSmoke.fixture!(:gmail, fixture))
+         status: status,
+         headers: Map.take(headers, ["content-type"]),
+         body: Jason.encode!(body)
        )}
+    end
+
+    # A whole recording: the request, the status, the headers and the body.
+    def recording!(name) do
+      ["test", "fixtures", "gmail", "recorded", "#{name}.json"]
+      |> Path.join()
+      |> File.read!()
+      |> Jason.decode!()
     end
   end
 
@@ -532,24 +545,29 @@ defmodule Jido.Connect.Gmail.ClientTest do
     # Mint sends Content-Length only with a request body, and Google answers a
     # POST without one with 411 Length Required, as the live change poll test
     # saw for google.gmail.message.trash. A plug cannot tell a missing body
-    # from an empty one, so RecordedBodyAdapter replaces the network.
+    # from an empty one, so RecordedBodyAdapter replaces the network and
+    # answers with the live recordings of the four calls.
     Application.put_env(:jido_connect_google, :google_req_options, adapter: RecordedBodyAdapter)
-    message = LiveSmoke.fixture!(:gmail, "message_full_single_part")
-    thread = LiveSmoke.fixture!(:gmail, "thread_full_conversation")
-    message_id = message["id"]
-    thread_id = thread["id"]
+    %{"body" => %{"id" => message_id}} = RecordedBodyAdapter.recording!("message_trash")
+    %{"body" => %{"id" => thread_id}} = RecordedBodyAdapter.recording!("thread_trash")
 
-    assert {:ok, %Message{message_id: ^message_id}} =
+    assert {:ok, %Message{message_id: ^message_id, thread_id: ^thread_id, label_ids: ["TRASH"]}} =
              Client.trash_message(%{message_id: message_id}, "token")
 
-    assert {:ok, %Message{message_id: ^message_id}} =
+    assert {:ok, %Message{message_id: ^message_id, thread_id: ^thread_id, label_ids: []}} =
              Client.untrash_message(%{message_id: message_id}, "token")
 
-    assert {:ok, %Thread{thread_id: ^thread_id}} =
-             Client.trash_thread(%{thread_id: thread_id}, "token")
+    assert {:ok,
+            %Thread{
+              thread_id: ^thread_id,
+              messages: [%Message{message_id: ^message_id, label_ids: ["TRASH"]}]
+            }} = Client.trash_thread(%{thread_id: thread_id}, "token")
 
-    assert {:ok, %Thread{thread_id: ^thread_id}} =
-             Client.untrash_thread(%{thread_id: thread_id}, "token")
+    assert {:ok,
+            %Thread{
+              thread_id: ^thread_id,
+              messages: [%Message{message_id: ^message_id, label_ids: []}]
+            }} = Client.untrash_thread(%{thread_id: thread_id}, "token")
 
     for path <- [
           "/gmail/v1/users/me/messages/#{message_id}/trash",

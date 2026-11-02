@@ -640,9 +640,9 @@ defmodule Jido.Connect.Gmail.LiveSmokeTest do
     refute "TRASH" in labels
     archived = Enum.sort(labels -- ["INBOX"])
 
-    # Archive removes INBOX, Trash adds TRASH, restore removes TRASH and does
-    # not bring back INBOX, and permanent delete reports the message without
-    # labels. Each step is one change of the message.
+    # Each step is one change of the message: archive removes INBOX, Trash
+    # adds TRASH, restore removes TRASH and leaves the labels from before
+    # Trash, and permanent delete reports no changed and no remaining labels.
     steps = [
       {"google.gmail.message.labels.apply",
        %{message_id: message_id, remove_label_ids: ["INBOX"]},
@@ -675,6 +675,76 @@ defmodule Jido.Connect.Gmail.LiveSmokeTest do
 
     assert changes(signals, message_id) == Enum.map(steps, &elem(&1, 2))
     assert String.to_integer(checkpoint) >= String.to_integer(final)
+  end
+
+  # The trash and untrash calls for a message and for a thread, committed
+  # through the write actions. The disposable message is a one-message thread
+  # in the inbox; it is read before the first recording starts, so each
+  # recording holds only the answer to its write. Trash takes the message out
+  # of the inbox and restore does not put it back, so the thread steps run on
+  # an archived message and the message ends restored from Trash but archived.
+  @tag env!(["GOOGLE_ACCESS_TOKEN", "GOOGLE_GMAIL_DISPOSABLE_MESSAGE_ID"])
+  @tag write!(:google)
+  test "trash and untrash answer with the disposable message and its one-message thread",
+       %{env: env} do
+    grant = write_grant(env["GOOGLE_ACCESS_TOKEN"])
+    message_id = env["GOOGLE_GMAIL_DISPOSABLE_MESSAGE_ID"]
+
+    assert {:ok, %{message: %{thread_id: thread_id, label_ids: labels}}} =
+             invoke(grant, "google.gmail.message.get", %{message_id: message_id})
+
+    assert "INBOX" in labels
+    refute "TRASH" in labels
+
+    assert {:ok, %{thread: %{thread_id: ^thread_id, messages: [%{message_id: ^message_id}]}}} =
+             invoke(grant, "google.gmail.thread.get", %{thread_id: thread_id})
+
+    LiveSmoke.record(@req_options, :gmail, "message_trash")
+
+    assert {:ok, %{message: %{message_id: ^message_id, label_ids: trashed}}} =
+             commit(grant, "google.gmail.message.trash", %{message_id: message_id})
+
+    assert "TRASH" in trashed
+    refute "INBOX" in trashed
+
+    LiveSmoke.record(@req_options, :gmail, "message_untrash")
+
+    assert {:ok, %{message: %{message_id: ^message_id, label_ids: restored}}} =
+             commit(grant, "google.gmail.message.untrash", %{message_id: message_id})
+
+    refute "TRASH" in restored
+    refute "INBOX" in restored
+
+    LiveSmoke.record(@req_options, :gmail, "thread_trash")
+
+    assert {:ok,
+            %{
+              thread: %{
+                thread_id: ^thread_id,
+                messages: [%{message_id: ^message_id, label_ids: thread_trashed}]
+              }
+            }} = commit(grant, "google.gmail.thread.trash", %{thread_id: thread_id})
+
+    assert "TRASH" in thread_trashed
+
+    LiveSmoke.record(@req_options, :gmail, "thread_untrash")
+
+    assert {:ok,
+            %{
+              thread: %{
+                thread_id: ^thread_id,
+                messages: [%{message_id: ^message_id, label_ids: thread_restored}]
+              }
+            }} = commit(grant, "google.gmail.thread.untrash", %{thread_id: thread_id})
+
+    refute "TRASH" in thread_restored
+  end
+
+  defp invoke(%{context: context, lease: lease}, action_id, input) do
+    Connect.invoke(Gmail.integration(), action_id, input,
+      context: context,
+      credential_lease: lease
+    )
   end
 
   # Polls from `checkpoint` until a signal for `message_id` arrives and

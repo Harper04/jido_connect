@@ -612,6 +612,7 @@ defmodule Jido.Connect.GmailTest do
     defp history_response("repeated-page-token", _page_token), do: ok(hd(recorded_pages()))
 
     defp history_response("derived-records", nil), do: ok(derived_page())
+    defp history_response("derived-two-changes", nil), do: ok(two_changes_page())
 
     defp history_response(_checkpoint, page_token) do
       pages = recorded_pages()
@@ -658,6 +659,20 @@ defmodule Jido.Connect.GmailTest do
           %{delete | "messagesDeleted" => [deleted, other.(deleted)]}
         ],
         "historyId" => last["historyId"]
+      }
+    end
+
+    # Derived from the recorded run, where each record held one change. The
+    # archive record here also carries the recorded TRASH addition of the same
+    # message, so one record both adds and removes a label of one message.
+    defp two_changes_page do
+      [first, second | _rest] = recorded_pages()
+      %{"history" => [_messages_only, archive]} = first
+      %{"history" => [%{"labelsAdded" => trashed}, _added_only]} = second
+
+      %{
+        "history" => [Map.put(archive, "labelsAdded", trashed)],
+        "historyId" => first["historyId"]
       }
     end
 
@@ -1968,6 +1983,33 @@ defmodule Jido.Connect.GmailTest do
              {"label_added", trashed, other_id, other_thread_id, ["TRASH"]},
              {"message_deleted", deleted, message_id, thread_id, []},
              {"message_deleted", deleted, other_id, other_thread_id, []}
+           ]
+  end
+
+  test "message changed poll emits both label changes of one message in a derived record, the addition first" do
+    {context, lease} = context_and_lease(gmail_client: RecordedHistoryGmailClient)
+
+    [
+      %{
+        "history" => [
+          _only,
+          %{
+            "id" => archived,
+            "labelsRemoved" => [%{"message" => %{"id" => message_id, "threadId" => thread_id}}]
+          }
+        ]
+      }
+      | _rest
+    ] = RecordedHistoryGmailClient.recorded_pages()
+
+    assert {:ok, %{signals: signals}} = poll_changes(%{}, "derived-two-changes", context, lease)
+
+    assert Enum.map(
+             signals,
+             &{&1.change_type, &1.history_id, &1.message_id, &1.thread_id, &1.changed_label_ids}
+           ) == [
+             {"label_added", archived, message_id, thread_id, ["TRASH"]},
+             {"label_removed", archived, message_id, thread_id, ["INBOX"]}
            ]
   end
 
