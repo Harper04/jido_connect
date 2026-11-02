@@ -282,7 +282,9 @@ defmodule Jido.Connect.Jira.Client.Normalizer do
   # Private helpers
   # ---------------------------------------------------------------------------
 
-  defp normalize_status(nil), do: nil
+  # Each nested helper normalizes an object and passes `nil` or any other
+  # value through unchanged, so the struct rejects a value that is not an
+  # object instead of the helper raising.
 
   defp normalize_status(status) when is_map(status) do
     case status(status) do
@@ -291,7 +293,7 @@ defmodule Jido.Connect.Jira.Client.Normalizer do
     end
   end
 
-  defp normalize_user(nil), do: nil
+  defp normalize_status(other), do: other
 
   defp normalize_user(user) when is_map(user) do
     case user(user) do
@@ -300,7 +302,7 @@ defmodule Jido.Connect.Jira.Client.Normalizer do
     end
   end
 
-  defp normalize_project_brief(nil), do: nil
+  defp normalize_user(other), do: other
 
   defp normalize_project_brief(project) when is_map(project) do
     %{
@@ -311,7 +313,7 @@ defmodule Jido.Connect.Jira.Client.Normalizer do
     |> Data.compact()
   end
 
-  defp normalize_issue_type(nil), do: nil
+  defp normalize_project_brief(other), do: other
 
   defp normalize_issue_type(type) when is_map(type) do
     %{
@@ -322,7 +324,7 @@ defmodule Jido.Connect.Jira.Client.Normalizer do
     |> Data.compact()
   end
 
-  defp normalize_priority(nil), do: nil
+  defp normalize_issue_type(other), do: other
 
   defp normalize_priority(priority) when is_map(priority) do
     %{
@@ -331,4 +333,6 @@ defmodule Jido.Connect.Jira.Client.Normalizer do
     }
     |> Data.compact()
   end
+
+  defp normalize_priority(other), do: other
 end

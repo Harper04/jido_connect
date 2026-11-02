@@ -226,17 +226,25 @@ defmodule Jido.Connect.Jira.Client.IssueSearchTest do
     # Each page is the recorded second page with one part broken.
     [first_issue | other_issues] = page(5)["issues"]
 
-    cases = [
-      {Map.delete(page(5), "issues"), "issues"},
-      {Map.put(page(5), "issues", %{}), "issues"},
-      {Map.put(page(5), "issues", [Map.delete(first_issue, "key") | other_issues]), "issues"},
-      {Map.put(page(5), "issues", ["JCL-3" | other_issues]), "issues"},
-      {Map.delete(page(5), "isLast"), "isLast"},
-      {Map.put(page(5), "isLast", "false"), "isLast"},
-      {Map.delete(page(5), "nextPageToken"), "nextPageToken"},
-      {Map.put(page(5), "nextPageToken", ""), "nextPageToken"},
-      {Map.put(page(5), "nextPageToken", 42), "nextPageToken"}
-    ]
+    # A nested issue field that is not an object.
+    nested =
+      for key <- ~w(status assignee reporter project issuetype priority) do
+        issue = put_in(first_issue, ["fields", key], "JCL")
+        {Map.put(page(5), "issues", [issue | other_issues]), "issues"}
+      end
+
+    cases =
+      [
+        {Map.delete(page(5), "issues"), "issues"},
+        {Map.put(page(5), "issues", %{}), "issues"},
+        {Map.put(page(5), "issues", [Map.delete(first_issue, "key") | other_issues]), "issues"},
+        {Map.put(page(5), "issues", ["JCL-3" | other_issues]), "issues"},
+        {Map.delete(page(5), "isLast"), "isLast"},
+        {Map.put(page(5), "isLast", "false"), "isLast"},
+        {Map.delete(page(5), "nextPageToken"), "nextPageToken"},
+        {Map.put(page(5), "nextPageToken", ""), "nextPageToken"},
+        {Map.put(page(5), "nextPageToken", 42), "nextPageToken"}
+      ] ++ nested
 
     for {body, field} <- cases do
       expect_page(body)
