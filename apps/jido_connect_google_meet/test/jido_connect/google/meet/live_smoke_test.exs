@@ -5,6 +5,12 @@ defmodule Jido.Connect.Google.Meet.LiveSmokeTest do
       mix test --only live_smoke
 
   See `docs/live_smoke_tests.md` for the variables and the recording mode.
+
+  The transcript entry check needs `GOOGLE_MEET_TRANSCRIPT` to hold between two
+  and 1,000 entries. It lists all of them at 100 per page as the reference,
+  then walks at most the first 30 entries one per page; a longer transcript is
+  compared on those 30 only. At about 1.5 seconds per request the check stays
+  well within its three-minute timeout.
   """
 
   use ExUnit.Case, async: false
@@ -12,6 +18,11 @@ defmodule Jido.Connect.Google.Meet.LiveSmokeTest do
 
   alias Jido.Connect.Error.ProviderError
   alias Jido.Connect.Google.Meet.Client
+
+  # Google returns at most 100 transcript entries per page.
+  @reference_page_size 100
+  @reference_page_limit 10
+  @single_entry_page_limit 30
 
   @tag env!(["GOOGLE_ACCESS_TOKEN"])
   test "lists one page of conference records", %{env: env} do
@@ -28,18 +39,19 @@ defmodule Jido.Connect.Google.Meet.LiveSmokeTest do
   end
 
   @tag env!(["GOOGLE_ACCESS_TOKEN", "GOOGLE_MEET_CONFERENCE_RECORD", "GOOGLE_MEET_TRANSCRIPT"])
+  @tag timeout: :timer.minutes(3)
   test "pages through transcript entries in meeting order", %{env: env} do
     token = env["GOOGLE_ACCESS_TOKEN"]
     transcript = env["GOOGLE_MEET_TRANSCRIPT"]
 
-    # The whole transcript in one request is the reference for the paged walk.
-    assert {:ok, %{transcript_entries: reference} = single_page} =
-             Client.list_transcript_entries(
-               %{transcript_name: transcript, page_size: 100},
-               token
-             )
+    # All entries at the largest page size are the reference for the walk below.
+    {reference_pages, reference_walk} =
+      entry_pages(transcript, token, @reference_page_size, @reference_page_limit)
 
-    refute Map.has_key?(single_page, :next_page_token)
+    assert reference_walk == :complete,
+           "the transcript has more than #{@reference_page_size * @reference_page_limit} entries"
+
+    reference = Enum.flat_map(reference_pages, & &1.transcript_entries)
 
     LiveSmoke.record(
       {:jido_connect_google, :google_req_options},
@@ -48,13 +60,24 @@ defmodule Jido.Connect.Google.Meet.LiveSmokeTest do
       fields: ["text"]
     )
 
-    pages = entry_pages(transcript, token)
+    {pages, walk} = entry_pages(transcript, token, 1, @single_entry_page_limit)
     entries = Enum.flat_map(pages, & &1.transcript_entries)
 
     assert length(pages) >= 2
     assert Enum.all?(pages, &(length(&1.transcript_entries) <= 1))
 
-    assert Enum.map(entries, &attribution/1) == Enum.map(reference, &attribution/1)
+    # A complete walk matches the whole reference; a truncated one its start.
+    expected =
+      case walk do
+        :complete ->
+          reference
+
+        :truncated ->
+          assert length(reference) > length(entries)
+          Enum.take(reference, length(entries))
+      end
+
+    assert Enum.map(entries, &attribution/1) == Enum.map(expected, &attribution/1)
     assert length(entries) >= 2
 
     names = Enum.map(entries, & &1.entry_name)
@@ -93,14 +116,24 @@ defmodule Jido.Connect.Google.Meet.LiveSmokeTest do
              )
   end
 
-  defp entry_pages(transcript, token, page_token \\ nil, pages \\ []) do
-    params = %{transcript_name: transcript, page_size: 1, page_token: page_token}
+  # Follows next_page_token for at most `limit` pages and tells whether the
+  # last page ended the listing.
+  defp entry_pages(transcript, token, page_size, limit, page_token \\ nil, pages \\ [])
+
+  defp entry_pages(_transcript, _token, _page_size, 0, _page_token, pages),
+    do: {Enum.reverse(pages), :truncated}
+
+  defp entry_pages(transcript, token, page_size, limit, page_token, pages) do
+    params = %{transcript_name: transcript, page_size: page_size, page_token: page_token}
     assert {:ok, page} = Client.list_transcript_entries(params, token)
     pages = [page | pages]
 
     case page do
-      %{next_page_token: next} when is_binary(next) -> entry_pages(transcript, token, next, pages)
-      _last -> Enum.reverse(pages)
+      %{next_page_token: next} when is_binary(next) ->
+        entry_pages(transcript, token, page_size, limit - 1, next, pages)
+
+      _last ->
+        {Enum.reverse(pages), :complete}
     end
   end
 
