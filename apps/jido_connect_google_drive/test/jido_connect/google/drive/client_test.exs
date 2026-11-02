@@ -768,6 +768,52 @@ defmodule Jido.Connect.Google.Drive.ClientTest do
     assert error.details.body_summary == %{type: :binary, bytes: byte_size(truncated)}
   end
 
+  # The recorded 404 with its content type replaced by text/plain or removed.
+  # The body is still Google's valid JSON error, so only the missing JSON
+  # media type keeps it raw.
+  for {label, content_type} <- [
+        {"a text/plain content type", "text/plain; charset=UTF-8"},
+        {"no content type", nil}
+      ] do
+    test "a failed download with #{label} keeps the raw body" do
+      recorded =
+        "file_download_not_found"
+        |> recorded_download!()
+        |> with_content_type(unquote(content_type))
+
+      body = Jason.encode!(recorded["body"])
+
+      Req.Test.stub(__MODULE__, fn conn ->
+        replay_download(conn, recorded, body)
+      end)
+
+      assert {:error, %Jido.Connect.Error.ProviderError{provider: :google, status: 404} = error} =
+               Client.download_file(%{file_id: "file123"}, "token")
+
+      assert error.details.body_summary == %{type: :binary, bytes: byte_size(body)}
+    end
+  end
+
+  # The recorded 404 with its content type replaced by a structured JSON
+  # media type, which ends in +json instead of being application/json.
+  test "a failed download with a +json content type keeps Google's error message" do
+    recorded =
+      "file_download_not_found"
+      |> recorded_download!()
+      |> with_content_type("application/problem+json")
+
+    %{"error" => %{"message" => message}} = recorded["body"]
+
+    Req.Test.stub(__MODULE__, fn conn ->
+      replay_download(conn, recorded, Jason.encode!(recorded["body"]))
+    end)
+
+    assert {:error, %Jido.Connect.Error.ProviderError{provider: :google, status: 404} = error} =
+             Client.download_file(%{file_id: "file123"}, "token")
+
+    assert error.details.message == message
+  end
+
   # The replay needs the recorded status and headers, which
   # `LiveSmoke.fixture!/2` leaves out, so this loads the whole recording.
   defp recorded_download!(name) do
@@ -789,6 +835,13 @@ defmodule Jido.Connect.Google.Drive.ClientTest do
     |> Plug.Conn.merge_resp_headers(headers)
     |> Plug.Conn.resp(recorded["status"], body)
   end
+
+  # Replaces the recorded content type; nil removes the header.
+  defp with_content_type(recorded, nil),
+    do: update_in(recorded["headers"], &Map.delete(&1, "content-type"))
+
+  defp with_content_type(recorded, content_type),
+    do: put_in(recorded["headers"]["content-type"], [content_type])
 
   test "deletes files" do
     Req.Test.stub(__MODULE__, fn conn ->
