@@ -231,6 +231,12 @@ defmodule Jido.Connect.Atlassian.ADFStrictTextTest do
       assert ADF.from_markdown(String.duplicate("a", 100_001)) == :error
       assert ADF.from_markdown(nil) == :error
     end
+
+    test "rejects unknown options and a max_length that is not a positive integer" do
+      for opts <- [[max_length: nil], [max_length: "5"], [max_length: 0], [max_nodes: 5]] do
+        assert_raise ArgumentError, fn -> ADF.from_markdown("12345", opts) end
+      end
+    end
   end
 
   defp doc(content), do: %{"version" => 1, "type" => "doc", "content" => content}

@@ -141,12 +141,19 @@ defmodule Jido.Connect.Atlassian.ADF do
             "expected :on_unsupported to be :fail or :degrade, got: #{inspect(opts[:on_unsupported])}"
     end
 
-    for key <- [:max_depth, :max_nodes], not (is_integer(opts[key]) and opts[key] > 0) do
-      raise ArgumentError,
-            "expected #{inspect(key)} to be a positive integer, got: #{inspect(opts[key])}"
-    end
-
+    Enum.each([:max_depth, :max_nodes], &positive_integer!(opts, &1))
     opts
+  end
+
+  defp positive_integer!(opts, key) do
+    case Keyword.fetch!(opts, key) do
+      value when is_integer(value) and value > 0 ->
+        value
+
+      value ->
+        raise ArgumentError,
+              "expected #{inspect(key)} to be a positive integer, got: #{inspect(value)}"
+    end
   end
 
   @doc """
@@ -162,12 +169,16 @@ defmodule Jido.Connect.Atlassian.ADF do
 
   Option `:max_length` bounds the input in characters; the default is
   #{@default_max_markdown_length}. Longer input and non-strings return `:error`.
+  Unknown options and a `:max_length` that is not a positive integer raise
+  `ArgumentError`.
   """
-  @spec from_markdown(term(), keyword()) :: {:ok, map()} | :error
-  def from_markdown(markdown, opts \\ []) do
-    Markdown.from_markdown(
-      markdown,
-      Keyword.get(opts, :max_length, @default_max_markdown_length)
-    )
+  @spec from_markdown(term(), [{:max_length, pos_integer()}]) :: {:ok, map()} | :error
+  def from_markdown(markdown, opts \\ []) when is_list(opts) do
+    max_length =
+      opts
+      |> Keyword.validate!(max_length: @default_max_markdown_length)
+      |> positive_integer!(:max_length)
+
+    Markdown.from_markdown(markdown, max_length)
   end
 end
