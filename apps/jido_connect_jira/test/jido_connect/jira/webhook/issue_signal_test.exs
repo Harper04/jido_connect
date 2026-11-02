@@ -125,6 +125,28 @@ defmodule Jido.Connect.Jira.Webhook.IssueSignalTest do
       refute Map.has_key?(without, :to)
       assert without == Map.delete(with_null, :to)
     end
+
+    test "an item with an empty source text and an item without one yield distinguishable signals" do
+      # Derived: the captured due-date clear once with `fromString` set to ""
+      # and once without `fromString`. No capture holds an empty value, but
+      # a compacting normalizer would drop "" and merge both cases.
+      empty =
+        update_in(payload!("duedate_cleared"), ["changelog", "items"], fn [item] ->
+          [%{item | "fromString" => ""}]
+        end)
+
+      left_out =
+        update_in(payload!("duedate_cleared"), ["changelog", "items"], fn [item] ->
+          [Map.delete(item, "fromString")]
+        end)
+
+      assert {:ok, %{changelog: %{items: [with_empty]}}} = Webhook.normalize_event(empty)
+      assert {:ok, %{changelog: %{items: [without]}}} = Webhook.normalize_event(left_out)
+
+      assert with_empty.from_string == ""
+      refute Map.has_key?(without, :from_string)
+      assert without == Map.delete(with_empty, :from_string)
+    end
   end
 
   describe "absent parts" do
