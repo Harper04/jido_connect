@@ -50,6 +50,12 @@ defmodule Jido.Connect.Google.Drive.LiveSmokeTest do
 
   @upload_limit 5_242_880
 
+  # The seed script prepares GOOGLE_DRIVE_STARRED_FILE_ID next to an unstarred
+  # twin of this name. No variable names the twin, so the selection test looks
+  # it up by name in the starred file's folder.
+  @unstarred_name "jcl-live unstarred.txt"
+  @selection_fields "id,name,parents,starred,modifiedTime"
+
   @tag env!(["GOOGLE_ACCESS_TOKEN"])
   test "reads the Drive about resource", %{env: env} do
     LiveSmoke.record(@req_options, :google_drive, "about")
@@ -100,6 +106,59 @@ defmodule Jido.Connect.Google.Drive.LiveSmokeTest do
     for page <- pages do
       assert is_boolean(page[:incomplete_search])
     end
+  end
+
+  @tag env!(["GOOGLE_ACCESS_TOKEN", "GOOGLE_DRIVE_STARRED_FILE_ID"])
+  test "reads the starred file and its unstarred twin with their flag and modification time",
+       %{env: env} do
+    token = env["GOOGLE_ACCESS_TOKEN"]
+    starred_id = env["GOOGLE_DRIVE_STARRED_FILE_ID"]
+
+    # The expected values come from plain Drive requests that bypass the
+    # package, so the comparison does not rest on the actions under test.
+    assert %{status: 200, body: starred} =
+             external(:get, "/files/#{starred_id}", token, params: [fields: @selection_fields])
+
+    assert starred["starred"] == true,
+           "the prepared file is no longer starred; run `seed.py drive` to restore it"
+
+    %{"name" => starred_name, "parents" => [folder_id]} = starred
+    in_folder = "'#{folder_id}' in parents and trashed = false"
+
+    assert %{status: 200, body: %{"files" => twins}} =
+             external(:get, "/files", token,
+               params: [
+                 q: "#{in_folder} and name = '#{@unstarred_name}'",
+                 fields: "files(#{@selection_fields})"
+               ]
+             )
+
+    assert [%{"id" => unstarred_id, "starred" => false} = unstarred] = twins
+
+    expected =
+      Map.new([starred, unstarred], fn file ->
+        {file["id"], %{starred?: file["starred"], modified_time: file["modifiedTime"]}}
+      end)
+
+    LiveSmoke.record(@req_options, :google_drive, "file_get_starred", @masked)
+
+    assert {:ok, %{file: starred_file}} =
+             invoke("google.drive.file.get", %{file_id: starred_id}, token)
+
+    LiveSmoke.record(@req_options, :google_drive, "file_get_unstarred", @masked)
+
+    assert {:ok, %{file: unstarred_file}} =
+             invoke("google.drive.file.get", %{file_id: unstarred_id}, token)
+
+    assert selection([starred_file, unstarred_file]) == expected
+
+    # One file per page, so the flag and the time are read from two pages.
+    LiveSmoke.record(@req_options, :google_drive, "files_list_starred", @masked)
+    query = "#{in_folder} and (name = '#{starred_name}' or name = '#{@unstarred_name}')"
+    pages = list_pages(%{query: query, page_size: 1}, token)
+
+    assert length(pages) >= 2
+    assert selection(Enum.flat_map(pages, & &1.files)) == expected
   end
 
   @tag env!(["GOOGLE_ACCESS_TOKEN", "GOOGLE_DRIVE_SHARED_LINK_URL", "GOOGLE_DRIVE_SHORTCUT_ID"])
@@ -379,6 +438,9 @@ defmodule Jido.Connect.Google.Drive.LiveSmokeTest do
   end
 
   defp file_ids(%{files: files}), do: Enum.map(files, & &1.file_id)
+
+  defp selection(files),
+    do: Map.new(files, &{&1.file_id, Map.take(&1, [:starred?, :modified_time])})
 
   defp file_signal(signals, file_id), do: Enum.find(signals, &(&1[:file_id] == file_id))
 
