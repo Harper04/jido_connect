@@ -499,6 +499,23 @@ defmodule Jido.Connect.Slack.Client.ConversationsTest do
                Client.get_conversation_history(params(), "token")
     end
 
+    test "a page without messages or with a wrongly typed flag or cursor fails" do
+      body = LiveSmoke.fixture!(:slack, "conversation_history_pages")
+
+      # A missing messages list must not read as an empty last page.
+      for broken <- [
+            Map.delete(body, "messages"),
+            Map.put(body, "has_more", "true"),
+            put_in(body, ["response_metadata", "next_cursor"], 42),
+            Map.put(body, "is_limited", "true")
+          ] do
+        Req.Test.expect(__MODULE__, &Req.Test.json(&1, broken))
+
+        assert {:error, %Error.ProviderError{provider: :slack, reason: :invalid_response}} =
+                 Client.get_conversation_history(params(), "token")
+      end
+    end
+
     test "human, bot and file messages keep content and source identity" do
       body = LiveSmoke.fixture!(:slack, "conversation_history_pages")
       Req.Test.expect(__MODULE__, &Req.Test.json(&1, body))
