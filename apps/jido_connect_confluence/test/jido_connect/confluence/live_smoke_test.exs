@@ -29,9 +29,10 @@ defmodule Jido.Connect.Confluence.LiveSmokeTest do
 
   # The page tests below compare each live read with the committed recording
   # of the same page: ID, version, a SHA-256 digest of the text and the
-  # unsupported-node outcome. Assertions leave the text out of page maps, so a
-  # failure prints no page content. Only the default read is recorded; the
-  # degrade read before it receives the same response.
+  # unsupported-node outcome. Assertions leave text and URL out of page maps,
+  # and a read expected to fail never prints the page it returned, so a
+  # failure prints neither page content nor the tenant host. Only the default
+  # read is recorded; the degrade read before it receives the same response.
 
   @tag env!(["CONFLUENCE_SITE", "CONFLUENCE_EMAIL", "CONFLUENCE_API_TOKEN", "CONFLUENCE_PAGE_ID"])
   test "confluence.page.get reads the plain page alike in both modes", %{env: env} do
@@ -47,12 +48,14 @@ defmodule Jido.Connect.Confluence.LiveSmokeTest do
     version = recorded["version"]["number"]
 
     assert expected.unsupported_nodes == []
-    assert %{id: ^page_id, version: ^version, truncated: false} = Map.delete(page, :text)
+    assert %{id: ^page_id, version: ^version, truncated: false} = fields(page)
     refute Map.has_key?(page, :unsupported_nodes)
     assert digest(page.text) == digest(expected.text)
     assert page.character_count == String.length(expected.text)
 
-    assert Map.drop(degraded, [:text, :unsupported_nodes]) == Map.delete(page, :text)
+    assert Map.delete(fields(degraded), :unsupported_nodes) == fields(page)
+    same_url? = degraded.url == page.url
+    assert same_url?
     assert digest(degraded.text) == digest(page.text)
     assert degraded.unsupported_nodes == []
 
@@ -73,19 +76,21 @@ defmodule Jido.Connect.Confluence.LiveSmokeTest do
 
     LiveSmoke.record(@req_options, :confluence, "rich_page_adf")
 
-    assert {:error,
-            %Error.ProviderError{
-              provider: :confluence,
-              reason: :invalid_response,
-              delivery: :response_received,
-              mutation?: false
-            } = error} = get_page(env, %{id: page_id})
+    error = read_error!(env, %{id: page_id})
+
+    assert %Error.ProviderError{
+             provider: :confluence,
+             reason: :invalid_response,
+             delivery: :response_received,
+             mutation?: false,
+             details: %{field: "body", adf_reason: :unsupported_adf_content}
+           } = error
 
     recorded = LiveSmoke.fixture!(:confluence, "rich_page_adf")
     expected = recorded_projection(recorded)
     version = recorded["version"]["number"]
 
-    assert %{id: ^page_id, version: ^version, truncated: false} = Map.delete(degraded, :text)
+    assert %{id: ^page_id, version: ^version, truncated: false} = fields(degraded)
     assert digest(degraded.text) == digest(expected.text)
     assert degraded.unsupported_nodes == expected.unsupported_nodes
     assert Enum.all?(~w(mediaSingle extension annotation), &(&1 in degraded.unsupported_nodes))
@@ -104,10 +109,10 @@ defmodule Jido.Connect.Confluence.LiveSmokeTest do
        %{env: env} do
     page_id = env["CONFLUENCE_RESTRICTED_PAGE_ID"]
 
-    assert {:error, degraded} = get_page(env, %{id: page_id, on_unsupported: "degrade"})
+    degraded = read_error!(env, %{id: page_id, on_unsupported: "degrade"})
 
     LiveSmoke.record(@req_options, :confluence, "restricted_page")
-    assert {:error, error} = get_page(env, %{id: page_id})
+    error = read_error!(env, %{id: page_id})
 
     # Confluence answers 404 for a page the user may not read, as for a
     # missing one.
@@ -139,6 +144,18 @@ defmodule Jido.Connect.Confluence.LiveSmokeTest do
     opts = env |> runtime() |> TestRuntime.invoke_opts()
     Connect.invoke(Confluence, "confluence.page.get", input, opts)
   end
+
+  # The error of a read expected to fail. A page returned instead fails the
+  # test without being printed.
+  defp read_error!(env, input) do
+    case get_page(env, input) do
+      {:error, error} -> error
+      {:ok, _page} -> flunk("confluence.page.get returned a page where an error was expected")
+    end
+  end
+
+  # A page map without the text and the URL with the tenant host.
+  defp fields(page), do: Map.drop(page, [:text, :url])
 
   # The projection of the recorded page in degrade mode: the text and the
   # skipped types the live page should still produce.
