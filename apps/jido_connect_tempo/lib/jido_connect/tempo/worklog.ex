@@ -8,7 +8,7 @@ defmodule Jido.Connect.Tempo.Worklog do
   | Field | Tempo field | When Tempo leaves it out |
   | --- | --- | --- |
   | `tempo_worklog_id` | `tempoWorklogId`, a positive integer | error |
-  | `author_account_id` | `author.accountId`, a non-blank string | error |
+  | `author_account_id` | `author.accountId`, a non-empty string | error |
   | `start_date` | `startDate`, the booking day as an ISO date | error |
   | `time_spent_seconds` | `timeSpentSeconds`, a non-negative integer | error |
   | `issue_id` | `issue.id`, the numeric Jira issue ID, a positive integer | error |
@@ -30,7 +30,8 @@ defmodule Jido.Connect.Tempo.Worklog do
   A required field that is missing or malformed, and an optional field of
   the wrong type, make `normalize/1` return `{:error, field}` with the Tempo
   field path, such as `"author.accountId"`. No value is guessed and no
-  record is skipped.
+  record is skipped; `Jido.Connect.Tempo.Client.list_own_worklogs/2` fails
+  the whole read instead.
   """
 
   @schema Zoi.struct(
@@ -58,7 +59,7 @@ defmodule Jido.Connect.Tempo.Worklog do
   @enforce_keys Zoi.Struct.enforce_keys(@schema)
   defstruct Zoi.Struct.struct_fields(@schema)
 
-  # Struct field => path of the Tempo field, in output order.
+  # Struct field => path of the Tempo field.
   @fields [
     tempo_worklog_id: ["tempoWorklogId"],
     author_account_id: ["author", "accountId"],
@@ -84,13 +85,10 @@ defmodule Jido.Connect.Tempo.Worklog do
     :self
   ]
 
-  @doc "Returns the Zoi schema of the struct."
-  def schema, do: @schema
-
   @doc """
   Normalizes one Tempo worklog.
 
-  Returns `{:error, field}` with the Tempo field path of the first missing or
+  Returns `{:error, field}` with the Tempo field path of a missing or
   malformed field, or `{:error, "worklog"}` when the value is not a map.
   """
   @spec normalize(term()) :: {:ok, t()} | {:error, String.t()}

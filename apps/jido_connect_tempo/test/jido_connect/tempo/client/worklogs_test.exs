@@ -5,13 +5,19 @@ defmodule Jido.Connect.Tempo.Client.WorklogsTest do
   alias Jido.Connect.Tempo.{Client, Fixture, Worklog}
   alias Jido.Connect.Tempo.Client.Request
 
-  # The recorded October read of the test user from the foundation: 50
-  # worklogs with a `next` link on the first page, 5 without one on the
-  # second. The sanitizer replaced the test user's account ID with
-  # `account-1`, also in the `next` links.
+  # Recorded by the live test "lists the own worklogs of the three seeded
+  # periods through the action": the test user's 60 worklogs from August 1
+  # to October 31, 2026, 50 with a `next` link on `worklogs_own`, 10 without
+  # one on `worklogs_own.2`. The last one, 79166, is booked at 00:30 on
+  # October 31 in Europe/Berlin and has a description of 778 bytes. The
+  # sanitizer replaced the test user's account ID with `account-1`.
+  # `worklogs_own_small_page` holds the five worklogs of October 1 in pages
+  # of two, `worklogs_own_day` the one of October 31 and `worklogs_own_day.2`
+  # the empty answer for July.
   @account "account-1"
   @path "/4/worklogs/user/account-1"
-  @october [from: "2026-10-01", to: "2026-10-31"]
+  @periods [from: "2026-08-01", to: "2026-10-31"]
+  @pages ["worklogs_own", "worklogs_own.2"]
 
   setup {Req.Test, :verify_on_exit!}
 
@@ -36,26 +42,30 @@ defmodule Jido.Connect.Tempo.Client.WorklogsTest do
         send(test_pid, {:page, conn.host, conn.request_path, query})
 
         case query["offset"] do
-          "0" -> Fixture.respond(conn, "worklogs_page")
-          "50" -> Fixture.respond(conn, "worklogs_page.2")
+          "0" -> Fixture.respond(conn, "worklogs_own")
+          "50" -> Fixture.respond(conn, "worklogs_own.2")
         end
       end)
 
-      assert {:ok, worklogs} = Client.list_own_worklogs(request(), @october)
-      assert length(worklogs) == 55
-      assert Enum.all?(worklogs, &match?(%Worklog{author_account_id: @account}, &1))
+      # The first page announces the second; the final one has no next link.
+      assert %{"next" => _next} = Fixture.recorded!("worklogs_own")["body"]["metadata"]
+      refute Map.has_key?(Fixture.recorded!("worklogs_own.2")["body"]["metadata"], "next")
 
-      assert Enum.map(worklogs, & &1.tempo_worklog_id) ==
-               Enum.map(
-                 recorded("worklogs_page") ++ recorded("worklogs_page.2"),
-                 & &1["tempoWorklogId"]
-               )
+      assert {:ok, worklogs} = Client.list_own_worklogs(request(), @periods)
+      assert length(worklogs) == 60
+      assert Enum.all?(worklogs, &match?(%Worklog{author_account_id: @account}, &1))
+      assert Enum.map(worklogs, & &1.tempo_worklog_id) == recorded_ids(@pages)
+
+      assert ["2026-08-01", "2026-08-31", "2026-09-01", "2026-09-30" | _rest] =
+               worklogs |> Enum.map(& &1.start_date) |> Enum.uniq()
+
+      assert List.last(worklogs).start_date == "2026-10-31"
 
       for offset <- ["0", "50"] do
         assert_received {:page, "api.us.tempo.io", @path, query}
 
         assert query == %{
-                 "from" => "2026-10-01",
+                 "from" => "2026-08-01",
                  "to" => "2026-10-31",
                  "offset" => offset,
                  "limit" => "50"
@@ -64,36 +74,96 @@ defmodule Jido.Connect.Tempo.Client.WorklogsTest do
     end
 
     test "keeps every field of a recorded worklog" do
-      expect_pages(["worklogs_page", "worklogs_page.2"])
+      expect_pages(@pages)
 
-      assert {:ok, [first | _rest]} = Client.list_own_worklogs(request(), @october)
+      assert {:ok, worklogs} = Client.list_own_worklogs(request(), @periods)
 
-      assert first == %Worklog{
-               tempo_worklog_id: 79_097,
+      assert List.last(worklogs) == %Worklog{
+               tempo_worklog_id: 79_166,
                author_account_id: @account,
-               start_date: "2026-10-01",
-               time_spent_seconds: 5400,
+               start_date: "2026-10-31",
+               time_spent_seconds: 1801,
                issue_id: 46_097,
-               description: "JCL live seed worklog: open period, first day",
+               description: recorded("worklogs_own.2", 79_166)["description"],
                work_attributes: [],
-               start_time: "09:00:00",
-               start_date_time_utc: "2026-10-01T07:00:00Z",
-               billable_seconds: 5400,
-               created_at: "2026-10-30T19:19:07Z",
-               updated_at: "2026-10-30T19:22:34Z",
-               self: "https://api.tempo.io/4/worklogs/79097"
+               start_time: "00:30:00",
+               start_date_time_utc: "2026-10-30T23:30:00Z",
+               billable_seconds: 1801,
+               created_at: "2026-11-02T15:40:29Z",
+               updated_at: "2026-11-02T15:40:29Z",
+               self: "https://api.tempo.io/4/worklogs/79166"
              }
     end
 
-    # The recorded first page emptied, as Tempo answers a range without
-    # worklogs.
+    test "keeps the recorded shapes apart" do
+      expect_pages(@pages)
+
+      assert {:ok, worklogs} = Client.list_own_worklogs(request(), @periods)
+      by_id = Map.new(worklogs, &{&1.tempo_worklog_id, &1})
+
+      # The booking day is the worker's day, not the UTC date of the start.
+      assert %{start_date: "2026-10-31", start_date_time_utc: "2026-10-30T23:30:00Z"} =
+               by_id[79_166]
+
+      # A description of 778 bytes, 730 characters, comes back whole.
+      assert byte_size(by_id[79_166].description) == 778
+      assert String.length(by_id[79_166].description) == 730
+
+      # Exact seconds, none of them whole hours.
+      assert {5400, 600, 1801} ==
+               {by_id[79_093].time_spent_seconds, by_id[79_099].time_spent_seconds,
+                by_id[79_166].time_spent_seconds}
+
+      assert %{billable_seconds: 0, time_spent_seconds: 900} = by_id[79_101]
+
+      # Seeded without a description and with an empty one: Tempo answers
+      # both with its default text, so they differ only in IDs and times.
+      volatile = [:tempo_worklog_id, :self, :created_at, :updated_at]
+      assert Map.drop(by_id[79_099], volatile) == Map.drop(by_id[79_100], volatile)
+      assert by_id[79_099].description == "Working on work item JCL-2"
+      assert by_id[79_099].tempo_worklog_id != by_id[79_100].tempo_worklog_id
+    end
+
+    test "reads small pages until the final page" do
+      test_pid = self()
+
+      expect_pages(
+        ["worklogs_own_small_page", "worklogs_own_small_page.2", "worklogs_own_small_page.3"],
+        page_size: 2,
+        report: test_pid
+      )
+
+      assert {:ok, worklogs} =
+               Client.list_own_worklogs(request(),
+                 from: "2026-10-01",
+                 to: "2026-10-01",
+                 limit: 2
+               )
+
+      assert Enum.map(worklogs, & &1.tempo_worklog_id) == [79_097, 79_099, 79_100, 79_101, 79_131]
+
+      for offset <- ["0", "2", "4"] do
+        assert_received {:page, %{"offset" => ^offset, "limit" => "2"}}
+      end
+    end
+
+    test "an empty range returns no worklogs" do
+      Req.Test.expect(__MODULE__, &Fixture.respond(&1, "worklogs_own_day.2"))
+
+      assert {:ok, []} = Client.list_own_worklogs(request(), from: "2026-07-01", to: "2026-07-31")
+    end
+
     test "sends the account ID as one encoded path segment" do
       Req.Test.expect(__MODULE__, fn conn ->
         assert conn.request_path == "/4/worklogs/user/557058%3Af0e1%2Fa%20b"
-        Fixture.respond(conn, "worklogs_page", body: &empty_page/1)
+        Fixture.respond(conn, "worklogs_own_day.2")
       end)
 
-      assert {:ok, []} = Client.list_own_worklogs(request("557058:f0e1/a b"), @october)
+      assert {:ok, []} =
+               Client.list_own_worklogs(request("557058:f0e1/a b"),
+                 from: "2026-07-01",
+                 to: "2026-07-31"
+               )
     end
   end
 
@@ -101,50 +171,48 @@ defmodule Jido.Connect.Tempo.Client.WorklogsTest do
     test "when a later page fails" do
       Req.Test.expect(__MODULE__, 2, fn conn ->
         case URI.decode_query(conn.query_string)["offset"] do
-          "0" -> Fixture.respond(conn, "worklogs_page")
-          "50" -> Fixture.respond(conn, "worklogs_page.2", status: 503)
+          "0" -> Fixture.respond(conn, "worklogs_own")
+          "50" -> Fixture.respond(conn, "worklogs_own.2", status: 503)
         end
       end)
 
       assert {:error, %Error.ProviderError{reason: :server_error, status: 503}} =
-               Client.list_own_worklogs(request(), @october)
+               Client.list_own_worklogs(request(), @periods)
     end
 
     test "when a later page is malformed" do
       Req.Test.expect(__MODULE__, 2, fn conn ->
         case URI.decode_query(conn.query_string)["offset"] do
-          "0" -> Fixture.respond(conn, "worklogs_page")
-          "50" -> Fixture.respond(conn, "worklogs_page.2", body: &Map.delete(&1, "metadata"))
+          "0" -> Fixture.respond(conn, "worklogs_own")
+          "50" -> Fixture.respond(conn, "worklogs_own.2", body: &Map.delete(&1, "metadata"))
         end
       end)
 
       assert {:error, %Error.ProviderError{reason: :invalid_pagination}} =
-               Client.list_own_worklogs(request(), @october)
+               Client.list_own_worklogs(request(), @periods)
     end
 
     test "when a worklog of another account is on a later page" do
-      expect_pages(["worklogs_page", "worklogs_page.2"],
-        last: &put_in(&1, ["author", "accountId"], "account-2")
-      )
+      expect_pages(@pages, last: &put_in(&1, ["author", "accountId"], "account-2"))
 
       assert {:error,
               %Error.ProviderError{
                 reason: :foreign_worklog_author,
-                details: %{tempo_worklog_id: 79_130} = details
-              }} = Client.list_own_worklogs(request(), @october)
+                details: %{tempo_worklog_id: 79_166} = details
+              }} = Client.list_own_worklogs(request(), @periods)
 
       refute inspect(details) =~ "account-2"
     end
 
     test "when a booking day lies outside the range" do
-      for day <- ["2026-09-30", "2026-11-01"] do
-        expect_pages(["worklogs_page", "worklogs_page.2"], last: &Map.put(&1, "startDate", day))
+      for day <- ["2026-07-31", "2026-11-01"] do
+        expect_pages(@pages, last: &Map.put(&1, "startDate", day))
 
         assert {:error,
                 %Error.ProviderError{
                   reason: :worklog_outside_range,
-                  details: %{tempo_worklog_id: 79_130, start_date: ^day}
-                }} = Client.list_own_worklogs(request(), @october)
+                  details: %{tempo_worklog_id: 79_166, start_date: ^day}
+                }} = Client.list_own_worklogs(request(), @periods)
       end
     end
   end
@@ -154,27 +222,28 @@ defmodule Jido.Connect.Tempo.Client.WorklogsTest do
     test "a worklog without Tempo ID, author, booking date, duration or issue ID fails the read" do
       for {change, field} <- [
             {&Map.delete(&1, "tempoWorklogId"), "tempoWorklogId"},
-            {&Map.put(&1, "tempoWorklogId", "79130"), "tempoWorklogId"},
+            {&Map.put(&1, "tempoWorklogId", "79166"), "tempoWorklogId"},
             {&Map.delete(&1, "author"), "author.accountId"},
             {&put_in(&1, ["author", "accountId"], ""), "author.accountId"},
             {&Map.put(&1, "author", "account-1"), "author.accountId"},
             {&Map.delete(&1, "startDate"), "startDate"},
             {&Map.put(&1, "startDate", "2026-10-32"), "startDate"},
             {&Map.delete(&1, "timeSpentSeconds"), "timeSpentSeconds"},
-            {&Map.put(&1, "timeSpentSeconds", 329.5), "timeSpentSeconds"},
-            {&Map.put(&1, "timeSpentSeconds", "329"), "timeSpentSeconds"},
+            {&Map.put(&1, "timeSpentSeconds", 1801.5), "timeSpentSeconds"},
+            {&Map.put(&1, "timeSpentSeconds", "1801"), "timeSpentSeconds"},
             {&Map.delete(&1, "issue"), "issue.id"},
-            {&put_in(&1, ["issue", "id"], "46097"), "issue.id"}
+            {&put_in(&1, ["issue", "id"], "46097"), "issue.id"},
+            {fn _worklog -> "79166" end, "worklog"}
           ] do
-        expect_pages(["worklogs_page", "worklogs_page.2"], last: change)
+        expect_pages(@pages, last: change)
 
         assert {:error,
                 %Error.ProviderError{
                   reason: :invalid_worklog,
                   details: %{field: ^field}
-                } = error} = Client.list_own_worklogs(request(), @october)
+                } = error} = Client.list_own_worklogs(request(), @periods)
 
-        refute inspect(error) =~ "JCL live seed worklog"
+        refute inspect(error) =~ "JCL live"
       end
     end
 
@@ -187,43 +256,36 @@ defmodule Jido.Connect.Tempo.Client.WorklogsTest do
             {&put_in(&1, ["attributes", "values"], [%{"value" => "x"}]), "attributes.values"},
             {&put_in(&1, ["attributes", "values"], %{}), "attributes.values"}
           ] do
-        expect_pages(["worklogs_page", "worklogs_page.2"], last: change)
+        expect_pages(@pages, last: change)
 
         assert {:error, %Error.ProviderError{reason: :invalid_worklog, details: %{field: ^field}}} =
-                 Client.list_own_worklogs(request(), @october)
+                 Client.list_own_worklogs(request(), @periods)
       end
     end
 
+    # Tempo answers an absent and an empty description with its default
+    # text, so both cases are the recorded worklogs changed in that field.
     test "an absent description stays nil and an empty one stays empty" do
-      expect_pages(["worklogs_page", "worklogs_page.2"],
+      expect_pages(@pages,
         first: &Map.put(&1, "description", ""),
         last: &Map.delete(&1, "description")
       )
 
-      assert {:ok, worklogs} = Client.list_own_worklogs(request(), @october)
-      assert %Worklog{tempo_worklog_id: 79_097, description: ""} = List.first(worklogs)
-      assert %Worklog{tempo_worklog_id: 79_130, description: nil} = List.last(worklogs)
-    end
-
-    test "zero billable seconds stay zero" do
-      expect_pages(["worklogs_page", "worklogs_page.2"])
-
-      assert {:ok, worklogs} = Client.list_own_worklogs(request(), @october)
-
-      assert %Worklog{billable_seconds: 0, time_spent_seconds: 900} =
-               Enum.find(worklogs, &(&1.tempo_worklog_id == 79_101))
+      assert {:ok, worklogs} = Client.list_own_worklogs(request(), @periods)
+      assert %Worklog{tempo_worklog_id: 79_093, description: ""} = List.first(worklogs)
+      assert %Worklog{tempo_worklog_id: 79_166, description: nil} = List.last(worklogs)
     end
 
     test "optional fields that Tempo leaves out stay nil" do
       optional =
         ~w(startTime startDateTimeUtc billableSeconds createdAt updatedAt self attributes)
 
-      expect_pages(["worklogs_page", "worklogs_page.2"], last: &Map.drop(&1, optional))
+      expect_pages(@pages, last: &Map.drop(&1, optional))
 
-      assert {:ok, worklogs} = Client.list_own_worklogs(request(), @october)
+      assert {:ok, worklogs} = Client.list_own_worklogs(request(), @periods)
 
       assert %Worklog{
-               tempo_worklog_id: 79_130,
+               tempo_worklog_id: 79_166,
                work_attributes: [],
                start_time: nil,
                start_date_time_utc: nil,
@@ -238,12 +300,9 @@ defmodule Jido.Connect.Tempo.Client.WorklogsTest do
     # recording holds a value; the pairs follow Tempo's OpenAPI shape.
     test "work attribute values keep their key and value" do
       values = [%{"key" => "_JclPhase_", "value" => "Build"}, %{"key" => "_JclHours_"}]
+      expect_pages(@pages, last: &put_in(&1, ["attributes", "values"], values))
 
-      expect_pages(["worklogs_page", "worklogs_page.2"],
-        last: &put_in(&1, ["attributes", "values"], values)
-      )
-
-      assert {:ok, worklogs} = Client.list_own_worklogs(request(), @october)
+      assert {:ok, worklogs} = Client.list_own_worklogs(request(), @periods)
 
       assert List.last(worklogs).work_attributes == [
                %{key: "_JclPhase_", value: "Build"},
@@ -258,7 +317,7 @@ defmodule Jido.Connect.Tempo.Client.WorklogsTest do
 
       Req.Test.stub(__MODULE__, fn conn ->
         send(test_pid, :requested)
-        Fixture.respond(conn, "worklogs_page")
+        Fixture.respond(conn, "worklogs_own")
       end)
 
       for {opts, field} <- [
@@ -288,10 +347,11 @@ defmodule Jido.Connect.Tempo.Client.WorklogsTest do
         assert %{"from" => "2026-10-31", "to" => "2026-10-31"} =
                  URI.decode_query(conn.query_string)
 
-        Fixture.respond(conn, "worklogs_page", body: &empty_page/1)
+        Fixture.respond(conn, "worklogs_own_day")
       end)
 
-      assert {:ok, []} = Client.list_own_worklogs(request(), from: "2026-10-31", to: "2026-10-31")
+      assert {:ok, [%Worklog{tempo_worklog_id: 79_166}]} =
+               Client.list_own_worklogs(request(), from: "2026-10-31", to: "2026-10-31")
     end
 
     test "never sends updatedFrom or other query parameters of the caller" do
@@ -299,37 +359,49 @@ defmodule Jido.Connect.Tempo.Client.WorklogsTest do
         assert conn.query_string |> URI.decode_query() |> Map.keys() |> Enum.sort() ==
                  ["from", "limit", "offset", "to"]
 
-        Fixture.respond(conn, "worklogs_page", body: &empty_page/1)
+        Fixture.respond(conn, "worklogs_own_day.2")
       end)
 
       assert {:ok, []} =
-               Client.list_own_worklogs(
-                 request(),
-                 @october ++ [params: [updatedFrom: "2026-10-30"], updatedFrom: "2026-10-30"]
+               Client.list_own_worklogs(request(),
+                 from: "2026-07-01",
+                 to: "2026-07-31",
+                 params: [updatedFrom: "2026-10-30"],
+                 updatedFrom: "2026-10-30"
                )
     end
 
     test "passes the page size and the read bounds to the pagination" do
       Req.Test.expect(__MODULE__, fn conn ->
         assert URI.decode_query(conn.query_string)["limit"] == "2"
-        Fixture.respond(conn, "worklogs_page")
+        Fixture.respond(conn, "worklogs_own_small_page")
       end)
 
       assert {:error, %Error.ProviderError{reason: :result_limit_exceeded}} =
-               Client.list_own_worklogs(request(), @october ++ [limit: 2, max_results: 10])
+               Client.list_own_worklogs(request(),
+                 from: "2026-10-01",
+                 to: "2026-10-01",
+                 limit: 2,
+                 max_results: 1
+               )
     end
   end
 
-  # Answers each page request with the recorded page for its offset. `:first`
-  # changes the first worklog of the first page, `:last` the last worklog of
-  # the last page.
+  # Answers each page request with the recorded page for its offset.
+  # Options: `:page_size` (50), `:first` changes the first worklog of the
+  # first page, `:last` the last worklog of the last page, and `:report`
+  # receives `{:page, query}` for each request.
   defp expect_pages(names, opts \\ []) do
     first = Keyword.get(opts, :first, & &1)
     last = Keyword.get(opts, :last, & &1)
+    page_size = Keyword.get(opts, :page_size, 50)
+    report = Keyword.get(opts, :report)
     pages = length(names)
 
     Req.Test.expect(__MODULE__, pages, fn conn ->
-      index = div(String.to_integer(URI.decode_query(conn.query_string)["offset"]), 50)
+      query = URI.decode_query(conn.query_string)
+      if report, do: send(report, {:page, query})
+      index = div(String.to_integer(query["offset"]), page_size)
 
       change = fn body ->
         body
@@ -344,13 +416,15 @@ defmodule Jido.Connect.Tempo.Client.WorklogsTest do
   defp update_result(body, position, fun),
     do: update_in(body, ["results"], &List.update_at(&1, position, fun))
 
-  defp empty_page(body) do
-    body
-    |> Map.put("results", [])
-    |> update_in(["metadata"], &(&1 |> Map.put("count", 0) |> Map.delete("next")))
+  defp recorded_ids(names) do
+    for name <- names,
+        result <- Fixture.recorded!(name)["body"]["results"],
+        do: result["tempoWorklogId"]
   end
 
-  defp recorded(name), do: Fixture.recorded!(name)["body"]["results"]
+  defp recorded(name, id) do
+    Enum.find(Fixture.recorded!(name)["body"]["results"], &(&1["tempoWorklogId"] == id))
+  end
 
   defp request(account_id \\ @account) do
     connection =

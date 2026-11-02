@@ -2,8 +2,10 @@ defmodule Jido.Connect.Tempo.ListOwnWorklogsActionTest do
   use ExUnit.Case, async: false
 
   # `tempo.worklogs.list_own` through the runtime and through the generated
-  # Jido action, against the October read that the foundation recorded:
-  # 50 worklogs with a `next` link, then 5 without one.
+  # Jido action, against the reads that the live tests recorded: the 60
+  # worklogs from August 1 to October 31, 2026 on `worklogs_own` (50, with a
+  # `next` link) and `worklogs_own.2` (10, without one), and the empty answer
+  # for July on `worklogs_own_day.2`.
 
   alias Jido.Connect
   alias Jido.Connect.{Connection, Context, CredentialLease, Error}
@@ -15,7 +17,7 @@ defmodule Jido.Connect.Tempo.ListOwnWorklogsActionTest do
   @account "account-1"
   @api_token "tempo-api-token-272-secret"
   @access_token "tempo-oauth-token-272-secret"
-  @october %{from: "2026-10-01", to: "2026-10-31"}
+  @periods %{from: "2026-08-01", to: "2026-10-31"}
 
   defmodule RecordingClient do
     @moduledoc false
@@ -43,46 +45,46 @@ defmodule Jido.Connect.Tempo.ListOwnWorklogsActionTest do
 
   describe "output" do
     test "returns the own worklogs of the range as plain maps with complete true" do
-      expect_pages(["worklogs_page", "worklogs_page.2"])
+      expect_pages(["worklogs_own", "worklogs_own.2"])
 
-      assert {:ok, result} = invoke(:api_token, @october)
+      assert {:ok, result} = invoke(:api_token, @periods)
 
       assert %{
                account_id: @account,
-               from: "2026-10-01",
+               from: "2026-08-01",
                to: "2026-10-31",
                complete: true,
                worklogs: [first | _rest] = worklogs
              } = result
 
-      assert length(worklogs) == 55
+      assert length(worklogs) == 60
       refute is_struct(first)
 
       assert first == %{
-               tempo_worklog_id: 79_097,
+               tempo_worklog_id: 79_093,
                author_account_id: @account,
-               start_date: "2026-10-01",
+               start_date: "2026-08-01",
                time_spent_seconds: 5400,
                issue_id: 46_097,
-               description: "JCL live seed worklog: open period, first day",
+               description: "JCL live seed worklog: approved period, first day",
                work_attributes: [],
                start_time: "09:00:00",
-               start_date_time_utc: "2026-10-01T07:00:00Z",
+               start_date_time_utc: "2026-08-01T07:00:00Z",
                billable_seconds: 5400,
-               created_at: "2026-10-30T19:19:07Z",
-               updated_at: "2026-10-30T19:22:34Z",
-               self: "https://api.tempo.io/4/worklogs/79097"
+               created_at: "2026-10-30T19:19:04Z",
+               updated_at: "2026-10-30T19:19:04Z",
+               self: "https://api.tempo.io/4/worklogs/79093"
              }
 
       assert {:ok, _json} = Jason.encode(result)
     end
 
     test "the generated action reads with the OAuth profile" do
-      expect_pages(["worklogs_page", "worklogs_page.2"])
+      expect_pages(["worklogs_own", "worklogs_own.2"])
       context = context(:oauth2_user)
 
       assert {:ok, %{account_id: @account, complete: true, worklogs: [_ | _]}} =
-               ListOwnWorklogs.run(@october, %{
+               ListOwnWorklogs.run(@periods, %{
                  integration_context: context,
                  credential_lease: lease(context)
                })
@@ -92,16 +94,50 @@ defmodule Jido.Connect.Tempo.ListOwnWorklogsActionTest do
       context = context(:api_token, account_id: "557058:own-account")
 
       assert {:ok, %{account_id: "557058:own-account", worklogs: [], complete: true} = result} =
-               ListOwnWorklogs.run(@october, %{
+               ListOwnWorklogs.run(@periods, %{
                  integration_context: context,
                  credential_lease: lease(context),
                  provider_client: RecordingClient
                })
 
-      assert result.from == "2026-10-01" and result.to == "2026-10-31"
+      assert result.from == "2026-08-01" and result.to == "2026-10-31"
       assert_received {:list_own_worklogs, request, opts}
       assert request.account_id == "557058:own-account"
-      assert opts == [from: "2026-10-01", to: "2026-10-31"]
+      assert opts == [from: "2026-08-01", to: "2026-10-31"]
+    end
+
+    test "an empty range returns worklogs [] and complete true" do
+      Req.Test.expect(__MODULE__, &Fixture.respond(&1, "worklogs_own_day.2"))
+
+      assert {:ok,
+              %{
+                account_id: @account,
+                from: "2026-07-01",
+                to: "2026-07-31",
+                worklogs: [],
+                complete: true
+              }} = invoke(:oauth2_user, %{from: "2026-07-01", to: "2026-07-31"})
+    end
+
+    test "an absent description stays null in the output map, optional fields stay out" do
+      Req.Test.expect(__MODULE__, fn conn ->
+        Fixture.respond(conn, "worklogs_own_day",
+          body: fn body ->
+            update_in(body, ["results"], fn [worklog] ->
+              [Map.drop(worklog, ["description", "startTime", "billableSeconds"])]
+            end)
+          end
+        )
+      end)
+
+      assert {:ok, %{worklogs: [worklog]}} =
+               invoke(:api_token, %{from: "2026-10-31", to: "2026-10-31"})
+
+      assert %{tempo_worklog_id: 79_166, description: nil} = worklog
+      refute Map.has_key?(worklog, :start_time)
+      refute Map.has_key?(worklog, :billable_seconds)
+      assert {:ok, json} = Jason.encode(worklog)
+      assert json =~ ~s("description":null)
     end
   end
 
@@ -111,7 +147,7 @@ defmodule Jido.Connect.Tempo.ListOwnWorklogsActionTest do
 
       Req.Test.stub(__MODULE__, fn conn ->
         send(test_pid, :requested)
-        Fixture.respond(conn, "worklogs_page")
+        Fixture.respond(conn, "worklogs_own")
       end)
 
       :ok
@@ -125,7 +161,7 @@ defmodule Jido.Connect.Tempo.ListOwnWorklogsActionTest do
             %{updated_from: "2026-10-30"}
           ] do
         assert {:error, %Error.ValidationError{reason: :input}} =
-                 invoke(:api_token, Map.merge(@october, extra))
+                 invoke(:api_token, Map.merge(@periods, extra))
       end
 
       refute_received :requested
@@ -148,7 +184,7 @@ defmodule Jido.Connect.Tempo.ListOwnWorklogsActionTest do
     test "a missing tempo.worklogs.read grant stops the call" do
       assert {:error,
               %Error.AuthError{reason: :missing_scopes, missing_scopes: ["tempo.worklogs.read"]}} =
-               invoke(:api_token, @october,
+               invoke(:api_token, @periods,
                  scopes: ["tempo.periods.read", "tempo.worklogs.write"]
                )
 
@@ -160,7 +196,7 @@ defmodule Jido.Connect.Tempo.ListOwnWorklogsActionTest do
       expired = lease(context, expires_at: DateTime.add(DateTime.utc_now(), -1, :second))
 
       assert {:error, %Error.AuthError{}} =
-               Connect.invoke(Tempo, @action, @october,
+               Connect.invoke(Tempo, @action, @periods,
                  context: context,
                  credential_lease: expired
                )
@@ -173,7 +209,7 @@ defmodule Jido.Connect.Tempo.ListOwnWorklogsActionTest do
       other = context(:api_token, connection_id: "tempo_conn_other")
 
       assert {:error, %Error.AuthError{}} =
-               Connect.invoke(Tempo, @action, @october,
+               Connect.invoke(Tempo, @action, @periods,
                  context: context,
                  credential_lease: lease(other)
                )
@@ -186,7 +222,7 @@ defmodule Jido.Connect.Tempo.ListOwnWorklogsActionTest do
       lease = lease(context, fields: %{api_token: @api_token})
 
       assert {:error, %Error.AuthError{reason: :tempo_credentials_required}} =
-               Connect.invoke(Tempo, @action, @october, context: context, credential_lease: lease)
+               Connect.invoke(Tempo, @action, @periods, context: context, credential_lease: lease)
 
       refute_received :requested
     end
@@ -195,7 +231,7 @@ defmodule Jido.Connect.Tempo.ListOwnWorklogsActionTest do
       context = context(:api_token, account_id: nil)
 
       assert {:error, %Error.AuthError{reason: :tempo_account_id_required}} =
-               Connect.invoke(Tempo, @action, @october,
+               Connect.invoke(Tempo, @action, @periods,
                  context: context,
                  credential_lease: lease(context)
                )
@@ -208,16 +244,16 @@ defmodule Jido.Connect.Tempo.ListOwnWorklogsActionTest do
     test "a failed later page returns no worklogs and no credentials" do
       Req.Test.expect(__MODULE__, 2, fn conn ->
         case URI.decode_query(conn.query_string)["offset"] do
-          "0" -> Fixture.respond(conn, "worklogs_page")
-          "50" -> Fixture.respond(conn, "worklogs_page.2", status: 500)
+          "0" -> Fixture.respond(conn, "worklogs_own")
+          "50" -> Fixture.respond(conn, "worklogs_own.2", status: 500)
         end
       end)
 
       assert {:error, %Error.ProviderError{provider: :tempo, reason: :server_error} = error} =
-               invoke(:oauth2_user, @october)
+               invoke(:oauth2_user, @periods)
 
       for text <- [inspect(error), inspect(Error.to_map(error)), Exception.message(error)],
-          secret <- [@api_token, @access_token, "JCL live seed worklog"] do
+          secret <- [@api_token, @access_token, "JCL live"] do
         refute text =~ secret
       end
     end
