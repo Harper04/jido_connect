@@ -16,7 +16,10 @@ defmodule Jido.Connect.Google.Meet.LiveSmokeTest do
   2026-10-30: `GOOGLE_MEET_CONFERENCE_RECORD` and one earlier record in the
   same space, both ending between 16:00 and 18:00 UTC with one generated
   transcript each. The poll starts from a checkpoint whose watermark lies
-  before them. A fresh meeting between two polls is a separate check.
+  before them. A fresh meeting between two polls is a separate check. The
+  window check records the fixtures of the offline poll tests and fails while
+  a conference that ended after the prepared window is still listed; Google
+  deletes a conference record 30 days after the conference ended.
   """
 
   use ExUnit.Case, async: false
@@ -145,15 +148,22 @@ defmodule Jido.Connect.Google.Meet.LiveSmokeTest do
     records = Enum.flat_map(pages, & &1.conference_records)
     names = Enum.map(records, & &1.conference_record_name)
 
-    assert length(pages) >= 2
+    # The offline poll tests serve this recording as two pages: the prepared
+    # record, then the earlier one. A conference that ended after the prepared
+    # window, such as a fresh meeting, adds a page the recording must not get.
     assert Enum.all?(pages, &(length(&1.conference_records) == 1))
-    assert env["GOOGLE_MEET_CONFERENCE_RECORD"] in names
+    assert [prepared, earlier] = names
+    assert prepared == env["GOOGLE_MEET_CONFERENCE_RECORD"]
 
     # The poller tolerates a repeated record, but this filter should not cause one.
-    assert Enum.uniq(names) == names
+    assert earlier != prepared
 
     for record <- records do
-      assert DateTime.compare(timestamp!(record.end_time), @prepared_window_start) != :lt
+      end_time = timestamp!(record.end_time)
+      assert DateTime.compare(end_time, @prepared_window_start) != :lt
+
+      assert DateTime.compare(end_time, @prepared_window_end) != :gt,
+             "a conference ended after the prepared window; the offline tests expect the prepared records only"
     end
   end
 
