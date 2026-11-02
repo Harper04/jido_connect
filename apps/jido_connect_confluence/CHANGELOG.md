@@ -8,6 +8,11 @@
 - `confluence.page.get` renders text with `Jido.Connect.Atlassian.ADF.project/2`.
   Links keep their target, for any scheme, and ordered list items their
   number.
+- Page reads inherit the projection's limits, nesting depth 64 and 50,000
+  nodes. A page beyond either, such as a table of 2,000 rows and 9 columns
+  with about 56,000 nodes, now fails in both modes with the invalid-response
+  error instead of returning its text; raise the limits with
+  `config :jido_connect_atlassian, Jido.Connect.Atlassian.ADF`.
 - Add the optional `confluence.page.get` input `on_unsupported`. `"fail"`, the
   default, keeps the invalid-response error for unsupported ADF content;
   `"degrade"` returns the supported text and adds `unsupported_nodes`.
