@@ -67,6 +67,33 @@ defmodule Jido.Connect.Tempo.Client.TimesheetApprovalsTest do
                get(request(account), @october)
     end
 
+    # Recorded by the period bookability live test, where the test user is
+    # `account-2` and the reviewer `account-1`: August is APPROVED and
+    # September IN_REVIEW, each with the time of its status.
+    test "keeps the recorded APPROVED and IN_REVIEW status with its time and nothing else" do
+      for {fixture, {from, to}, status, updated_at} <- [
+            {"period_bookability.2", {"2026-08-01", "2026-08-31"}, "APPROVED",
+             "2026-10-30T19:19:42Z"},
+            {"period_bookability.3", {"2026-09-01", "2026-09-30"}, "IN_REVIEW",
+             "2026-10-30T19:19:43Z"}
+          ] do
+        Req.Test.expect(__MODULE__, &Fixture.respond(&1, fixture))
+
+        assert {:ok, approval} = get(request("account-2"), {from, to})
+
+        assert approval == %TimesheetApproval{
+                 period_from: from,
+                 period_to: to,
+                 user_account_id: "account-2",
+                 status: status,
+                 updated_at: updated_at
+               }
+
+        refute inspect(approval) =~ "account-1"
+        refute inspect(approval) =~ "JCL live seed"
+      end
+    end
+
     test "a range across periods gets Tempo's 400 as a normalized error" do
       Req.Test.expect(__MODULE__, &Fixture.respond(&1, "timesheet_approval.2"))
 
