@@ -48,6 +48,11 @@ defmodule Jido.Connect.Google.Drive.LiveSmokeTest do
   @change_log_reads 15
   @change_log_fields "nextPageToken,changes(fileId,removed,changeType,driveId,file(id,trashed))"
 
+  # The upload test's file in GOOGLE_DRIVE_UPLOAD_FOLDER_ID. Cleanup deletes
+  # every file of this name in the folder.
+  @upload_name "jcl-live upload.bin"
+  @upload_limit 5_242_880
+
   @tag env!(["GOOGLE_ACCESS_TOKEN"])
   test "reads the Drive about resource", %{env: env} do
     LiveSmoke.record(@req_options, :google_drive, "about")
@@ -293,6 +298,70 @@ defmodule Jido.Connect.Google.Drive.LiveSmokeTest do
 
     assert %{collection_match: "unknown", change_type: "deleted", removed?: true} =
              record_signal(signals, removed_id)
+  end
+
+  @tag env!(["GOOGLE_ACCESS_TOKEN", "GOOGLE_DRIVE_UPLOAD_FOLDER_ID"])
+  @tag write!(:google)
+  test "uploads exactly 5,242,880 bytes into the upload folder and reads them back by ID",
+       %{env: env} do
+    token = env["GOOGLE_ACCESS_TOKEN"]
+    folder_id = env["GOOGLE_DRIVE_UPLOAD_FOLDER_ID"]
+    content = upload_limit_content()
+
+    # Also covers an upload whose response is lost and that returns no ID.
+    on_exit(fn -> delete_uploads_named(token, folder_id, @upload_name) end)
+
+    LiveSmoke.record(@req_options, :google_drive, "file_upload", @masked)
+
+    assert {:ok, %{file: uploaded}} =
+             invoke(
+               "google.drive.file.upload",
+               %{
+                 name: @upload_name,
+                 content_base64: Base.encode64(content),
+                 mime_type: "application/octet-stream",
+                 parents: [folder_id]
+               },
+               token
+             )
+
+    file_id = uploaded.file_id
+    assert uploaded.parents == [folder_id]
+    assert uploaded.size == @upload_limit
+
+    LiveSmoke.record(@req_options, :google_drive, "file_upload_get", @masked)
+
+    assert {:ok, %{file: read_back}} = invoke("google.drive.file.get", %{file_id: file_id}, token)
+    assert read_back.parents == [folder_id]
+    assert read_back.md5_checksum == hex_digest(:md5, content)
+
+    LiveSmoke.record(@req_options, :google_drive, "file_upload_download", @masked)
+
+    assert {:ok, %{file_content: downloaded}} =
+             invoke("google.drive.file.download", %{file_id: file_id}, token)
+
+    assert downloaded.file_id == file_id
+    assert downloaded.size == @upload_limit
+
+    assert hex_digest(:sha256, Base.decode64!(downloaded.content_base64)) ==
+             hex_digest(:sha256, content)
+
+    delete_externally(token, file_id)
+  end
+
+  # Every byte value, 20,480 times: exactly the multipart limit.
+  defp upload_limit_content, do: :binary.copy(:binary.list_to_bin(Enum.to_list(0..255)), 20_480)
+
+  defp hex_digest(algorithm, content),
+    do: algorithm |> :crypto.hash(content) |> Base.encode16(case: :lower)
+
+  defp delete_uploads_named(access_token, folder_id, name) do
+    assert %{status: 200, body: %{"files" => files}} =
+             external(:get, "/files", access_token,
+               params: [q: "name = '#{name}' and '#{folder_id}' in parents", fields: "files(id)"]
+             )
+
+    for %{"id" => id} <- files, do: delete_leftover(access_token, "/files/#{id}")
   end
 
   defp list_pages(input, access_token, pages \\ []) do
