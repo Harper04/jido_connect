@@ -45,6 +45,9 @@ defmodule Jido.Connect.Tempo.Client.Pagination do
   @doc """
   Reads every page of a pageable GET for `path` and returns all results.
 
+  `path` is relative to the connection's origin; a missing leading slash is
+  added.
+
   Options: `:params` (query parameters other than `offset` and `limit`) and
   the bounds `:limit`, `:max_pages` and `:max_results`.
   """
@@ -55,8 +58,12 @@ defmodule Jido.Connect.Tempo.Client.Pagination do
     params = opts |> Keyword.get(:params, []) |> Keyword.drop([:offset, :limit])
 
     state = %{offset: 0, pages: 0, total: 0, seen: MapSet.new(), chunks: []}
-    read(request, path, params, bounds, state)
+    read(request, absolute(path), params, bounds, state)
   end
+
+  # Req sends "4/x" as "/4/x"; the next link check compares that path.
+  defp absolute("/" <> _rest = path), do: path
+  defp absolute(path), do: "/" <> path
 
   defp read(request, path, params, bounds, state) do
     page_params = params ++ [offset: state.offset, limit: bounds.limit]

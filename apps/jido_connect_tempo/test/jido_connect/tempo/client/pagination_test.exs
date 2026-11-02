@@ -56,6 +56,21 @@ defmodule Jido.Connect.Tempo.Client.PaginationTest do
     end
   end
 
+  test "a path without a leading slash reads every page" do
+    Req.Test.expect(__MODULE__, 2, fn conn ->
+      assert conn.request_path == @path
+
+      case URI.decode_query(conn.query_string)["offset"] do
+        "0" -> Fixture.respond(conn, "worklogs_page")
+        "50" -> Fixture.respond(conn, "worklogs_page.2")
+      end
+    end)
+
+    "/" <> relative = @path
+    assert {:ok, worklogs} = Pagination.collect(request(), relative, @october)
+    assert length(worklogs) == 55
+  end
+
   # The first recorded page with its `next` link moved to another origin,
   # another scheme or another path.
   test "a next link outside the Tempo origins or the requested path fails without a request" do
