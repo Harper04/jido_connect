@@ -275,6 +275,14 @@ key. `google.drive.collection.changes` returns `provider_record_id` with
 `collection_match: "unknown"` and no `record`, so a host removes the file from
 every folder view that holds it.
 
+When a poll repeats a checkpoint, Drive merges a file's changes in that range
+into one, so a removal can carry the `time` of an update the host already
+received. The declared dedupe key of `google.drive.file.changed`,
+`[:change_type, :file_id, :drive_id, :time]`, is then the same for both
+signals. A host that deduplicates its signals across polls includes `removed`
+in the key. `google.drive.collection.changes` tells the two apart by
+`change_type`.
+
 `google.drive.collection.changes` reads the folder in `collection_id` before
 it reads the change log. Once that folder is deleted for good or the user can
 no longer see it, Drive answers the folder read with 404, and the poll returns
