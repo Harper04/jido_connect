@@ -12,6 +12,10 @@ defmodule Jido.Connect.Jira.Client.IssueReadTest do
   #
   # Each request asked for `parent`, which a top-level issue does not have, so
   # Jira left it out of `fields`.
+  #
+  # `issue_fields.2` is the read of JCL-3 without `fields`, so with all
+  # fields, from the live test "reads the navigable and all fields of an issue
+  # without assignee and due date".
 
   alias Jido.Connect
   alias Jido.Connect.{Connection, Error}
@@ -95,29 +99,27 @@ defmodule Jido.Connect.Jira.Client.IssueReadTest do
       # The test site cannot hide a system field without an administrator
       # change, so this response is the recorded JCL-3 read with `duedate`
       # removed, the way Jira leaves out `parent` in the same recording.
-      body =
-        update_in(
-          LiveSmoke.fixture!(:jira, "issue_context.7"),
-          ["fields"],
-          &Map.delete(&1, "duedate")
-        )
-
-      Req.Test.expect(__MODULE__, &Req.Test.json(&1, body))
+      Req.Test.expect(__MODULE__, &Req.Test.json(&1, without_duedate("issue_context.7")))
 
       assert {:ok, %{due_date: nil, missing_fields: ["duedate", "parent"]}} =
                Client.get_issue("JCL-3", api_token_request(), fields: @fields)
     end
 
-    test "lists the read fields that a request for all fields does not return" do
-      expect_issue("/rest/api/3/issue/JCL-1", "issue_context.2", fn conn ->
+    test "reads all fields without a field list and lists a read field Jira leaves out" do
+      # `issue_fields.2` is the recorded read of JCL-3 without `fields`, so
+      # Jira returned all fields, the empty due date as null. The copy without
+      # `duedate` stands for a site whose field configuration hides it.
+      expect_issue("/rest/api/3/issue/JCL-3", "issue_fields.2", fn conn ->
         refute Map.has_key?(conn.query_params, "fields")
       end)
 
-      assert {:ok, %{missing_fields: missing}} = Client.get_issue("JCL-1", api_token_request())
+      Req.Test.expect(__MODULE__, &Req.Test.json(&1, without_duedate("issue_fields.2")))
 
-      # The recording holds the fields the live test asked for, so the other
-      # fields that the normalizer reads count as missing.
-      assert missing == ~w(issuetype reporter components fixVersions resolution timetracking)
+      assert {:ok, %{key: "JCL-3", due_date: nil, missing_fields: []}} =
+               Client.get_issue("JCL-3", api_token_request())
+
+      assert {:ok, %{key: "JCL-3", due_date: nil, missing_fields: ["duedate"]}} =
+               Client.get_issue("JCL-3", api_token_request())
     end
 
     test "sends the requested fields as one comma-separated parameter" do
@@ -208,6 +210,21 @@ defmodule Jido.Connect.Jira.Client.IssueReadTest do
 
       assert {:ok, %{id: "46096", key: "JCL-1"}} = invoke(%{issue_key: "46096", fields: @fields})
     end
+
+    test "reads all fields by default and lists none of them as missing" do
+      expect_issue("/rest/api/3/issue/JCL-3", "issue_fields.2", fn conn ->
+        refute Map.has_key?(conn.query_params, "fields")
+      end)
+
+      assert {:ok, %{key: "JCL-3", id: "46098", missing_fields: []} = issue} =
+               invoke(%{issue_key: "JCL-3"})
+
+      refute Map.has_key?(issue, :due_date)
+    end
+  end
+
+  defp without_duedate(fixture) do
+    update_in(LiveSmoke.fixture!(:jira, fixture), ["fields"], &Map.delete(&1, "duedate"))
   end
 
   defp expect_issue(path, fixture, check \\ fn _conn -> :ok end) do
