@@ -475,6 +475,55 @@ defmodule Jido.Connect.Gmail.ClientTest do
     refute inspect(message) =~ "body-bytes"
   end
 
+  test "trash and untrash requests carry an empty body, so Google receives a Content-Length" do
+    # Mint sends Content-Length only with a request body, and Google answers a
+    # POST without one with 411 Length Required, as the live change poll test
+    # saw for google.gmail.message.trash. A plug cannot tell a missing body
+    # from an empty one, so this adapter replaces the network and serves the
+    # recorded single-part message and conversation.
+    test_pid = self()
+    message = LiveSmoke.fixture!(:gmail, "message_full_single_part")
+    thread = LiveSmoke.fixture!(:gmail, "thread_full_conversation")
+
+    Application.put_env(:jido_connect_google, :google_req_options,
+      adapter: fn request ->
+        send(test_pid, {:gmail_request, request.method, request.url.path, request.body})
+        body = if String.contains?(request.url.path, "/threads/"), do: thread, else: message
+
+        {request,
+         Req.Response.new(
+           status: 200,
+           headers: %{"content-type" => ["application/json; charset=UTF-8"]},
+           body: Jason.encode!(body)
+         )}
+      end
+    )
+
+    message_id = message["id"]
+    thread_id = thread["id"]
+
+    assert {:ok, %Message{message_id: ^message_id}} =
+             Client.trash_message(%{message_id: message_id}, "token")
+
+    assert {:ok, %Message{message_id: ^message_id}} =
+             Client.untrash_message(%{message_id: message_id}, "token")
+
+    assert {:ok, %Thread{thread_id: ^thread_id}} =
+             Client.trash_thread(%{thread_id: thread_id}, "token")
+
+    assert {:ok, %Thread{thread_id: ^thread_id}} =
+             Client.untrash_thread(%{thread_id: thread_id}, "token")
+
+    for path <- [
+          "/gmail/v1/users/me/messages/#{message_id}/trash",
+          "/gmail/v1/users/me/messages/#{message_id}/untrash",
+          "/gmail/v1/users/me/threads/#{thread_id}/trash",
+          "/gmail/v1/users/me/threads/#{thread_id}/untrash"
+        ] do
+      assert_received {:gmail_request, :post, ^path, ""}
+    end
+  end
+
   test "returns provider errors for malformed Gmail history records" do
     Req.Test.stub(__MODULE__, fn conn ->
       assert conn.method == "GET"

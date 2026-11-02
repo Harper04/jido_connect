@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Fix `google.gmail.message.trash`, `google.gmail.message.untrash`,
+  `google.gmail.thread.trash` and `google.gmail.thread.untrash`, which sent a
+  POST without a body and so without `Content-Length`; Google rejected it
+  with HTTP 411. The requests now carry an empty body.
 - Add `google.gmail.message.attachment.content.get`. It selects one
   attachment of a message by Gmail `partId`, an enclosed `message/rfc822`
   original included, and returns `Jido.Connect.Gmail.AttachmentContent` with
