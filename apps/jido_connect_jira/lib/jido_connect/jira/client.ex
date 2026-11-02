@@ -6,7 +6,6 @@ defmodule Jido.Connect.Jira.Client do
   connection, its auth profile, its endpoint, and its leased credential fields.
   """
 
-  alias Jido.Connect.Error
   alias Jido.Connect.Jira.Client.{Request, Response, Transport}
 
   @doc "Builds a request from the provider handler runtime."
@@ -73,7 +72,7 @@ defmodule Jido.Connect.Jira.Client do
     fields = Keyword.get(opts, :fields)
     params = if fields, do: %{fields: Enum.join(fields, ",")}, else: %{}
 
-    with {:ok, segment} <- issue_segment(issue_key) do
+    with {:ok, segment} <- Request.issue_segment(issue_key) do
       request
       |> Transport.request()
       |> Req.get(url: Request.url(request, "/rest/api/3/issue/" <> segment), params: params)
@@ -183,14 +182,4 @@ defmodule Jido.Connect.Jira.Client do
     |> Req.get(url: Request.url(request, "/rest/api/3/field"), params: params)
     |> Response.handle_field_schema_list_response()
   end
-
-  defp issue_segment(issue_key) when issue_key in ["", ".", ".."] do
-    {:error,
-     Error.validation("Jira issue key or ID must be one non-empty path segment",
-       reason: :invalid_issue_key,
-       subject: :issue_key
-     )}
-  end
-
-  defp issue_segment(issue_key), do: {:ok, URI.encode(issue_key, &URI.char_unreserved?/1)}
 end

@@ -37,7 +37,8 @@
   list that only excludes fields starts from Jira's selection for it. Custom
   fields behind a selector and other `*` selectors are not checked.
   `issue_key` accepts a numeric issue ID and is sent as one encoded path
-  segment.
+  segment. `jira.issue.get`, `jira.issue.transition.list` and
+  `jira.issue.delete` reject the keys `.` and `..` before a request.
 - Return the nested status, assignee and reporter of issue reads as plain
   maps, which the `:map` outputs of the generated actions accept.
 
