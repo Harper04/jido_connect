@@ -39,3 +39,16 @@
   `Jido.Connect.Tempo.TimesheetApproval`, the result
   `Jido.Connect.Tempo.PeriodBookability` and the read-only catalog pack
   `:tempo_period_lookup`.
+- Add the write action `tempo.worklog.create`, which creates one worklog of
+  the connection's `subject.account_id` after confirmation and returns it as
+  Tempo confirmed it. It declares `confirmation: :always`,
+  `provider_idempotency?: false`, the host policy `:own_worklog_author` and
+  the label `tempo.worklogs.write`, checks its input at prepare, in the
+  handler and in the client, and sends one `POST /4/worklogs` without
+  `bypassPeriodClosuresAndApprovals` or `remainingEstimateSeconds`.
+- Add `Jido.Connect.Tempo.Client.create_worklog/2` and
+  `Jido.Connect.Tempo.Client.Transport.post/3`. A POST is never retried, also
+  when Req options enable retries; a 3xx, a 5xx, a malformed or mismatched
+  success and a lost response are `delivery: :sent_outcome_unknown`, and
+  Tempo's 403 for a period whose timesheet is not open is `:period_locked`.
+- Add the writer catalog pack `:tempo_writer`; the read packs are unchanged.
