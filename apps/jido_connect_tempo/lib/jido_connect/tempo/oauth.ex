@@ -112,8 +112,7 @@ defmodule Jido.Connect.Tempo.OAuth do
     |> CoreOAuth.req()
     |> Req.merge(req_options())
     |> Req.post(url: @token_path, form: form)
-    |> token_response()
-    |> redact([client_secret, grant_secret])
+    |> token_response(message: @request_failed, redact: [client_secret, grant_secret])
   end
 
   defp req_options do
@@ -123,13 +122,13 @@ defmodule Jido.Connect.Tempo.OAuth do
     |> Keyword.put(:redirect, false)
   end
 
-  defp token_response({:ok, %{status: status}} = response) do
-    with {:ok, body} <- Response.handle(response, message: @request_failed) do
-      token(body, status)
-    end
+  # The secrets are redacted from Tempo's error text before the error keeps
+  # its first 256 bytes, so a cut cannot leave a prefix.
+  defp token_response({:ok, %{status: status}} = response, opts) do
+    with {:ok, body} <- Response.handle(response, opts), do: token(body, status)
   end
 
-  defp token_response(response), do: Response.handle(response, message: @request_failed)
+  defp token_response(response, opts), do: Response.handle(response, opts)
 
   # Once Tempo answers with both tokens it has rotated the pair, so only a
   # missing token fails the response; an unusable expiry or scope is nil.
@@ -165,21 +164,6 @@ defmodule Jido.Connect.Tempo.OAuth do
 
   defp scope(scope) when is_binary(scope), do: Scope.parse(scope)
   defp scope(_other), do: nil
-
-  defp redact(
-         {:error, %Error.ProviderError{details: %{message: message} = details} = error},
-         secrets
-       )
-       when is_binary(message) do
-    message =
-      secrets
-      |> Enum.reject(&(&1 == ""))
-      |> Enum.reduce(message, &String.replace(&2, &1, "[redacted]"))
-
-    {:error, %{error | details: %{details | message: message}}}
-  end
-
-  defp redact(result, _secrets), do: result
 
   defp required!(opts, key) do
     case Keyword.get(opts, key) do

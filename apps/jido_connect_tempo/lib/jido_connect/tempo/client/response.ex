@@ -30,7 +30,13 @@ defmodule Jido.Connect.Tempo.Client.Response do
 
   @message "Tempo API request failed"
 
-  @doc "Returns the decoded JSON body of a successful response or a normalized error."
+  @doc """
+  Returns the decoded JSON body of a successful response or a normalized error.
+
+  Options: `:message`, the error message, and `:redact`, values replaced by
+  `[redacted]` in Tempo's error text before the error is built and that
+  text is cut to 256 bytes.
+  """
   @spec handle(term(), keyword()) :: {:ok, map() | list()} | {:error, Error.ProviderError.t()}
   def handle(response, opts \\ [])
 
@@ -55,7 +61,7 @@ defmodule Jido.Connect.Tempo.Client.Response do
     error_opts =
       case error_message(body) do
         nil -> error_opts
-        message -> Keyword.put(error_opts, :detail_message, message)
+        message -> Keyword.put(error_opts, :detail_message, redact(message, opts))
       end
 
     Transport.provider_error(response, error_opts)
@@ -105,4 +111,11 @@ defmodule Jido.Connect.Tempo.Client.Response do
 
   defp error_message(%{"message" => message}) when is_binary(message), do: message
   defp error_message(_body), do: nil
+
+  defp redact(message, opts) do
+    opts
+    |> Keyword.get(:redact, [])
+    |> Enum.reject(&(&1 == ""))
+    |> Enum.reduce(message, &String.replace(&2, &1, "[redacted]"))
+  end
 end

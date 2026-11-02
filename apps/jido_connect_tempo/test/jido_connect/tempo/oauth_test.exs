@@ -133,6 +133,25 @@ defmodule Jido.Connect.Tempo.OAuthTest do
       refute_secrets(error, ["code-under-test"])
     end
 
+    # Errors keep 256 bytes of a message. A secret echoed across that cut
+    # must be redacted before it, or its first bytes remain.
+    test "secrets echoed at the truncation point leave no prefix" do
+      for secret <- [@client_secret, "code-under-test"] do
+        Req.Test.expect(__MODULE__, fn conn ->
+          Fixture.respond(conn, "oauth_invalid_code",
+            body: &Map.put(&1, "message", String.duplicate("x", 248) <> secret <> " is invalid")
+          )
+        end)
+
+        assert {:error, %Error.ProviderError{reason: :forbidden} = error} =
+                 OAuth.exchange_code("code-under-test", @opts)
+
+        prefix = binary_part(secret, 0, 8)
+        refute inspect(error) =~ prefix
+        refute inspect(Error.to_map(error)) =~ prefix
+      end
+    end
+
     test "a token request does not follow redirects" do
       Req.Test.expect(__MODULE__, fn conn ->
         conn
