@@ -67,6 +67,8 @@ defmodule Jido.Connect.Confluence.PageSourceTest do
       &Map.put(&1, "webui", "https://attacker.example/wiki" <> page),
       &Map.put(&1, "webui", "//attacker.example/wiki" <> page),
       &Map.put(&1, "webui", page <> "?next=https://attacker.example/wiki"),
+      &Map.put(&1, "webui", page <> "#https://attacker.example/wiki"),
+      &Map.put(&1, "webui", String.pad_trailing(page <> "/", 4_097, "a")),
       &Map.put(&1, "base", "https://attacker.example/wiki")
     ]
 
