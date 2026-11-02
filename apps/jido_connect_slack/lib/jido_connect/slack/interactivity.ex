@@ -54,7 +54,10 @@ defmodule Jido.Connect.Slack.Interactivity do
   A `block_actions` payload yields a signal when its `container.type` is
   `message`, it carries exactly one action and that action is a `button`.
   Several actions, another element or another container fail with
-  `:unsupported_block_action`. An org-wide install, which sends
+  `:unsupported_block_action`. So does a button in an ephemeral message:
+  Slack marks the container `is_ephemeral: true` and sends no `message`
+  object, so the click names no message the normalizer could check.
+  An org-wide install, which sends
   `is_enterprise_install: true` and no team, fails with `:no_workspace`.
   A missing or empty app, user, channel, message or button field, a value
   that is no string, or a value or ID beyond Slack's limits fails with

@@ -5,8 +5,9 @@ defmodule Jido.Connect.Slack.Interactivity.BlockActions do
   # of `Jido.Connect.Slack.BlockAction` that are not nil.
   #
   # Only a click on one button in a message is taken. Every value is read at
-  # a fixed payload path. A click on several actions, on another element or
-  # outside a message fails with `:unsupported_block_action`. A missing or
+  # a fixed payload path. A click on several actions, on another element,
+  # outside a message or in an ephemeral message fails with
+  # `:unsupported_block_action`. A missing or
   # empty required value, a value that is no string, or a step on a path
   # that is no object fails with `:invalid_block_action`; a payload without
   # a workspace fails with `:no_workspace`, a click that names two messages
@@ -45,6 +46,7 @@ defmodule Jido.Connect.Slack.Interactivity.BlockActions do
   @doc false
   def normalize_signal(payload, opts) when is_map(payload) do
     with :ok <- require_type(payload, ["container", "type"], "message"),
+         :ok <- reject_ephemeral(payload),
          :ok <- require_single_action(payload),
          :ok <- require_type(payload, ["actions", "0", "type"], "button"),
          :ok <- require_workspace(payload),
@@ -66,6 +68,14 @@ defmodule Jido.Connect.Slack.Interactivity.BlockActions do
       {:error, _reason} = error -> error
     end
   end
+
+  # A button in an ephemeral message arrives without a `message` object, so
+  # the click names no message the package could check. No such click was
+  # captured.
+  defp reject_ephemeral(%{"container" => %{"is_ephemeral" => true}}),
+    do: {:error, unsupported(["container", "is_ephemeral"])}
+
+  defp reject_ephemeral(_payload), do: :ok
 
   defp require_single_action(%{"actions" => [%{}]}), do: :ok
   defp require_single_action(%{"actions" => [_action]}), do: {:error, invalid(["actions", "0"])}

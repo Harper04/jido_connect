@@ -526,14 +526,16 @@ beyond the app's install, and dedupes on `team_id`, `channel_id`,
 
 A click on several actions, on another element such as a select, or outside
 a message, as in a modal or a legacy attachment, keeps
-`normalized_signal: nil`. So does an org-wide install, which sends no
+`normalized_signal: nil`. So does a button in an ephemeral message, such as
+one posted with `slack.message.post_ephemeral`: Slack sends that click with
+`container.is_ephemeral: true` and without the message. So does an org-wide install, which sends no
 workspace; the package takes only apps installed in a workspace. Call
 `Jido.Connect.Slack.Interactivity.normalize_signal/2` on such a delivery,
 with the same options, for a `Jido.Connect.Error.ProviderError` that names
 the reason and the payload path, never a value:
 
-- `:unsupported_block_action` for several actions, another element or
-  another container;
+- `:unsupported_block_action` for several actions, another element,
+  another container or an ephemeral message;
 - `:no_workspace` for an org-wide install or a payload without `team.id`;
 - `:invalid_block_action` for a missing or empty field, a value that is no
   string, or a value or ID over the limit;

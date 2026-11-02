@@ -187,6 +187,20 @@ defmodule Jido.Connect.Slack.BlockActionsTest do
         assert_rejected(capture, :unsupported_block_action, %{field: field})
       end
     end
+
+    test "fails for a button in an ephemeral message" do
+      # Derived from the first click: the message posted ephemerally, for
+      # which Slack marks the container and sends no message object. No such
+      # click was captured.
+      ephemeral =
+        derive_click(fn payload ->
+          payload
+          |> put_in(["container", "is_ephemeral"], true)
+          |> Map.delete("message")
+        end)
+
+      assert_rejected(ephemeral, :unsupported_block_action, %{field: "container.is_ephemeral"})
+    end
   end
 
   describe "a click with a missing or malformed field" do
