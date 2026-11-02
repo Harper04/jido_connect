@@ -247,11 +247,12 @@ defmodule Jido.Connect.Slack.DeliveryLiveSmokeTest do
 
   # A post left behind changes the prepared conversations that the history
   # and thread checks count, so a failed delete fails the test. The message
-  # names only the HTTP status and Slack's error code.
+  # names only the HTTP status and Slack's error code. A confirmed delete
+  # prints the message ID for the run's evidence.
   defp delete!(token, channel, ts) do
     case reference_request(token, :post, "chat.delete", json: %{channel: channel, ts: ts}) do
       %{status: 200, body: %{"ok" => true}} ->
-        :ok
+        IO.puts("live_smoke slack: deleted post #{ts} in #{channel}")
 
       %{status: status, body: body} ->
         flunk(
