@@ -63,7 +63,12 @@ defmodule Jido.Connect.Slack.Webhook.MessageChanges do
                        app_id: ["event", "previous_message", "app_id"]
                      ]
 
+  @previous ["event", "previous_message"]
   @previous_ts ["event", "previous_message", "ts"]
+  @edited_ts ["event", "message", "edited", "ts"]
+  @previous_edited_ts ["event", "previous_message", "edited", "ts"]
+  @text ["event", "message", "text"]
+  @previous_text ["event", "previous_message", "text"]
 
   @doc false
   def trigger_events, do: Map.keys(@trigger_events)
@@ -87,7 +92,7 @@ defmodule Jido.Connect.Slack.Webhook.MessageChanges do
 
     with :ok <- require_subtype(event, subtypes),
          :ok <- require_channel_type(event, channel_types),
-         :ok <- require_edit(event),
+         :ok <- require_edit(payload),
          {:ok, attrs} <- attrs(payload, fields),
          {:ok, change} <- build(attrs, fields),
          :ok <- require_same_source(payload, change, fields) do
@@ -134,22 +139,57 @@ defmodule Jido.Connect.Slack.Webhook.MessageChanges do
   end
 
   # Slack also sends `message_changed` when it unfurls a link or updates a
-  # thread parent's replies. Only `message.edited` marks an edit.
-  defp require_edit(%{"subtype" => "message_changed"} = event) do
-    with %{} = message <- Data.get(event, "message"),
-         nil <- Data.get(message, "edited") do
-      {:error,
-       Error.provider("Slack message change is no edit",
-         provider: :slack,
-         reason: :not_an_edit
-       )}
-    else
-      # An edit, or a message that is no map, which attrs/2 reports.
-      _edited_or_malformed -> :ok
+  # thread parent's replies. Only a new `message.edited` marks an edit.
+  defp require_edit(%{"event" => %{"subtype" => "message_changed"} = event} = payload) do
+    case Data.get(event, "message") do
+      %{} = message ->
+        if is_nil(Data.get(message, "edited")),
+          do: {:error, not_an_edit()},
+          else: require_new_edit(payload)
+
+      # A message that is no map, which attrs/2 reports.
+      _malformed ->
+        :ok
     end
   end
 
   defp require_edit(_deletion), do: :ok
+
+  # Slack keeps `edited` on a message after an edit, so a later unfurl or
+  # reply count update repeats the last edit. A new edit has another
+  # `edited.ts` than `previous_message`, or another text: two edits within
+  # one second share their `edited.ts`. Without `previous_message`,
+  # `message.edited` alone marks an edit.
+  defp require_new_edit(payload) do
+    case value_at(payload, @previous, []) do
+      {:ok, %{}} ->
+        with {:ok, edit} <- values_at(payload, [@edited_ts, @text]),
+             {:ok, previous} <- values_at(payload, [@previous_edited_ts, @previous_text]) do
+          if edit == previous, do: {:error, not_an_edit()}, else: :ok
+        end
+
+      # No `previous_message`, or one that is no map, which
+      # require_same_source/3 reports.
+      _none_or_malformed ->
+        :ok
+    end
+  end
+
+  defp values_at(payload, paths) do
+    Enum.reduce_while(paths, {:ok, []}, fn path, {:ok, values} ->
+      case value_at(payload, path, []) do
+        {:ok, value} -> {:cont, {:ok, [value | values]}}
+        {:error, _reason} = error -> {:halt, error}
+      end
+    end)
+  end
+
+  defp not_an_edit do
+    Error.provider("Slack message change is no edit",
+      provider: :slack,
+      reason: :not_an_edit
+    )
+  end
 
   # A deletion reads no text: the deleted text is only in `previous_message`.
   defp fields(%{"subtype" => "message_deleted"}), do: @deletion_fields

@@ -353,6 +353,8 @@ defmodule Jido.Connect.Slack.MessageChangesTest do
          "event.previous_message"},
         {edit, "changed", &put_in(&1, ["event", "previous_message", "ts"], 1_793_628_275),
          "event.previous_message.ts"},
+        {edit, "changed", &put_in(&1, ["event", "previous_message", "edited"], "U0CDPFT1RDJ"),
+         "event.previous_message.edited"},
         {deletion, "deleted", &put_in(&1, ["event", "previous_message", "user"], 7),
          "event.previous_message.user"},
         {deletion, "deleted", &put_in(&1, ["event", "event_ts"], 1_793_628_616), "event.event_ts"}
@@ -441,6 +443,71 @@ defmodule Jido.Connect.Slack.MessageChangesTest do
                   signature_state: :verified,
                   normalized_signal: nil
                 }} = replay(fixture)
+      end
+    end
+  end
+
+  describe "a message_changed event of a message edited before" do
+    # Slack keeps `edited` on a message after an edit. A later reply count,
+    # broadcast root update or unfurl of that message carries the last edit
+    # again, in `message` and in `previous_message`.
+
+    test "that repeats the last edit is no edit on every path and yields no signal" do
+      edited = %{"user" => "U0CDPFT1RDJ", "ts" => "1793628100.000000"}
+
+      for {fixture, family} <- @unedited do
+        # Derived: the captured change of an unedited message, with the same
+        # `edited` in `message` and `previous_message`.
+        capture =
+          derive(fixture, fn payload ->
+            payload
+            |> put_in(["event", "message", "edited"], edited)
+            |> put_in(["event", "previous_message", "edited"], edited)
+          end)
+
+        payload = Jason.decode!(capture["body"])
+
+        for result <- [
+              Webhook.normalize_event(payload),
+              Webhook.normalize_signal("message", payload),
+              Webhook.normalize_signal("#{family}.changed", payload)
+            ] do
+          assert {:error, %Error.ProviderError{reason: :not_an_edit}} = result, fixture
+        end
+
+        assert {:ok, %WebhookDelivery{signature_state: :verified, normalized_signal: nil}} =
+                 replay(capture),
+               fixture
+      end
+    end
+
+    test "is an edit when edited.ts or the text differs from previous_message" do
+      {:ok, %WebhookDelivery{normalized_signal: edit}} = replay("message_changed_public_2")
+      payload = payload!("message_changed_public_2")
+      %{"message" => message, "previous_message" => previous} = payload["event"]
+      refute message["edited"] == previous["edited"]
+      refute message["text"] == previous["text"]
+
+      # Derived: the captured second edit of the public message, once with
+      # the `edited` of the first edit, as for two edits within one second,
+      # once with the text before the edit, as for an edit of only blocks or
+      # attachments, and once without `previous_message`.
+      changes = [
+        &put_in(&1, ["event", "previous_message", "edited"], message["edited"]),
+        &put_in(&1, ["event", "previous_message", "text"], message["text"]),
+        &update_in(&1, ["event"], fn event -> Map.delete(event, "previous_message") end)
+      ]
+
+      for change <- changes do
+        capture = derive("message_changed_public_2", change)
+        payload = Jason.decode!(capture["body"])
+
+        assert {:ok, %WebhookDelivery{normalized_signal: delivered}} = replay(capture)
+        signal = Map.delete(delivered, :delivery)
+
+        assert signal == Map.delete(edit, :delivery)
+        assert {:ok, ^signal} = Webhook.normalize_event(payload)
+        assert {:ok, ^signal} = Webhook.normalize_signal("message.channels.changed", payload)
       end
     end
   end

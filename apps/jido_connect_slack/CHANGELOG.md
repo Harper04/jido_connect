@@ -39,7 +39,8 @@
   signal. Its `ts` is the edited or deleted message's `ts`, apart from the
   notification's. Edits keep their full text, also when it is empty, and
   their editor; deletions carry no text. A `message_changed` event without
-  `message.edited` returns `:not_an_edit`, a malformed change
+  a new `message.edited`, such as an unfurl of a message edited before,
+  returns `:not_an_edit`, a malformed change
   `:invalid_message_change` and a conflicting `previous_message`
   `:conflicting_message_change`. The generic `message` event and
   `normalize_event/1` now normalize both subtypes, so a verified edit or

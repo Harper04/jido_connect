@@ -18,7 +18,7 @@ defmodule Jido.Connect.Slack.Triggers.Events.MessageChanges do
   @source_ts "ts of the edited or deleted message, from message.ts of an edit and deleted_ts of a deletion. With channel it names the original message; it is not the ts of this notification."
   @notification_ts "ts of this notification. Slack gives every edit and deletion a new one."
   @event_ts "Slack's event_ts of this notification."
-  @changed_subtype "Always message_changed: an edit, marked by message.edited."
+  @changed_subtype "Always message_changed: an edit, marked by a new message.edited."
   @changed_thread_ts "thread_ts of the edited message, for a thread reply or a thread parent."
   @changed_user "Author of the edited message."
   @editor "User who made the edit, from message.edited.user."
@@ -36,7 +36,7 @@ defmodule Jido.Connect.Slack.Triggers.Events.MessageChanges do
       data_classification :workspace_content
       label "Public channel message edit"
 
-      description "Receive edits of public channel messages from Slack Events API message.channels callbacks with the subtype message_changed and message.edited. Other message_changed callbacks, such as link unfurls, yield no signal."
+      description "Receive edits of public channel messages from Slack Events API message.channels callbacks with the subtype message_changed and a new message.edited. Other message_changed callbacks, such as link unfurls or reply count updates, yield no signal."
 
       verification @verification
       dedupe %{key: [:team_id, :event_id]}
@@ -119,7 +119,7 @@ defmodule Jido.Connect.Slack.Triggers.Events.MessageChanges do
       data_classification :workspace_content
       label "Private channel message edit"
 
-      description "Receive edits of private channel messages from Slack Events API message.groups callbacks with the subtype message_changed and message.edited. Other message_changed callbacks, such as link unfurls, yield no signal. Requires Slack groups:history for private channel history events."
+      description "Receive edits of private channel messages from Slack Events API message.groups callbacks with the subtype message_changed and a new message.edited. Other message_changed callbacks, such as link unfurls or reply count updates, yield no signal. Requires Slack groups:history for private channel history events."
 
       verification @verification
       dedupe %{key: [:team_id, :event_id]}
@@ -202,7 +202,7 @@ defmodule Jido.Connect.Slack.Triggers.Events.MessageChanges do
       data_classification :workspace_content
       label "Direct message edit"
 
-      description "Receive edits of direct messages from Slack Events API message.im callbacks with the subtype message_changed and message.edited. Other message_changed callbacks, such as link unfurls, yield no signal. Requires Slack im:history for direct message history events."
+      description "Receive edits of direct messages from Slack Events API message.im callbacks with the subtype message_changed and a new message.edited. Other message_changed callbacks, such as link unfurls or reply count updates, yield no signal. Requires Slack im:history for direct message history events."
 
       verification @verification
       dedupe %{key: [:team_id, :event_id]}
@@ -285,7 +285,7 @@ defmodule Jido.Connect.Slack.Triggers.Events.MessageChanges do
       data_classification :workspace_content
       label "Multi-person direct message edit"
 
-      description "Receive edits of multi-person direct messages from Slack Events API message.mpim callbacks with the subtype message_changed and message.edited. Other message_changed callbacks, such as link unfurls, yield no signal. Requires Slack mpim:history for multi-person direct message history events."
+      description "Receive edits of multi-person direct messages from Slack Events API message.mpim callbacks with the subtype message_changed and a new message.edited. Other message_changed callbacks, such as link unfurls or reply count updates, yield no signal. Requires Slack mpim:history for multi-person direct message history events."
 
       verification @verification
       dedupe %{key: [:team_id, :event_id]}

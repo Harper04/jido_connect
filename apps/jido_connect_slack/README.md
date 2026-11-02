@@ -342,11 +342,16 @@ channel triggers also take an event without one. The generic `message`
 event and `normalize_event/1` take edits and deletions of every class; the
 message triggers reject both subtypes.
 
-Only a `message_changed` event whose `message` carries `edited` is an edit.
-Slack sends the same subtype when it unfurls a link, when a thread parent
-gets a new reply count and when a broadcast reply's thread root changes.
-These return `:not_an_edit`, and their verified delivery keeps
-`normalized_signal: nil`.
+Only a `message_changed` event whose `message` carries a new `edited` is an
+edit. Slack sends the same subtype when it unfurls a link, when a thread
+parent gets a new reply count and when a broadcast reply's thread root
+changes. Slack keeps `edited` on a message after an edit, so such a change
+of an edited message repeats the last edit. An edit therefore needs another
+`edited.ts` than `previous_message.edited.ts`, or another text than
+`previous_message.text`, since two edits within one second share their
+`edited.ts`; without `previous_message`, `message.edited` alone marks an
+edit. Every other `message_changed` event returns `:not_an_edit`, and its
+verified delivery keeps `normalized_signal: nil`.
 
 The signal, described by `Jido.Connect.Slack.MessageChange`, names the
 original message by `channel` and `ts`: `message.ts` of an edit and
@@ -375,8 +380,9 @@ one message by `edited_ts`.
 The changes captured from the test workspace were two edits and a deletion
 of a message in each conversation class and of a thread reply, each by the
 person who wrote it, and bot edits through `chat.update`, one of them to an
-empty text beside an attachment. An edit by another person than the author
-and a deletion without `previous_message` were not captured.
+empty text beside an attachment. An edit by another person than the author,
+a deletion without `previous_message` and a change that repeats an earlier
+edit were not captured.
 
 ## Interactivity
 
