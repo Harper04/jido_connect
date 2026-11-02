@@ -134,11 +134,13 @@ The package makes no delivery guarantee beyond Slack's answer:
 - Posting forwards no idempotency key, so every call that reaches Slack can
   post another message.
 - The transport does not retry. After a timeout the error carries
-  `delivery: :sent_outcome_unknown`, and the message may exist; check the
-  conversation, for example with `slack.conversation.history`, before posting
-  again. A Slack `ok: false` answer, an HTTP error and a transport failure are
-  separate `Jido.Connect.Error.ProviderError`s: `reason` is Slack's error
-  code, `:http_error` with the HTTP `status`, or `:request_error`.
+  `delivery: :sent_outcome_unknown`, and the message may exist; look for it
+  before posting again, with `slack.conversation.history` for a post and with
+  `slack.thread.replies` for a thread reply, which the conversation history
+  lists only when it is broadcast. A Slack `ok: false` answer, an HTTP error
+  and a transport failure are separate `Jido.Connect.Error.ProviderError`s:
+  `reason` is Slack's error code, `:http_error` with the HTTP `status`, or
+  `:request_error`.
 
 ## Rate limits
 
