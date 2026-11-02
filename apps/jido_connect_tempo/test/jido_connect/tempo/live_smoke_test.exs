@@ -460,7 +460,7 @@ defmodule Jido.Connect.Tempo.LiveSmokeTest do
               %Error.ProviderError{reason: :period_locked, status: 403, delivery: :rejected}},
              approved
            ),
-           "the approved-period booking got #{inspect(error_summary(approved))}"
+           "the approved-period booking got #{error_summary(approved)}"
 
     {:error, rejection} = approved
     assert Error.retry_guidance(rejection) == :do_not_retry
@@ -497,7 +497,7 @@ defmodule Jido.Connect.Tempo.LiveSmokeTest do
              {:error, %Error.ProviderError{reason: :bad_request, status: 400}},
              result
            ),
-           "the invalid start time got #{inspect(error_summary(result))}"
+           "the invalid start time got #{error_summary(result)}"
   end
 
   # A POST with an invented token cannot create a worklog, so this test needs
@@ -769,12 +769,13 @@ defmodule Jido.Connect.Tempo.LiveSmokeTest do
 
   defp stop_if_created!(_result, _what), do: :ok
 
-  defp error_summary({:error, %Error.ProviderError{} = error}),
-    do: {error.reason, error.status, error.delivery, error_message({:error, error})}
+  # Reason and status only, since Tempo's error text may quote the
+  # booking, including the test user's account ID.
+  defp error_summary({:error, error}),
+    do: "reason #{inspect(Map.get(error, :reason))}, status #{inspect(Map.get(error, :status))}"
 
-  defp error_summary({:error, error}), do: {:error, Map.get(error, :reason)}
-  defp error_summary({:ok, _value}), do: :ok
-  defp error_summary(_other), do: :unexpected
+  defp error_summary({:ok, _value}), do: "a success"
+  defp error_summary(_other), do: "an unexpected result"
 
   defp ok!({:ok, value}, _step), do: value
 
