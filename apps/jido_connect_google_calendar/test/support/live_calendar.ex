@@ -7,6 +7,8 @@ defmodule Jido.Connect.Google.Calendar.TestSupport.LiveCalendar do
   # the client. The declared scopes gate the runtime check; the token itself
   # may carry broader Google scopes.
 
+  import ExUnit.Assertions
+
   alias Jido.Connect
   alias Jido.Connect.Error
   alias Jido.Connect.Google.Calendar
@@ -103,6 +105,43 @@ defmodule Jido.Connect.Google.Calendar.TestSupport.LiveCalendar do
 
       error ->
         error
+    end
+  end
+
+  @doc """
+  While recording, checks that the poll recorded under `name` has `pages`
+  pages and holds the changes of `event_ids` and of no other event.
+
+  The offline tests replay those pages as they are. A change of another
+  test, such as a delete that Google's incremental sync reports late, fails
+  the recording run here; record again. Without `JIDO_CONNECT_RECORD=1`
+  this does nothing.
+  """
+  def assert_recorded_poll(name, event_ids, pages) do
+    if LiveSmoke.recording?() do
+      recorded = recorded_pages(name, 1)
+      ids = for page <- recorded, item <- Map.get(page, "items", []), do: item["id"]
+
+      assert length(recorded) == pages,
+             "the poll recorded under #{name} has #{length(recorded)} pages, " <>
+               "the offline tests replay #{pages}; record again"
+
+      assert Enum.sort(ids) == Enum.sort(event_ids),
+             "the poll recorded under #{name} does not hold exactly this run's events; record again"
+    end
+
+    :ok
+  end
+
+  # Follows nextPageToken through `name.json`, `name.2.json` and so on.
+  defp recorded_pages(name, number) do
+    file = if number == 1, do: name, else: "#{name}.#{number}"
+    page = LiveSmoke.fixture!(:google_calendar, file)
+
+    if Map.has_key?(page, "nextPageToken") do
+      [page | recorded_pages(name, number + 1)]
+    else
+      [page]
     end
   end
 

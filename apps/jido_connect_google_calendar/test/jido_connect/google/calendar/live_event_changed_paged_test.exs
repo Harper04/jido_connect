@@ -1,7 +1,9 @@
 defmodule Jido.Connect.Google.Calendar.LiveEventChangedPagedTest do
   @moduledoc """
-  Live check that the `google.calendar.event.changed` poll follows
-  `nextPageToken` on an incremental sync of the Google Workspace test account.
+  Live check that the `google.calendar.event.changed` poll drains an
+  incremental sync of the Google Workspace test account at two events per
+  page. While recording, it also checks that the recorded poll has two pages
+  and holds only this run's events.
 
       GOOGLE_LIVE_DESTRUCTIVE=true mix test --only live_smoke
 
@@ -70,26 +72,9 @@ defmodule Jido.Connect.Google.Calendar.LiveEventChangedPagedTest do
 
       assert all_seen?(signals, event_ids)
       assert is_binary(next) and next not in ["", checkpoint]
+      LiveCalendar.assert_recorded_poll("event_changed_paged", event_ids, 2)
 
-      # The same request through the client shows that Google split the
-      # changes into pages.
       LiveCalendar.skip_recording()
-
-      assert {:ok, %{events: first_page, next_page_token: page_token}} =
-               Client.list_events(
-                 %{
-                   calendar_id: calendar_id,
-                   sync_token: checkpoint,
-                   page_size: @page_size,
-                   single_events: true,
-                   show_deleted: true,
-                   show_hidden_invitations: false
-                 },
-                 token
-               )
-
-      assert length(first_page) <= @page_size
-      assert is_binary(page_token)
 
       for event_id <- event_ids do
         assert {:ok, %{deleted?: true}} =

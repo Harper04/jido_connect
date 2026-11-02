@@ -136,6 +136,7 @@ defmodule Jido.Connect.Google.Calendar.LiveEventAttendeesTest do
                declined_signal(signals, event_id)
 
       assert [%{response_status: "declined"}] = Enum.filter(event.attendees, & &1.self?)
+      LiveCalendar.assert_recorded_poll("event_changed_declined", [event_id], 1)
 
       LiveCalendar.skip_recording()
       assert {:ok, %{deleted?: true}} = delete_event(calendar_id, event_id, token)
