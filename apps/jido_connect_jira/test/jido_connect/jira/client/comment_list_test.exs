@@ -341,6 +341,16 @@ defmodule Jido.Connect.Jira.Client.CommentListTest do
                list(start_at: 54, max_results: 2)
     end
 
+    test "an empty page past the end is final" do
+      # The recorded empty page at the end with `total` lowered from 54 to 52,
+      # as if two comments had been deleted after the previous page pointed
+      # the caller at offset 54.
+      expect_page(Map.put(page(5), "total", 52))
+
+      assert {:ok, %{start_at: 54, total: 52, is_last: true, next_start_at: nil, comments: []}} =
+               list(start_at: 54, max_results: 2)
+    end
+
     test "an empty non-final page fails" do
       # The recorded second page without its comments, which would point the
       # next call at its own offset.
