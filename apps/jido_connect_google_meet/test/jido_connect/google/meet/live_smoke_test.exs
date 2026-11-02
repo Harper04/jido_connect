@@ -10,6 +10,7 @@ defmodule Jido.Connect.Google.Meet.LiveSmokeTest do
   use ExUnit.Case, async: false
   use Jido.Connect.TestSupport.LiveSmoke
 
+  alias Jido.Connect.Error.ProviderError
   alias Jido.Connect.Google.Meet.Client
 
   @tag env!(["GOOGLE_ACCESS_TOKEN"])
@@ -71,6 +72,25 @@ defmodule Jido.Connect.Google.Meet.LiveSmokeTest do
       assert is_binary(entry.language_code)
       assert is_binary(entry.text) and entry.text != ""
     end
+  end
+
+  @tag env!(["GOOGLE_ACCESS_TOKEN", "GOOGLE_MEET_CONFERENCE_RECORD"])
+  test "rejects the entries of a missing transcript", %{env: env} do
+    missing =
+      env["GOOGLE_MEET_CONFERENCE_RECORD"] <>
+        "/transcripts/00000000-0000-0000-0000-000000000000"
+
+    LiveSmoke.record(
+      {:jido_connect_google, :google_req_options},
+      :google_meet,
+      "transcript_entries_not_found"
+    )
+
+    assert {:error, %ProviderError{provider: :google, reason: :http_error, status: 404}} =
+             Client.list_transcript_entries(
+               %{transcript_name: missing, page_size: 1},
+               env["GOOGLE_ACCESS_TOKEN"]
+             )
   end
 
   defp entry_pages(transcript, token, page_token \\ nil, pages \\ []) do

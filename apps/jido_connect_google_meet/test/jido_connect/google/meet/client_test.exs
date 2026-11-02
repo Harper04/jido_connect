@@ -357,6 +357,31 @@ defmodule Jido.Connect.Google.Meet.ClientTest do
 
     assert {:error, %Jido.Connect.Error.ProviderError{reason: :invalid_response}} =
              Client.list_transcript_entries(%{transcript_name: @transcript_name}, "token")
+
+    Req.Test.stub(__MODULE__, &Req.Test.json(&1, recorded["transcriptEntries"]))
+
+    assert {:error, %Jido.Connect.Error.ProviderError{reason: :invalid_response, status: nil}} =
+             Client.list_transcript_entries(%{transcript_name: @transcript_name}, "token")
+  end
+
+  test "returns a provider error for a missing transcript instead of empty entries" do
+    not_found = LiveSmoke.fixture!(:google_meet, "transcript_entries_not_found")
+
+    Req.Test.stub(__MODULE__, fn conn ->
+      assert conn.request_path == "/v2/conferenceRecords/abc/transcripts/def/entries"
+
+      conn
+      |> Plug.Conn.put_status(not_found["error"]["code"])
+      |> Req.Test.json(not_found)
+    end)
+
+    assert {:error,
+            %Jido.Connect.Error.ProviderError{
+              provider: :google,
+              reason: :http_error,
+              status: 404,
+              details: %{message: "Transcript not found"}
+            }} = Client.list_transcript_entries(%{transcript_name: @transcript_name}, "token")
   end
 
   test "returns provider errors for malformed space responses" do

@@ -412,6 +412,25 @@ defmodule Jido.Connect.Google.MeetTest do
              )
   end
 
+  test "rejects list transcript entries with a blank transcript name" do
+    {context, lease} = context_and_lease(scopes: [@meet_readonly_scope])
+
+    for transcript_name <- ["", "   "] do
+      assert {:error,
+              %Connect.Error.ValidationError{
+                reason: :invalid_artifact_request,
+                details: %{field: :transcript_name}
+              }} =
+               Connect.invoke(
+                 Meet.integration(),
+                 "google.meet.transcript.entry.list",
+                 %{transcript_name: transcript_name},
+                 context: context,
+                 credential_lease: lease
+               )
+    end
+  end
+
   defp context_and_lease(opts) do
     scopes = Keyword.get(opts, :scopes, [@meet_readonly_scope])
 
