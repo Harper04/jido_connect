@@ -151,6 +151,44 @@ Jido.Connect.invoke(Jido.Connect.Google.Drive, "google.drive.file.get", target_i
 )
 ```
 
+## Listing Folder Contents
+
+`google.drive.files.list` sends `query` to Drive as `q`. A query such as
+`'<folderId>' in parents` returns the folder's direct children only, not the
+files in its subfolders. The package has no recursive listing; a host that
+needs a whole tree lists each subfolder itself.
+
+Drive's `files.list` returns trashed files as well, unless the query adds
+`trashed = false`:
+
+```elixir
+Jido.Connect.invoke(
+  Jido.Connect.Google.Drive,
+  "google.drive.files.list",
+  %{query: "'#{folder_id}' in parents and trashed = false"},
+  context: context,
+  credential_lease: lease
+)
+```
+
+A result with `next_page_token` has more pages. Pass the token back as
+`page_token` until a result comes without it.
+
+`incomplete_search` is Drive's `incompleteSearch` flag. `true` means Drive did
+not search every document, so matching files may be missing from the result.
+According to Google this happens when a search with `corpora: "allDrives"`
+cannot cover every corpus; Google then recommends narrowing the search to the
+`user` or `drive` corpus. The default field presets, `Fields.file_list()` and
+`Fields.file_list_with_permissions()`, request the flag, and `false` is
+returned as `false`. A caller-supplied `fields` is sent unchanged; when it does
+not name `incompleteSearch`, the result has no `incomplete_search` key.
+
+To follow a folder after the first listing, poll the
+`google.drive.collection.changes` trigger with the folder ID as
+`collection_id`. It reads Drive's change log from a checkpoint and marks each
+change with `collection_match`, so the host does not have to list the folder
+again.
+
 ## Permission-Aware Field Projections
 
 Google Drive `fields` expressions are provider-specific. `jido_connect` core
