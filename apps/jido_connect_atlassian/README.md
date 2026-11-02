@@ -52,18 +52,16 @@ config :jido_connect_atlassian, Jido.Connect.Atlassian.ADF,
   max_nodes: 20_000
 ```
 
-The Jira package uses `:degrade` for issue descriptions, comment bodies and
-webhook comment bodies. The Confluence package uses `:fail` for
-`confluence.page.get` by default and `:degrade` when the caller asks for it.
-The module documentation of `Jido.Connect.Atlassian.ADF` describes the
-rendering, the error reasons and the limits in full.
+Each product package chooses the mode for its own reads and documents that
+choice in its README. The module documentation of `Jido.Connect.Atlassian.ADF`
+describes the rendering, the error reasons and the limits in full.
 
 ## Strict ADF to text
 
 `Jido.Connect.Atlassian.ADF.to_text/1` is the strict rendering.
-`Jido.Connect.Confluence.ADF` delegates to it unchanged; page reads use
-`project/2`. `to_text/1` fails the whole document with `:error` on any node or
-text mark outside its supported subset and on links that are not HTTPS.
+`Jido.Connect.Confluence.ADF` delegates to it unchanged. `to_text/1` fails the
+whole document with `:error` on any node or text mark outside its supported
+subset and on links that are not HTTPS.
 
 ## Markdown to ADF
 
