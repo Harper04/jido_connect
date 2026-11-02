@@ -46,13 +46,13 @@ defmodule Jido.Connect.Google.Drive.FileListingTest do
   end
 
   test "files.list requests incompleteSearch when the caller sends no fields" do
-    expect_preset_fields()
+    expect_preset_fields(Fields.file_list())
 
     assert {:ok, _listing} = Client.list_files(%{}, "token")
   end
 
   test "the permission-aware files.list preset requests incompleteSearch" do
-    expect_preset_fields()
+    expect_preset_fields(Fields.file_list_with_permissions())
 
     assert {:ok, _listing} =
              Client.list_files(%{fields: Fields.file_list_with_permissions()}, "token")
@@ -168,14 +168,12 @@ defmodule Jido.Connect.Google.Drive.FileListingTest do
              Enum.find(action.output, &(&1.name == :incomplete_search))
   end
 
-  defp expect_preset_fields do
+  defp expect_preset_fields(preset) do
+    assert String.starts_with?(preset, "nextPageToken,incompleteSearch,files(")
+
     Req.Test.expect(__MODULE__, fn conn ->
       assert conn.request_path == "/v3/files"
-
-      assert String.starts_with?(
-               conn.query_params["fields"],
-               "nextPageToken,incompleteSearch,files("
-             )
+      assert conn.query_params["fields"] == preset
 
       Req.Test.json(conn, LiveSmoke.fixture!(:google_drive, "files_list_folder_page.5"))
     end)
