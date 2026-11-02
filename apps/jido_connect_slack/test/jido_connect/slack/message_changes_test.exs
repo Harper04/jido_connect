@@ -477,6 +477,19 @@ defmodule Jido.Connect.Slack.MessageChangesTest do
       end
     end
 
+    test "yields a signal that the signal schema of its trigger accepts" do
+      triggers = Jido.Connect.Slack.integration().triggers
+
+      for fixture <- @changes,
+          payload = payload!(fixture),
+          {:ok, signal} <- [Webhook.normalize_event(payload)] do
+        id = "slack.event.#{trigger_event(payload)}"
+        trigger = Enum.find(triggers, &(&1.id == id))
+
+        assert {:ok, ^signal} = Zoi.parse(trigger.signal_schema, signal), "#{id} #{fixture}"
+      end
+    end
+
     test "deletion signals and errors leave out the message text" do
       for fixture <- @changes, String.starts_with?(fixture, "message_deleted_") do
         payload = payload!(fixture)
@@ -497,16 +510,18 @@ defmodule Jido.Connect.Slack.MessageChangesTest do
 
       for fixture <- @changes do
         payload = payload!(fixture)
-        family = family(payload["event"]["channel_type"])
-
-        action =
-          if payload["event"]["subtype"] == "message_changed", do: "changed", else: "deleted"
 
         assert {:ok, %WebhookDelivery{}} = replay(fixture)
         assert {_ok_or_error, _result} = Webhook.normalize_event(payload)
-        assert {_ok_or_error, _result} = Webhook.normalize_signal("#{family}.#{action}", payload)
+        assert {_ok_or_error, _result} = Webhook.normalize_signal(trigger_event(payload), payload)
       end
     end
+  end
+
+  # The change trigger event for `payload`, such as message.channels.changed.
+  defp trigger_event(%{"event" => event}) do
+    action = if event["subtype"] == "message_changed", do: "changed", else: "deleted"
+    "#{family(event["channel_type"])}.#{action}"
   end
 
   defp family("channel"), do: "message.channels"
