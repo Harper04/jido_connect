@@ -189,7 +189,10 @@ origin is accepted while the request stays at the connection's origin.
 
 A foreign `next` link, a repeated offset, malformed page metadata, a `next`
 link whose `offset` is not the page's `offset` plus `count`, and any failed
-page also fail the whole read.
+page also fail the whole read. Query parameters go in `:params`, a keyword
+list or a map; their `offset` and `limit` are dropped. An invalid bound or
+`:params` value is a `Jido.Connect.Error.ValidationError` before any
+request.
 
 ## Errors
 

@@ -16,7 +16,9 @@ defmodule Jido.Connect.Tempo.Client.Pagination do
   the connection's origin. Any other origin or path is a `:foreign_next_link`
   error without a request.
 
-  Bounds, each a positive integer option with a default from `defaults/0`:
+  Bounds, each a positive integer option with a default from `defaults/0`;
+  an invalid bound or `:params` value is a `Jido.Connect.Error.ValidationError`
+  with reason `:invalid_pagination_option` before any request:
 
   - `:limit` (50): page size sent to Tempo.
   - `:max_pages` (20): requests per read. A read that needs more fails with
@@ -48,17 +50,49 @@ defmodule Jido.Connect.Tempo.Client.Pagination do
   `path` is relative to the connection's origin; a missing leading slash is
   added.
 
-  Options: `:params` (query parameters other than `offset` and `limit`) and
-  the bounds `:limit`, `:max_pages` and `:max_results`.
+  Options: `:params`, query parameters as a keyword list or a map, whose
+  `offset` and `limit` are dropped, and the bounds `:limit`, `:max_pages`
+  and `:max_results`.
   """
   @spec collect(Request.t(), String.t(), keyword()) ::
-          {:ok, [map()]} | {:error, Error.ProviderError.t()}
-  def collect(%Request{} = request, path, opts \\ []) when is_binary(path) do
-    bounds = Map.new(@defaults, fn {key, default} -> {key, bound!(opts, key, default)} end)
-    params = opts |> Keyword.get(:params, []) |> Keyword.drop([:offset, :limit])
+          {:ok, [map()]} | {:error, Error.ProviderError.t() | Error.ValidationError.t()}
+  def collect(%Request{} = request, path, opts \\ []) when is_binary(path) and is_list(opts) do
+    with {:ok, bounds} <- bounds(opts),
+         {:ok, params} <- params(Keyword.get(opts, :params, [])) do
+      state = %{offset: 0, pages: 0, total: 0, seen: MapSet.new(), chunks: []}
+      read(request, absolute(path), params, bounds, state)
+    end
+  end
 
-    state = %{offset: 0, pages: 0, total: 0, seen: MapSet.new(), chunks: []}
-    read(request, absolute(path), params, bounds, state)
+  defp bounds(opts) do
+    Enum.reduce_while(@defaults, {:ok, %{}}, fn {key, default}, {:ok, bounds} ->
+      case Keyword.get(opts, key, default) do
+        value when is_integer(value) and value > 0 -> {:cont, {:ok, Map.put(bounds, key, value)}}
+        _other -> {:halt, invalid_option(key, "must be a positive integer")}
+      end
+    end)
+  end
+
+  defp params(params) when is_list(params) or is_map(params) do
+    if Enum.all?(params, &param?/1) do
+      {:ok, Enum.reject(params, fn {key, _value} -> to_string(key) in ["offset", "limit"] end)}
+    else
+      invalid_option(:params, "must hold key-value pairs")
+    end
+  end
+
+  defp params(_params), do: invalid_option(:params, "must be a keyword list or a map")
+
+  defp param?({key, _value}) when is_atom(key) or is_binary(key), do: true
+  defp param?(_entry), do: false
+
+  defp invalid_option(option, message) do
+    {:error,
+     Error.validation("Invalid Tempo pagination option",
+       reason: :invalid_pagination_option,
+       subject: option,
+       details: %{option: option, message: message}
+     )}
   end
 
   # Req sends "4/x" as "/4/x"; the next link check compares that path.
@@ -144,12 +178,5 @@ defmodule Jido.Connect.Tempo.Client.Pagination do
 
   defp error(reason, message, details) do
     Response.invalid_response(message, nil, reason: reason, details: details)
-  end
-
-  defp bound!(opts, key, default) do
-    case Keyword.get(opts, key, default) do
-      value when is_integer(value) and value > 0 -> value
-      _other -> raise ArgumentError, "#{key} must be a positive integer"
-    end
   end
 end

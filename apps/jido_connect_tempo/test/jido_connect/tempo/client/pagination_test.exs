@@ -198,11 +198,49 @@ defmodule Jido.Connect.Tempo.Client.PaginationTest do
              Pagination.collect(request(), @path, @october)
   end
 
-  test "documents its defaults and rejects invalid bounds" do
+  test "documents its defaults" do
     assert Pagination.defaults() == [limit: 50, max_pages: 20, max_results: 1_000]
+  end
 
-    for bad <- [[limit: 0], [max_pages: -1], [max_results: "10"]] do
-      assert_raise ArgumentError, fn -> Pagination.collect(request(), @path, bad) end
+  test "an invalid bound or params value is a validation error before any request" do
+    for {option, value} <- [
+          limit: 0,
+          max_pages: -1,
+          max_results: "10",
+          params: "from=2026-10-01",
+          params: [~c"from"]
+        ] do
+      assert {:error,
+              %Error.ValidationError{reason: :invalid_pagination_option, subject: ^option}} =
+               Pagination.collect(request(), @path, [{option, value}])
+    end
+  end
+
+  # The first recorded page without its `next` link ends the read.
+  test "sends :limit as the page size and drops the caller's offset and limit" do
+    test_pid = self()
+
+    for params <- [
+          [from: "2026-10-01", to: "2026-10-31", offset: 99, limit: 7],
+          %{"from" => "2026-10-01", "to" => "2026-10-31", "offset" => 99, "limit" => 7}
+        ] do
+      Req.Test.expect(__MODULE__, fn conn ->
+        send(test_pid, {:query, Enum.to_list(URI.query_decoder(conn.query_string))})
+
+        Fixture.respond(conn, "worklogs_page",
+          body: &update_in(&1, ["metadata"], fn metadata -> Map.delete(metadata, "next") end)
+        )
+      end)
+
+      assert {:ok, _worklogs} = Pagination.collect(request(), @path, params: params, limit: 25)
+      assert_received {:query, query}
+
+      assert Enum.sort(query) == [
+               {"from", "2026-10-01"},
+               {"limit", "25"},
+               {"offset", "0"},
+               {"to", "2026-10-31"}
+             ]
     end
   end
 
