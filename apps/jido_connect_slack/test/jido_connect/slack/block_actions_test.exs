@@ -1,5 +1,7 @@
 defmodule Jido.Connect.Slack.BlockActionsTest do
-  use ExUnit.Case, async: true
+  # Not async: the test that pins "no HTTP request" points the package's Req
+  # options at a stub.
+  use ExUnit.Case, async: false
 
   alias Jido.Connect.{Error, WebhookDelivery}
   alias Jido.Connect.Slack.{BlockAction, Interactivity}
@@ -499,6 +501,7 @@ defmodule Jido.Connect.Slack.BlockActionsTest do
   describe "receipt of a click" do
     test "keeps token, response_url, trigger_id and the signing key out of deliveries, errors and logs" do
       attach_http_probe()
+      stub_slack_api()
 
       for click <- @clicks do
         # The fixture keeps the fields, sanitized: token redacted,
@@ -570,8 +573,15 @@ defmodule Jido.Connect.Slack.BlockActionsTest do
     end
   end
 
-  # Req sends every HTTP request through Finch, which emits this event in the
-  # calling process.
+  # A request through the package's Slack client fails the test.
+  defp stub_slack_api do
+    Application.put_env(:jido_connect_slack, :slack_req_options, plug: {Req.Test, __MODULE__})
+    on_exit(fn -> Application.delete_env(:jido_connect_slack, :slack_req_options) end)
+    Req.Test.stub(__MODULE__, fn _conn -> flunk("no request expected") end)
+  end
+
+  # Req sends every other HTTP request through Finch, which emits this event
+  # in the calling process.
   defp attach_http_probe do
     handler_id = {__MODULE__, self(), make_ref()}
 
