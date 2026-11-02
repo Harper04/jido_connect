@@ -70,11 +70,11 @@ Tempo actions require these local labels:
 
 | Label | Satisfied by the Tempo grant |
 | --- | --- |
-| `tempo.worklogs.read` | `worklogs:view` |
-| `tempo.worklogs.write` | `worklogs:manage` |
-| `tempo.accounts.read` | `accounts:view` |
-| `tempo.periods.read` | `periods:view` |
-| `tempo.approvals.read` | `approvals:view` |
+| `tempo.worklogs.read` | `worklogs:view` or `read` |
+| `tempo.worklogs.write` | `worklogs:manage` or `write` |
+| `tempo.accounts.read` | `accounts:view` or `read` |
+| `tempo.periods.read` | `periods:view` or `read` |
+| `tempo.approvals.read` | `approvals:view` or `read` |
 
 The runtime checks `required -- connection.scopes`. A label counts only when
 the host has recorded it in `connection.scopes`:
@@ -85,11 +85,13 @@ the host has recorded it in `connection.scopes`:
   `Jido.Connect.Tempo.ScopeResolver.granted_labels(token.scope)`, or keeps
   the labels recorded before when `token.scope` is `nil`.
 
-Tempo returns the OAuth `scope` as a space-separated list of `<area>:view`
-and `<area>:manage` grants. The mapping is one to one: a manage grant implies
-no view label, and other grants, such as `teams:view` or the coarse `read`
-and `write` of Tempo's OpenAPI example, map to no label. The effective rights
-stay bounded by the user's Tempo permissions.
+Tempo returns the OAuth `scope` as a space-separated list of grants. On the
+test site these were `<area>:view` and `<area>:manage` grants, which map one
+to one; Tempo's OpenAPI example shows the coarse `read write`, where `read`
+satisfies the four read labels and `write` satisfies `tempo.worklogs.write`.
+A manage or `write` grant implies no read label, and other grants, such as
+`teams:view`, map to no label. The effective rights stay bounded by the
+user's Tempo permissions.
 
 `ScopeResolver.required_scopes/3` resolves each operation through an
 operation map that each Tempo action extends. An operation without an entry

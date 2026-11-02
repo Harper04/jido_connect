@@ -42,8 +42,21 @@ defmodule Jido.Connect.Tempo.ScopeResolverTest do
              ]
     end
 
-    test "ignores grants without a label, including the coarse read and write" do
-      assert ScopeResolver.granted_labels("read write teams:view accounts:manage") == []
+    # The scope of Tempo's OpenAPI example token response is `read write`.
+    test "maps the coarse read grant to the read labels and write to the worklog write label" do
+      assert ScopeResolver.granted_labels("read") == [
+               "tempo.worklogs.read",
+               "tempo.accounts.read",
+               "tempo.periods.read",
+               "tempo.approvals.read"
+             ]
+
+      assert ScopeResolver.granted_labels("write") == ["tempo.worklogs.write"]
+      assert ScopeResolver.granted_labels("read write") == @labels
+    end
+
+    test "ignores grants without a label" do
+      assert ScopeResolver.granted_labels("teams:view accounts:manage") == []
       assert ScopeResolver.granted_labels(nil) == []
     end
   end
@@ -86,6 +99,26 @@ defmodule Jido.Connect.Tempo.ScopeResolverTest do
 
     assert {:missing_scopes, @labels} =
              Authorization.connection_availability(operation, connection(String.split(scope)))
+  end
+
+  test "a recorded scope of read write satisfies tempo.worklogs.write, read alone does not" do
+    operation = %{
+      action_id: "tempo.example",
+      auth_profiles: [:oauth2_user],
+      scopes: ["tempo.worklogs.write"]
+    }
+
+    assert {:available, ["tempo.worklogs.write"]} =
+             Authorization.connection_availability(
+               operation,
+               connection(ScopeResolver.granted_labels("read write"))
+             )
+
+    assert {:missing_scopes, ["tempo.worklogs.write"]} =
+             Authorization.connection_availability(
+               operation,
+               connection(ScopeResolver.granted_labels("read"))
+             )
   end
 
   defp connection(scopes) do

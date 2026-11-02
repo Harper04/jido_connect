@@ -13,12 +13,14 @@ defmodule Jido.Connect.Tempo.ScopeResolver do
   - OAuth: the host records `granted_labels/1` of the token response's
     `scope`, or keeps the labels recorded before when that `scope` is `nil`.
 
-  `granted_labels/1` maps Tempo's `<area>:view` and `<area>:manage` grants
-  one to one: `worklogs:view` to `tempo.worklogs.read`, `worklogs:manage` to
-  `tempo.worklogs.write`, and `accounts:view`, `periods:view` and
-  `approvals:view` to the read labels of their areas. A manage grant implies
-  no view label. Other grants, such as `teams:view` or the coarse `read` and
-  `write` of Tempo's OpenAPI example, map to no label.
+  `granted_labels/1` maps two forms of Tempo grants. The area grants seen on
+  the test site map one to one: `worklogs:view` to `tempo.worklogs.read`,
+  `worklogs:manage` to `tempo.worklogs.write`, and `accounts:view`,
+  `periods:view` and `approvals:view` to the read labels of their areas. The
+  coarse grants of Tempo's OpenAPI example map by kind: `read` to the four
+  read labels and `write` to `tempo.worklogs.write`. A manage or `write`
+  grant implies no read label. Other grants, such as `teams:view`, map to no
+  label.
 
   `required_scopes/3` resolves an operation through `operations/0`, which
   each Tempo action extends with its labels. An operation without an entry
@@ -27,15 +29,16 @@ defmodule Jido.Connect.Tempo.ScopeResolver do
 
   alias Jido.Connect.{Authorization, Error, Scope}
 
+  # Label => the Tempo grants that satisfy it, in declaration order.
   @grants [
-    {"worklogs:view", "tempo.worklogs.read"},
-    {"worklogs:manage", "tempo.worklogs.write"},
-    {"accounts:view", "tempo.accounts.read"},
-    {"periods:view", "tempo.periods.read"},
-    {"approvals:view", "tempo.approvals.read"}
+    {"tempo.worklogs.read", ["worklogs:view", "read"]},
+    {"tempo.worklogs.write", ["worklogs:manage", "write"]},
+    {"tempo.accounts.read", ["accounts:view", "read"]},
+    {"tempo.periods.read", ["periods:view", "read"]},
+    {"tempo.approvals.read", ["approvals:view", "read"]}
   ]
 
-  @labels Enum.map(@grants, fn {_grant, label} -> label end)
+  @labels Enum.map(@grants, fn {label, _grants} -> label end)
 
   # Operation ID => labels. Each Tempo action adds its entry here.
   @operations %{}
@@ -57,7 +60,7 @@ defmodule Jido.Connect.Tempo.ScopeResolver do
   @spec granted_labels(String.t() | [String.t()] | nil) :: [String.t()]
   def granted_labels(scope) do
     granted = scope |> Scope.parse() |> MapSet.new()
-    for {grant, label} <- @grants, MapSet.member?(granted, grant), do: label
+    for {label, grants} <- @grants, Enum.any?(grants, &MapSet.member?(granted, &1)), do: label
   end
 
   @doc "Returns the labels an operation requires, or a configuration error."
