@@ -200,7 +200,7 @@ as seed input belong to the scripts that create the test data.
 | `TEMPO_OAUTH_REFRESH_TOKEN` | credential | OAuth refresh token; each refresh replaces it |
 | `TEMPO_OAUTH_ACCESS_TOKEN_EXPIRES_AT` | setting | Expiry of the stored access token |
 | `TEMPO_OAUTH_CODE` | credential | Authorization code of one browser authorization |
-| `TEMPO_OAUTH_TOKEN_FILE` | setting | New or empty file that receives the token pair of the exchange test |
+| `TEMPO_OAUTH_TOKEN_FILE` | setting | Absolute path of a new or empty file outside the repository that receives the token pair of the exchange test |
 | `SEED_TEMPO_API_TOKEN` | credential | Seed input: Tempo API token with admin rights |
 | `TEMPO_API_ORIGIN` | setting | Tempo API origin |
 | `TEMPO_ACCOUNT_ID` | setting | Tempo account linked to the test project |
@@ -214,6 +214,9 @@ consumes the code and rotates the pair: it exchanges the code for a new pair,
 refreshes that pair once and writes each pair at once to
 `TEMPO_OAUTH_TOKEN_FILE`, with mode 0600, as `TEMPO_OAUTH_ACCESS_TOKEN`,
 `TEMPO_OAUTH_REFRESH_TOKEN` and `TEMPO_OAUTH_ACCESS_TOKEN_EXPIRES_AT` lines.
+Put that file in a directory only you can write, such as
+`~/.config/jido_connect/live`, and name it with an absolute path; the test
+fails before the exchange when the path is relative or inside the repository.
 The file then holds the only valid refresh token of that authorization; copy
 its lines to `atlassian.env` and the password manager. The test does not use
 the stored `TEMPO_OAUTH_REFRESH_TOKEN`. With recording on, it writes the two

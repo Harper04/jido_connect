@@ -24,6 +24,8 @@ defmodule Jido.Connect.Tempo.LiveSmokeTest do
   @oauth ["TEMPO_OAUTH_CLIENT_ID", "TEMPO_OAUTH_CLIENT_SECRET", "TEMPO_OAUTH_REDIRECT_URI"]
   @october [params: [from: "2026-10-01", to: "2026-10-31"]]
   @jira ["JIRA_SITE", "JIRA_EMAIL", "JIRA_API_TOKEN"]
+  # This file lies in apps/jido_connect_tempo/test/jido_connect/tempo.
+  @repository Path.expand("../../../../..", __DIR__)
 
   @tag env!(["TEMPO_API_TOKEN", "TEMPO_API_ORIGIN" | @jira])
   test "reads periods with the API token", %{env: env} do
@@ -223,10 +225,15 @@ defmodule Jido.Connect.Tempo.LiveSmokeTest do
 
   defp rotated?(_exchanged, _refreshed), do: false
 
-  # The file must be new or empty, so a run cannot overwrite an env file. It
-  # is created with mode 0600 at once, which also shows that its directory is
-  # writable before the code is spent.
+  # The file must be an absolute path outside the repository, so no commit can
+  # pick up the pair; Mix runs the test in the app directory, where a relative
+  # path would land. It must be new or empty, so a run cannot overwrite an env
+  # file. It is created with mode 0600 at once, which also shows that its
+  # directory is writable before the code is spent.
   defp prepare_token_file!(file) do
+    unless outside_repository?(file),
+      do: flunk("TEMPO_OAUTH_TOKEN_FILE must be an absolute path outside the repository")
+
     case File.read(file) do
       {:ok, ""} -> :ok
       {:error, :enoent} -> :ok
@@ -235,6 +242,11 @@ defmodule Jido.Connect.Tempo.LiveSmokeTest do
 
     File.write!(file, "")
     File.chmod!(file, 0o600)
+  end
+
+  defp outside_repository?(file) do
+    Path.type(file) == :absolute and
+      not String.starts_with?(Path.expand(file) <> "/", @repository <> "/")
   end
 
   # Writes a temporary file with mode 0600 before any secret goes in, then
