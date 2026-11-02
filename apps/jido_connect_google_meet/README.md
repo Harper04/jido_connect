@@ -53,12 +53,12 @@ The recording actions return metadata only: `recording_name`, `state`,
 metadata without the transcript document.
 
 The recording file is read through the Drive package.
-`google.drive.file.download` takes the `drive_file_id` and needs the
-`drive.readonly` grant; `drive.file` covers only files the app created or
-opened. The action buffers the whole file in memory. An MP4 file contains NUL
-bytes, so the action returns the recording base64-encoded as `content_base64`,
-with the byte count of the file as `size`. Neither package transcodes or
-otherwise processes media.
+`google.drive.file.download` takes the `drive_file_id` as its `file_id` input
+and needs the `drive.readonly` grant; `drive.file` covers only files the app
+created or opened. The action buffers the whole file in memory and returns
+`file_content`. An MP4 file contains NUL bytes, so `file_content` holds the
+recording base64-encoded as `content_base64`, with the byte count of the file
+as `size`. Neither package transcodes or otherwise processes media.
 
 `google.meet.transcript.entry.list` returns transcript text entry by entry.
 Each entry carries its `entry_name`, the speaking `participant` as a
