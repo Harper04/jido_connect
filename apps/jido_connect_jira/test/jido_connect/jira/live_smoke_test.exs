@@ -342,7 +342,8 @@ defmodule Jido.Connect.Jira.LiveSmokeTest do
     status_changed: ["status"],
     duedate_set: ["duedate"],
     duedate_moved: ["duedate"],
-    duedate_cleared: ["duedate"]
+    duedate_cleared: ["duedate"],
+    multi_item_update: nil
   }
 
   @tag env!(["JIRA_WEBHOOK_SECRET", "JIRA_CAPTURE_DIR"])
@@ -358,9 +359,12 @@ defmodule Jido.Connect.Jira.LiveSmokeTest do
           do: {kind, capture, payload}
 
     # With JIDO_CONNECT_RECORD=1 the oldest capture of each kind becomes the
-    # fixture `test/fixtures/jira/captured/<kind>.json`.
+    # fixture `test/fixtures/jira/captured/<kind>.json`. An update with
+    # several items is checked but not recorded: the placeholders that hide
+    # a former assignee in `from` would also replace status IDs and dates.
     if LiveSmoke.recording?() do
-      for {kind, capture, _payload} <- Enum.uniq_by(deliveries, &elem(&1, 0)) do
+      for {kind, capture, _payload} <- Enum.uniq_by(deliveries, &elem(&1, 0)),
+          kind != :multi_item_update do
         LiveSmoke.write_capture!(
           capture,
           :jira,
@@ -451,6 +455,12 @@ defmodule Jido.Connect.Jira.LiveSmokeTest do
          "changelog" => %{"items" => [item]}
        }),
        do: update_kind(item["fieldId"], item["from"], item["to"])
+
+  defp delivery_kind(%{
+         "webhookEvent" => "jira:issue_updated",
+         "changelog" => %{"items" => [_first, _second | _rest]}
+       }),
+       do: :multi_item_update
 
   defp delivery_kind(_payload), do: nil
 

@@ -172,8 +172,10 @@ defmodule Jido.Connect.Jira.Webhook.IssueSignalTest do
     end
 
     test "a due-date set keeps the explicit null source" do
-      # Derived: the captured move with an empty previous value. The capture
-      # run created the issue with a due date, so Jira sent no first setting.
+      # Derived: the captured move with `from` and `fromString` set to null.
+      # The capture run created the issue with a due date, so no delivery of
+      # a first setting is recorded. The null source follows the captured
+      # first assignment, not an observed due-date delivery.
       payload =
         update_in(payload!("duedate_moved"), ["changelog", "items"], fn [item] ->
           [%{item | "from" => nil, "fromString" => nil}]
@@ -187,8 +189,9 @@ defmodule Jido.Connect.Jira.Webhook.IssueSignalTest do
 
     test "both items of a mixed status and due-date update survive" do
       # Derived: the captured status change with the item of the captured
-      # due-date move added, as one edit that changes both fields would
-      # arrive in a single changelog.
+      # due-date move appended. The capture run changed status and due date
+      # in separate edits; no delivery of a transition that also sets the
+      # due date is recorded.
       [due_date_item] = get_in(payload!("duedate_moved"), ["changelog", "items"])
 
       payload =
