@@ -21,6 +21,10 @@ defmodule Jido.Connect.Google.Calendar.LiveEventChangedTest do
   @poll_attempts 10
   @poll_pause_ms 2_000
 
+  # The cancellation test polls in five steps; with every attempt used, the
+  # pauses alone take 90 s, past ExUnit's default timeout of 60 s.
+  @moduletag timeout: 300_000
+
   # FREQ=WEEKLY;COUNT=3 from 2027-01-11 08:00 Berlin: instance ID suffixes in
   # UTC and the original start of each occurrence.
   @series_occurrences [
