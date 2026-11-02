@@ -13,6 +13,26 @@ surfaces are added.
 - `google.docs.document.create` — Create a new Google Docs document with an optional title.
 - `google.docs.document.batch_update` — Run a validated batchUpdate request for text, style, table, and image operations.
 
+## Document Tabs
+
+`google.docs.document.get` has no default for `include_tabs_content`. The
+request carries Google's `includeTabsContent` only when the input sets it.
+
+- `include_tabs_content: true` returns every tab in `document.tabs`, in
+  Google's order, and no legacy `document.body`. Each tab carries `tab_id`
+  and `title` from `tabProperties`, `body` from `documentTab.body`, and its
+  nested tabs as `Tab` structs in `child_tabs`.
+- `include_tabs_content: false` returns only the first tab, in the legacy
+  `document.body`, and `document.tabs` is empty.
+
+Google's reference describes only `true` and `false`; the result for an
+omitted value is not verified here. Other `documentTab` parts, such as
+headers, footers, lists and inline objects, are not part of `Tab`.
+
+A tab at any depth that is not a map, or whose fields do not have Google's
+shape, makes the action return a `Jido.Connect.Error.ProviderError` with
+reason `:invalid_response`.
+
 ## Auth Profiles
 
 Docs declares a user OAuth profile:
