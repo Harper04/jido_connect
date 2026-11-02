@@ -16,8 +16,10 @@ defmodule Jido.Connect.Slack.MessageChange do
   An edit carries the message as it is after the edit: `text`, the author
   as `user`, `bot_id` and `app_id`, `thread_ts` for a thread reply, and the
   editor and edit time from `message.edited` as `editor` and `edited_ts`.
-  `text` is Slack's full text and stays `""` when the edit left the text
-  empty beside blocks or attachments.
+  `text` is Slack's full text as Slack stores it. It stays `""` when Slack
+  stores an empty text, as after an edit to an empty text beside an
+  attachment; for an empty text beside blocks, Slack stores the blocks'
+  text.
 
   A deletion carries no text. Its `user`, `bot_id`, `app_id` and
   `thread_ts` come from `previous_message` when Slack sends it, and are

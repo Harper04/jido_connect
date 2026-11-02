@@ -24,7 +24,7 @@ defmodule Jido.Connect.Slack.Triggers.Events.MessageChanges do
   @changed_user "Author of the edited message."
   @editor "User who made the edit, from message.edited.user."
   @edited_ts "Time of the edit, from message.edited.ts."
-  @text "Full text after the edit. An empty string when the edit left only blocks or attachments."
+  @text "Full text after the edit, as Slack stores it. An empty string when Slack stores an empty text, as after an edit to an empty text beside an attachment; beside blocks Slack stores their text."
   @deleted_subtype "Always message_deleted."
   @deleted_thread_ts "thread_ts of the deleted message, from message of a tombstone and otherwise from previous_message when Slack sends it."
   @deleted_user "Author of the deleted message, from previous_message when Slack sends it and it is no tombstone. Slack does not say who deleted it."

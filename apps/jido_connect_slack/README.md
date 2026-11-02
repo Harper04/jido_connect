@@ -373,10 +373,12 @@ edits of one message, and the triggers dedupe on `team_id` and `event_id`.
 IDs and timestamps stay Slack's strings.
 
 - An edit carries the text after the edit as `text`, in full, and as `""`
-  when only blocks or attachments remain. It names the author as `user`,
-  `bot_id` and `app_id`, the thread as `thread_ts`, and the editor and edit
-  time from `message.edited` as `editor` and `edited_ts`. An edit through
-  `chat.update` names the bot user as author and editor.
+  when Slack stores an empty text, as after an edit to an empty text beside
+  an attachment; for an empty text beside blocks, Slack stores the blocks'
+  text. It names the author as `user`, `bot_id` and `app_id`, the thread as
+  `thread_ts`, and the editor and edit time from `message.edited` as
+  `editor` and `edited_ts`. An edit through `chat.update` names the bot
+  user as author and editor.
 - A deletion carries no text. Its author and `thread_ts` come from
   `previous_message` when Slack sends it; without it the signal names only
   the message. A tombstone in `previous_message` gives `thread_ts` but no
