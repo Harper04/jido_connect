@@ -3,12 +3,13 @@ defmodule Jido.Connect.Slack.BlockAction do
   A click on a Block Kit button in a Slack message, from an interactivity
   `block_actions` payload.
 
-  `user_id` is the person who clicked, from `user.id`; it is never the
-  message's author or the app's installer. `channel_id` and `message_ts`
-  name the message that holds the button, and `thread_ts` its thread when
-  Slack sends one. `action_id`, `block_id` and `value` are the button's
-  identifiers and opaque value as the poster set them, and `action_ts` is
-  Slack's time of the click.
+  `user_id` is the person who clicked. It comes from `user.id`, not from
+  the message's `user`, and is the message's author or the app's installer
+  only when that person clicked; the host decides who may click.
+  `channel_id` and `message_ts` name the message that holds the button,
+  and `thread_ts` its thread when Slack sends one. `action_id`, `block_id`
+  and `value` are the button's identifiers and opaque value as the poster
+  set them, and `action_ts` is Slack's time of the click.
 
   IDs, timestamps and the value stay Slack's exact strings. Slack allows a
   button `value` of up to 2,000 characters and an `action_id` or `block_id`

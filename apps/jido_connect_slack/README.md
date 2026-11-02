@@ -511,18 +511,20 @@ click is on one button in a message:
   delivery.normalized_signal
 ```
 
-`user_id` is the person who clicked, from `user.id`, never the message's
-author or the app's installer. `channel_id`, `message_ts` and, when Slack
-sends it, `thread_ts` name the message that holds the button; `action_id`,
-`block_id` and `value` are the button's, and `action_ts` is the time of the
-click. `api_app_id`, `team_id`, `user_team_id` and, for a workspace in an
-enterprise organization, `enterprise_id` come with them. IDs, timestamps and
-the value stay Slack's exact strings. A `value` may have up to 2,000
-characters and an `action_id` or `block_id` up to 255, as Slack allows; a
-longer one fails. The trigger `slack.interactivity.block_actions` declares
-this signal with bot auth, the `:workspace_access` policy and no OAuth scope
-beyond the app's install, and dedupes on `team_id`, `channel_id`,
-`message_ts`, `user_id`, `block_id`, `action_id`, `value` and `action_ts`.
+`user_id` is the person who clicked. It comes from `user.id`, not from the
+message's `user`, and is the message's author or the app's installer only
+when that person clicked; the host decides who may click. `channel_id`,
+`message_ts` and, when Slack sends it, `thread_ts` name the message that
+holds the button; `action_id`, `block_id` and `value` are the button's, and
+`action_ts` is the time of the click. `api_app_id`, `team_id`,
+`user_team_id` and, for a workspace in an enterprise organization,
+`enterprise_id` come with them. IDs, timestamps and the value stay Slack's
+exact strings. A `value` may have up to 2,000 characters and an `action_id`
+or `block_id` up to 255, as Slack allows; a longer one fails. The trigger
+`slack.interactivity.block_actions` declares this signal with bot auth, the
+`:workspace_access` policy and no OAuth scope beyond the app's install, and
+dedupes on `team_id`, `channel_id`, `message_ts`, `user_id`, `block_id`,
+`action_id`, `value` and `action_ts`.
 
 A click on several actions, on another element such as a select, or outside
 a message, as in a modal or a legacy attachment, keeps

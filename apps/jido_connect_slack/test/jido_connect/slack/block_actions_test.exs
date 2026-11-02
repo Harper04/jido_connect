@@ -76,9 +76,10 @@ defmodule Jido.Connect.Slack.BlockActionsTest do
     end
 
     # The payload names no installer. The captured clicker is the
-    # authorizing user of the test workspace; a click by the second human
-    # user was not captured.
-    test "takes the clicking user from user.id, apart from the message author and the installer" do
+    # authorizing user of the test workspace, who installed the app; the
+    # message author is the bot user. A click by the second human user was
+    # not captured.
+    test "takes the clicking user from user.id, not from the message author in message.user" do
       for click <- @clicks do
         assert %{"user" => %{"id" => @clicking_user}, "message" => %{"user" => @author}} =
                  payload!(click)
