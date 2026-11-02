@@ -2,7 +2,7 @@
   "body": {
     "items": [
       {
-        "created": "2026-11-02T07:42:50.000Z",
+        "created": "2026-11-02T08:18:11.000Z",
         "creator": {
           "email": "person-1@example.com",
           "self": true
@@ -11,11 +11,11 @@
           "dateTime": "2027-01-11T08:30:00+01:00",
           "timeZone": "Europe/Berlin"
         },
-        "etag": "\"3587210745439998\"",
+        "etag": "\"3587214986715550\"",
         "eventType": "default",
         "htmlLink": "htmlLink-1",
         "iCalUID": "person-2@example.com",
-        "id": "jcle2rv5pmprgd",
+        "id": "jcle2rsc61jcr6",
         "organizer": {
           "email": "person-1@example.com",
           "self": true
@@ -32,11 +32,11 @@
           "timeZone": "Europe/Berlin"
         },
         "status": "cancelled",
-        "summary": "jcl-live series v5pmprgd",
-        "updated": "2026-11-02T07:42:52.719Z"
+        "summary": "jcl-live series sc61jcr6",
+        "updated": "2026-11-02T08:18:13.357Z"
       },
       {
-        "created": "2026-11-02T07:42:50.000Z",
+        "created": "2026-11-02T08:18:11.000Z",
         "creator": {
           "email": "person-1@example.com",
           "self": true
@@ -45,11 +45,11 @@
           "dateTime": "2027-01-18T08:30:00+01:00",
           "timeZone": "Europe/Berlin"
         },
-        "etag": "\"3587210745439998\"",
+        "etag": "\"3587214986715550\"",
         "eventType": "default",
         "htmlLink": "htmlLink-2",
         "iCalUID": "person-2@example.com",
-        "id": "jcle2rv5pmprgd_20270118T070000Z",
+        "id": "jcle2rsc61jcr6_20270118T070000Z",
         "organizer": {
           "email": "person-1@example.com",
           "self": true
@@ -58,7 +58,7 @@
           "dateTime": "2027-01-18T08:00:00+01:00",
           "timeZone": "Europe/Berlin"
         },
-        "recurringEventId": "jcle2rv5pmprgd",
+        "recurringEventId": "jcle2rsc61jcr6",
         "reminders": {
           "useDefault": true
         },
@@ -68,11 +68,11 @@
           "timeZone": "Europe/Berlin"
         },
         "status": "cancelled",
-        "summary": "jcl-live series v5pmprgd",
-        "updated": "2026-11-02T07:42:52.719Z"
+        "summary": "jcl-live series sc61jcr6",
+        "updated": "2026-11-02T08:18:13.357Z"
       }
     ],
-    "nextSyncToken": "CP_m7tjk6JcDEP_m7tjk6JcDGAUgnP_l4AMonP_l4AM="
+    "nextSyncToken": "CM-hiMzs6JcDEM-hiMzs6JcDGAUgnP_l4AMonP_l4AM="
   },
   "headers": {
     "accept-ranges": [
@@ -88,10 +88,10 @@
       "application/json; charset=UTF-8"
     ],
     "date": [
-      "Mon, 02 Nov 2026 07:42:52 GMT"
+      "Mon, 02 Nov 2026 08:18:13 GMT"
     ],
     "expires": [
-      "Mon, 02 Nov 2026 07:42:52 GMT"
+      "Mon, 02 Nov 2026 08:18:13 GMT"
     ],
     "server": [
       "ESF"

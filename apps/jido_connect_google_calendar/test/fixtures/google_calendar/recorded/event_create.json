@@ -1,6 +1,6 @@
 {
   "body": {
-    "created": "2026-11-02T07:42:47.000Z",
+    "created": "2026-11-02T08:18:04.000Z",
     "creator": {
       "email": "person-1@example.com",
       "self": true
@@ -9,11 +9,11 @@
       "dateTime": "2027-02-01T11:15:00+01:00",
       "timeZone": "Europe/Berlin"
     },
-    "etag": "\"3587210735871198\"",
+    "etag": "\"3587214970252318\"",
     "eventType": "default",
     "htmlLink": "htmlLink-1",
     "iCalUID": "person-2@example.com",
-    "id": "jcls1tq4irrt2f",
+    "id": "jcls1totf4p0uv",
     "organizer": {
       "email": "person-1@example.com",
       "self": true
@@ -27,8 +27,8 @@
       "timeZone": "Europe/Berlin"
     },
     "status": "confirmed",
-    "summary": "jcl-live create timed q4irrt2f",
-    "updated": "2026-11-02T07:42:47.935Z"
+    "summary": "jcl-live create timed otf4p0uv",
+    "updated": "2026-11-02T08:18:05.126Z"
   },
   "headers": {
     "accept-ranges": [
@@ -44,7 +44,7 @@
       "application/json; charset=UTF-8"
     ],
     "date": [
-      "Mon, 02 Nov 2026 07:42:47 GMT"
+      "Mon, 02 Nov 2026 08:18:05 GMT"
     ],
     "expires": [
       "Mon, 01 Jan 1990 00:00:00 GMT"

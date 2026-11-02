@@ -2,7 +2,7 @@
   "body": {
     "items": [
       {
-        "created": "2026-11-02T07:42:50.000Z",
+        "created": "2026-11-02T08:18:10.000Z",
         "creator": {
           "email": "person-1@example.com",
           "self": true
@@ -11,11 +11,11 @@
           "dateTime": "2027-01-05T10:30:00+01:00",
           "timeZone": "Europe/Berlin"
         },
-        "etag": "\"3587210743352574\"",
+        "etag": "\"3587214984484382\"",
         "eventType": "default",
         "htmlLink": "htmlLink-1",
         "iCalUID": "person-2@example.com",
-        "id": "jcle2sv5pmprgd",
+        "id": "jcle2ssc61jcr6",
         "organizer": {
           "email": "person-1@example.com",
           "self": true
@@ -29,11 +29,11 @@
           "timeZone": "Europe/Berlin"
         },
         "status": "cancelled",
-        "summary": "jcl-live removed v5pmprgd",
-        "updated": "2026-11-02T07:42:51.676Z"
+        "summary": "jcl-live removed sc61jcr6",
+        "updated": "2026-11-02T08:18:12.242Z"
       }
     ],
-    "nextSyncToken": "CP-Mr9jk6JcDEP-Mr9jk6JcDGAUgnP_l4AMonP_l4AM="
+    "nextSyncToken": "CI-WxMvs6JcDEI-WxMvs6JcDGAUgnP_l4AMonP_l4AM="
   },
   "headers": {
     "accept-ranges": [
@@ -49,10 +49,10 @@
       "application/json; charset=UTF-8"
     ],
     "date": [
-      "Mon, 02 Nov 2026 07:42:51 GMT"
+      "Mon, 02 Nov 2026 08:18:12 GMT"
     ],
     "expires": [
-      "Mon, 02 Nov 2026 07:42:51 GMT"
+      "Mon, 02 Nov 2026 08:18:12 GMT"
     ],
     "server": [
       "ESF"

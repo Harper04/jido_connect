@@ -2,7 +2,7 @@
   "body": {
     "items": [
       {
-        "created": "2026-11-02T07:42:53.000Z",
+        "created": "2026-11-02T08:18:09.000Z",
         "creator": {
           "email": "person-1@example.com",
           "self": true
@@ -11,11 +11,11 @@
           "dateTime": "2027-01-04T10:30:00+01:00",
           "timeZone": "Europe/Berlin"
         },
-        "etag": "\"3587210747772158\"",
+        "etag": "\"3587214978365950\"",
         "eventType": "default",
         "htmlLink": "htmlLink-1",
         "iCalUID": "person-2@example.com",
-        "id": "jcle1r8t7hfsd",
+        "id": "jcle1dik35u6i",
         "organizer": {
           "email": "person-1@example.com",
           "self": true
@@ -29,11 +29,11 @@
           "timeZone": "Europe/Berlin"
         },
         "status": "confirmed",
-        "summary": "jcl-live poll r8t7hfsd",
-        "updated": "2026-11-02T07:42:53.886Z"
+        "summary": "jcl-live poll dik35u6i",
+        "updated": "2026-11-02T08:18:09.182Z"
       }
     ],
-    "nextSyncToken": "CP_8tdnk6JcDEP_8tdnk6JcDGAUgnP_l4AMonP_l4AM="
+    "nextSyncToken": "CP-5icrs6JcDEP-5icrs6JcDGAUgnP_l4AMonP_l4AM="
   },
   "headers": {
     "accept-ranges": [
@@ -49,10 +49,10 @@
       "application/json; charset=UTF-8"
     ],
     "date": [
-      "Mon, 02 Nov 2026 07:42:54 GMT"
+      "Mon, 02 Nov 2026 08:18:09 GMT"
     ],
     "expires": [
-      "Mon, 02 Nov 2026 07:42:54 GMT"
+      "Mon, 02 Nov 2026 08:18:09 GMT"
     ],
     "server": [
       "ESF"
