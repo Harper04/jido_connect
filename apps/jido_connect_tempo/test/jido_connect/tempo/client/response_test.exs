@@ -49,7 +49,7 @@ defmodule Jido.Connect.Tempo.Client.ResponseTest do
     assert error.details.message == "You do not have permission to access Holiday Schemes"
   end
 
-  test "404 with a JSON body and with a plain-text body" do
+  test "404 with a JSON body and with an HTML body" do
     assert {:error, %Error.ProviderError{reason: :not_found, status: 404} = error} =
              get_with(&Fixture.respond(&1, "not_found"))
 
@@ -86,7 +86,7 @@ defmodule Jido.Connect.Tempo.Client.ResponseTest do
     assert Error.retryable?(error)
   end
 
-  # The recorded plain-text 404 body, replayed with status 200.
+  # The recorded text/html 404 body, replayed with status 200.
   test "a successful response without a JSON body is an invalid response" do
     assert {:error, %Error.ProviderError{reason: :invalid_response, status: 200} = error} =
              get_with(&Fixture.respond(&1, "not_found_html", status: 200))
