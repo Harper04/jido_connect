@@ -74,6 +74,8 @@ defmodule Jido.Connect.Google.DriveTest do
   ]
 
   defmodule FakeDriveClient do
+    alias Jido.Connect.Google.Drive.Client.Response
+
     # The query the live test listed the starred file and its unstarred twin
     # with, and their `files.get` recordings by file ID.
     @selection_query "'18wQ5cSzJVV4Hpxmx_okyZi1-Oo1T10wy' in parents and trashed = false " <>
@@ -118,7 +120,7 @@ defmodule Jido.Connect.Google.DriveTest do
     end
 
     # The two recorded pages of the starred file and its unstarred twin, one
-    # file per page, normalized as Client.list_files/2 returns them.
+    # file per page, through the response handling of Client.list_files/2.
     def list_files(
           %{
             query: @selection_query,
@@ -132,20 +134,24 @@ defmodule Jido.Connect.Google.DriveTest do
       first_page = recorded("files_list_starred")
       next_page_token = first_page["nextPageToken"]
 
-      case Map.get(params, :page_token) do
-        nil -> recorded_page(first_page)
-        ^next_page_token -> recorded_page(recorded("files_list_starred.2"))
-      end
+      page =
+        case Map.get(params, :page_token) do
+          nil -> first_page
+          ^next_page_token -> recorded("files_list_starred.2")
+        end
+
+      Response.handle_file_list_response(recorded_response(page))
     end
 
     # The starred file and its unstarred twin from their recorded `files.get`
-    # responses.
+    # responses, through the response handling of Client.get_file/2.
     def get_file(%{file_id: file_id, supports_all_drives: false}, "token")
         when is_map_key(@recorded_files, file_id) do
       @recorded_files
       |> Map.fetch!(file_id)
       |> recorded()
-      |> Drive.Normalizer.file()
+      |> recorded_response()
+      |> Response.handle_file_response()
     end
 
     def get_file(
@@ -958,20 +964,8 @@ defmodule Jido.Connect.Google.DriveTest do
 
     defp recorded(name), do: LiveSmoke.fixture!(:google_drive, name)
 
-    defp recorded_page(body) do
-      {:ok,
-       %{
-         files: Enum.map(body["files"], &recorded_file/1),
-         next_page_token: body["nextPageToken"],
-         incomplete_search: body["incompleteSearch"]
-       }
-       |> Map.reject(fn {_key, value} -> is_nil(value) end)}
-    end
-
-    defp recorded_file(payload) do
-      {:ok, file} = Drive.Normalizer.file(payload)
-      file
-    end
+    # Drive answered every recorded request used here with status 200.
+    defp recorded_response(body), do: {:ok, %{status: 200, body: body}}
   end
 
   test "declares Google Drive provider metadata" do
