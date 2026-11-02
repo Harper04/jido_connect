@@ -119,10 +119,14 @@ and no history scope.
 `slack.conversation.open` sends `users` to Slack `conversations.open` as a
 comma-separated list and returns the conversation ID as `channel`, the target
 for `slack.message.post`. One user opens the DM with the bot and needs
-`im:write`; several users open a group DM and need `mpim:write`. The action
-takes its client from a context `provider_client`, then from the lease's
-`slack_client`, then `Jido.Connect.Slack.Client`, so a lease with only an
-`access_token` works.
+`im:write`; several users open a group DM and need `mpim:write`. To resume a
+conversation by `channel`, the scope check reads only the ID: a `G` ID needs
+`mpim:write`, every other ID `im:write`. Group DMs can also carry a `C` ID,
+like the one in this package's recordings, and are then checked against
+`im:write`; a token that resumes group DMs by `channel` should hold both
+scopes. The action takes its client from a context `provider_client`, then
+from the lease's `slack_client`, then `Jido.Connect.Slack.Client`, so a lease
+with only an `access_token` works.
 
 The package makes no delivery guarantee beyond Slack's answer:
 
