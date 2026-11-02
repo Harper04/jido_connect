@@ -11,7 +11,7 @@ defmodule Jido.Connect.Tempo.ScopeResolver do
   - API token: Tempo does not report a token's rights, so the host records
     the labels the user granted when creating the token.
   - OAuth: the host records `granted_labels/1` of the token response's
-    `scope`.
+    `scope`, or keeps the labels recorded before when that `scope` is `nil`.
 
   `granted_labels/1` maps Tempo's `<area>:view` and `<area>:manage` grants
   one to one: `worklogs:view` to `tempo.worklogs.read`, `worklogs:manage` to

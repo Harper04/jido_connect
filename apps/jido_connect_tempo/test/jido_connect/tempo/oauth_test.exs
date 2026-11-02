@@ -91,19 +91,19 @@ defmodule Jido.Connect.Tempo.OAuthTest do
       assert "worklogs:manage" in token.scope
     end
 
-    test "rejects a token response without its fields and does not echo the body" do
+    test "rejects a token response without its tokens and does not echo the body" do
       Req.Test.expect(__MODULE__, fn conn ->
-        Req.Test.json(conn, Map.delete(observed_token(), "expires_in"))
+        Req.Test.json(conn, Map.delete(observed_token(), "access_token"))
       end)
 
       assert {:error,
               %Error.ProviderError{
                 provider: :tempo,
                 reason: :invalid_response,
-                details: %{missing_fields: [:expires_in]}
+                details: %{missing_fields: [:access_token]}
               } = error} = OAuth.exchange_code("code-1", @opts)
 
-      refute inspect(error) =~ "observed-access-token-placeholder"
+      refute inspect(error) =~ "observed-refresh-token-placeholder"
     end
 
     test "an invalid code is a normalized error without client secret or code" do
@@ -211,6 +211,41 @@ defmodule Jido.Connect.Tempo.OAuthTest do
       refute inspect(error) =~ "observed-access-token-placeholder"
     end
 
+    # Once Tempo answers with both tokens it has rotated the pair, so an
+    # unusable expiry must not discard them.
+    test "a refresh response without a usable expires_in keeps both tokens" do
+      for expires_in <- [:absent, "2591999", 0] do
+        Req.Test.expect(__MODULE__, fn conn ->
+          Req.Test.json(conn, put_field(observed_token(), "expires_in", expires_in))
+        end)
+
+        assert {:ok,
+                %{
+                  access_token: "observed-access-token-placeholder",
+                  refresh_token: "observed-refresh-token-placeholder",
+                  expires_in: nil
+                }} = OAuth.refresh("stored-refresh-token", @opts)
+      end
+    end
+
+    # A missing scope tells nothing about the grant; an empty one grants none.
+    test "a refresh response without a scope string has scope nil, an empty one an empty list" do
+      for scope <- [:absent, nil, 42] do
+        Req.Test.expect(__MODULE__, fn conn ->
+          Req.Test.json(conn, put_field(observed_token(), "scope", scope))
+        end)
+
+        assert {:ok, %{refresh_token: "observed-refresh-token-placeholder", scope: nil}} =
+                 OAuth.refresh("stored-refresh-token", @opts)
+      end
+
+      Req.Test.expect(__MODULE__, fn conn ->
+        Req.Test.json(conn, Map.put(observed_token(), "scope", ""))
+      end)
+
+      assert {:ok, %{scope: []}} = OAuth.refresh("stored-refresh-token", @opts)
+    end
+
     test "an invalid refresh token is a normalized error without the token" do
       Req.Test.expect(__MODULE__, &Fixture.respond(&1, "oauth_invalid_refresh_token"))
 
@@ -223,6 +258,9 @@ defmodule Jido.Connect.Tempo.OAuthTest do
   end
 
   defp observed_token, do: Fixture.observed!("oauth_token")["body"]
+
+  defp put_field(body, key, :absent), do: Map.delete(body, key)
+  defp put_field(body, key, value), do: Map.put(body, key, value)
 
   defp refute_secrets(error, values) do
     for value <- [@client_secret | values] do

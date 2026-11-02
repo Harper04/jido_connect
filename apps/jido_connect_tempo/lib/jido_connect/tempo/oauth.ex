@@ -16,10 +16,13 @@ defmodule Jido.Connect.Tempo.OAuth do
   Both return `access_token`, `refresh_token`, `expires_in` and `scope`, the
   granted Tempo scopes as a list. A refresh replaces both tokens: Tempo
   invalidates the old access and refresh token, so the host must store both
-  new tokens before it uses either. A response without a new refresh token
-  is an error. The token response has no Atlassian account ID; the host
-  records `connection.subject.account_id` from Jira
-  `GET /rest/api/3/myself`.
+  new tokens before it uses either. A response without either token is an
+  error. Once Tempo has sent both tokens it has rotated the pair, so other
+  fields do not discard them: `expires_in` is `nil` unless it is a positive
+  integer, and the expiry is then unknown; `scope` is `nil` unless it is a
+  string, and the host then keeps the labels it recorded before. The token
+  response has no Atlassian account ID; the host records
+  `connection.subject.account_id` from Jira `GET /rest/api/3/myself`.
 
   Rejections and transport failures are `Jido.Connect.Error.ProviderError`s
   normalized like API failures (Tempo rejects an invalid code or refresh
@@ -36,12 +39,13 @@ defmodule Jido.Connect.Tempo.OAuth do
   @authorize_url @origin <> "/oauth/authorize/redirect"
   @token_path "/oauth/token/"
   @locked_options [:base_url, :url, :auth, :redirect, :redirect_trusted]
+  @token_fields [access_token: "access_token", refresh_token: "refresh_token"]
 
   @type token :: %{
           access_token: String.t(),
           refresh_token: String.t(),
-          expires_in: pos_integer(),
-          scope: [String.t()]
+          expires_in: pos_integer() | nil,
+          scope: [String.t()] | nil
         }
 
   @doc """
@@ -117,17 +121,18 @@ defmodule Jido.Connect.Tempo.OAuth do
     |> Keyword.put(:redirect, false)
   end
 
+  # Once Tempo answers with both tokens it has rotated the pair, so only a
+  # missing token fails the response; an unusable expiry or scope is nil.
   defp token_response({:ok, %{status: status, body: %{} = body}}) when status in 200..299 do
-    token = %{
-      access_token: body["access_token"],
-      refresh_token: body["refresh_token"],
-      expires_in: body["expires_in"],
-      scope: body["scope"]
-    }
-
-    case Enum.reject([:access_token, :refresh_token, :expires_in], &valid?(&1, token[&1])) do
+    case for({field, key} <- @token_fields, not token?(body[key]), do: field) do
       [] ->
-        {:ok, %{token | scope: Scope.parse(token.scope)}}
+        {:ok,
+         %{
+           access_token: body["access_token"],
+           refresh_token: body["refresh_token"],
+           expires_in: expires_in(body["expires_in"]),
+           scope: scope(body["scope"])
+         }}
 
       missing ->
         Response.invalid_response("Tempo OAuth token response was invalid", nil,
@@ -141,8 +146,13 @@ defmodule Jido.Connect.Tempo.OAuth do
     Response.handle(response, message: "Tempo OAuth token request failed")
   end
 
-  defp valid?(:expires_in, value), do: is_integer(value) and value > 0
-  defp valid?(_field, value), do: is_binary(value) and value != ""
+  defp token?(value), do: is_binary(value) and value != ""
+
+  defp expires_in(seconds) when is_integer(seconds) and seconds > 0, do: seconds
+  defp expires_in(_other), do: nil
+
+  defp scope(scope) when is_binary(scope), do: Scope.parse(scope)
+  defp scope(_other), do: nil
 
   defp redact(
          {:error, %Error.ProviderError{details: %{message: message} = details} = error},

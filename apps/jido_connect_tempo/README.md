@@ -82,7 +82,8 @@ the host has recorded it in `connection.scopes`:
 - API token: Tempo does not report a token's rights, so the host records the
   labels the user granted when creating the token.
 - OAuth: the host records
-  `Jido.Connect.Tempo.ScopeResolver.granted_labels(token.scope)`.
+  `Jido.Connect.Tempo.ScopeResolver.granted_labels(token.scope)`, or keeps
+  the labels recorded before when `token.scope` is `nil`.
 
 Tempo returns the OAuth `scope` as a space-separated list of `<area>:view`
 and `<area>:manage` grants. The mapping is one to one: a manage grant implies
@@ -127,7 +128,10 @@ refresh scheduling.
 
    The form post goes to `https://api.tempo.io/oauth/token/`. `token` holds
    `access_token`, `refresh_token`, `expires_in` (seconds) and `scope` (a
-   list of Tempo grants).
+   list of Tempo grants). A response without either token is an error.
+   `expires_in` is `nil` when Tempo sends no positive integer; the expiry is
+   then unknown. `scope` is `nil` when Tempo sends no `scope` string; an
+   empty string is an empty list.
 
 3. Before `expires_in` runs out, call
    `Jido.Connect.Tempo.OAuth.refresh(refresh_token, opts)` with the same
@@ -137,8 +141,11 @@ refresh scheduling.
 
 Every refresh replaces both tokens. Tempo invalidates the old access token
 and the old refresh token, so the host must store both new tokens, and
-update `connection.scopes` from the new `scope`, before it uses either. A
-refresh response without a new refresh token is an error. A failed or lost
+update `connection.scopes` from the new `scope`, before it uses either. When
+`scope` is `nil`, Tempo did not report the grant and the host keeps the
+labels it recorded before. A refresh response without a new refresh token
+is an error; a missing or malformed `expires_in` or `scope` does not discard
+the new tokens, since Tempo has already rotated them. A failed or lost
 refresh can leave the connection without a valid refresh token; the user
 must then authorize again.
 
