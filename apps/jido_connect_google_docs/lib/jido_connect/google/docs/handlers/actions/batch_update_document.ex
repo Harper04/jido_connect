@@ -66,7 +66,8 @@ defmodule Jido.Connect.Google.Docs.Handlers.Actions.BatchUpdateDocument do
   defp fetch_client(_credentials), do: {:ok, Client}
 
   # Google's response carries the document ID, one reply per request and the
-  # write control with the document's new revision; it has no document.
+  # write control with the document's new revision. `document` is present only
+  # when a response embeds one, which Google's batchUpdate response does not.
   defp normalize_result(result) do
     result
     |> Map.take([:document_id, :write_control, :document])

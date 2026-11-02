@@ -11,9 +11,11 @@ defmodule Jido.Connect.Google.Docs.BatchUpdateTest do
   # sends the same batches to the empty scratch document.
   @document_id "1t47PcdwCWroHLmzucoB5YxoFZRyUD9a8dymU8ju-pwE"
   @write_scope "https://www.googleapis.com/auth/documents"
+  # The live run sent the revision it read before the insert; Google names it
+  # in the stale-revision rejection. Any opaque string stands in for it here.
   @revision_before_insert "revision-read-before-the-insert"
 
-  @stale_insert %{
+  @marker_insert %{
     "insert_text" => %{
       "location" => %{"index" => 1, "tab_id" => "t.0"},
       "text" => "jcl-live-258-stale\n"
@@ -174,7 +176,7 @@ defmodule Jido.Connect.Google.Docs.BatchUpdateTest do
             }} =
              batch_update(%{
                document_id: @document_id,
-               requests: [@stale_insert],
+               requests: [@marker_insert],
                write_control: %{"required_revision_id" => @revision_before_insert}
              })
 
@@ -190,7 +192,7 @@ defmodule Jido.Connect.Google.Docs.BatchUpdateTest do
     end)
 
     assert {:ok, %{document_id: @document_id}} =
-             batch_update(%{document_id: @document_id, requests: stale_inserts(100)})
+             batch_update(%{document_id: @document_id, requests: marker_inserts(100)})
   end
 
   # Each input breaks the envelope or names an operation outside the
@@ -234,7 +236,7 @@ defmodule Jido.Connect.Google.Docs.BatchUpdateTest do
     Req.Test.expect(__MODULE__, &Req.Test.json(&1, insert_response_with(document)))
 
     assert {:ok, %{document_id: @document_id, document: inline}} =
-             batch_update(%{document_id: @document_id, requests: [@stale_insert]})
+             batch_update(%{document_id: @document_id, requests: [@marker_insert]})
 
     assert %{tabs: [], body: body} = inline
     assert inline.document_id == document["documentId"]
@@ -250,7 +252,7 @@ defmodule Jido.Connect.Google.Docs.BatchUpdateTest do
       Req.Test.expect(__MODULE__, &Req.Test.json(&1, insert_response_with(inline(unquote(edit)))))
 
       assert {:error, %Connect.Error.ProviderError{reason: :invalid_response}} =
-               batch_update(%{document_id: @document_id, requests: [@stale_insert]})
+               batch_update(%{document_id: @document_id, requests: [@marker_insert]})
     end
   end
 
@@ -270,16 +272,16 @@ defmodule Jido.Connect.Google.Docs.BatchUpdateTest do
     assert action.scopes == [@write_scope]
   end
 
-  defp envelope(:document_id_missing), do: %{requests: [@stale_insert]}
+  defp envelope(:document_id_missing), do: %{requests: [@marker_insert]}
   defp envelope(:requests_missing), do: %{document_id: @document_id}
 
   defp envelope(:requests_not_a_list),
-    do: %{document_id: @document_id, requests: @stale_insert}
+    do: %{document_id: @document_id, requests: @marker_insert}
 
   defp envelope(:requests_empty), do: %{document_id: @document_id, requests: []}
 
   defp envelope(:too_many_requests),
-    do: %{document_id: @document_id, requests: stale_inserts(101)}
+    do: %{document_id: @document_id, requests: marker_inserts(101)}
 
   defp envelope(:request_not_a_map),
     do: %{document_id: @document_id, requests: ["insert_text"]}
@@ -288,7 +290,7 @@ defmodule Jido.Connect.Google.Docs.BatchUpdateTest do
     do: %{document_id: @document_id, requests: [%{}]}
 
   defp envelope(:request_with_two_operations) do
-    two = Map.put(@stale_insert, "delete_content_range", %{"range" => %{"start_index" => 1}})
+    two = Map.put(@marker_insert, "delete_content_range", %{"range" => %{"start_index" => 1}})
     %{document_id: @document_id, requests: [two]}
   end
 
@@ -308,9 +310,9 @@ defmodule Jido.Connect.Google.Docs.BatchUpdateTest do
   end
 
   defp envelope(:write_control_not_a_map),
-    do: %{document_id: @document_id, requests: [@stale_insert], write_control: "revision"}
+    do: %{document_id: @document_id, requests: [@marker_insert], write_control: "revision"}
 
-  defp stale_inserts(count), do: List.duplicate(@stale_insert, count)
+  defp marker_inserts(count), do: List.duplicate(@marker_insert, count)
 
   defp insert_response_with(document) do
     :google_docs
