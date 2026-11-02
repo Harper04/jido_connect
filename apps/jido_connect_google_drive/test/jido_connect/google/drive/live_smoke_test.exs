@@ -376,7 +376,7 @@ defmodule Jido.Connect.Google.Drive.LiveSmokeTest do
 
   @tag env!(["GOOGLE_ACCESS_TOKEN", "GOOGLE_DRIVE_EDIT_FILE_ID"])
   @tag write!(:google)
-  @tag timeout: :timer.minutes(8)
+  @tag timeout: :timer.minutes(12)
   test "sees an external edit of the Google Doc by its ID and exports the new marker",
        %{env: env} do
     token = env["GOOGLE_ACCESS_TOKEN"]
@@ -411,14 +411,16 @@ defmodule Jido.Connect.Google.Drive.LiveSmokeTest do
 
     LiveSmoke.record(@req_options, :google_drive, "file_changed_edited", @masked)
 
-    assert {:ok, %{signals: signals}} =
+    assert {:ok, %{signals: signals, checkpoint: cleanup_checkpoint}} =
              poll("google.drive.file.changed", %{}, checkpoint, token)
 
-    # The signal names the document but not the edit: a change that Drive logs
-    # late for an earlier edit looks the same, and Drive sets `modifiedTime`
+    # The signal names the document but not the edit: Drive sets `modifiedTime`
     # and `version` only when it logs a change and does not advance
-    # `modifiedTime` for every edit. The export ties the signal's document to
-    # this run's marker.
+    # `modifiedTime` for every edit, so a change that Drive logs late for an
+    # earlier edit looks the same. Each run therefore waits below until Drive
+    # has logged its cleanup; only an earlier run that failed or stopped before
+    # that wait, or an edit outside this test, can stand in for this run's
+    # edit. The export ties the signal's document to this run's marker.
     assert %{
              removed: false,
              change_type: "file",
@@ -442,6 +444,17 @@ defmodule Jido.Connect.Google.Drive.LiveSmokeTest do
 
     assert remove_marker!(token, file_id, marker) == 1
     assert read_document(token, file_id).digest == start.digest
+
+    # The cleanup is a Docs edit too, and Drive logs it as late as the
+    # insertion. Waiting for it keeps that change out of the next run of this
+    # test and out of the change polls that the other write tests record.
+    await_change_log(
+      token,
+      cleanup_checkpoint,
+      [],
+      &change_for(&1, file_id),
+      @docs_change_log_reads
+    )
   end
 
   @tag env!(["GOOGLE_ACCESS_TOKEN", "GOOGLE_DRIVE_UPLOAD_FOLDER_ID"])
