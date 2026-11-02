@@ -135,7 +135,21 @@ Normalized files carry them as `resource_key`, `shortcut_target_id`,
 Drive omits stay `nil`. A shortcut is returned as the shortcut file itself and
 is not followed. To read the target, call `google.drive.file.get` with
 `shortcut_target_id` and, if present, `shortcut_target_resource_key` as
-`resource_key`.
+`resource_key`. Optional action inputs reject `nil`, so leave `resource_key`
+out when the target has no key:
+
+```elixir
+target_input =
+  case shortcut.shortcut_target_resource_key do
+    nil -> %{file_id: shortcut.shortcut_target_id}
+    key -> %{file_id: shortcut.shortcut_target_id, resource_key: key}
+  end
+
+Jido.Connect.invoke(Jido.Connect.Google.Drive, "google.drive.file.get", target_input,
+  context: context,
+  credential_lease: lease
+)
+```
 
 ## Permission-Aware Field Projections
 
