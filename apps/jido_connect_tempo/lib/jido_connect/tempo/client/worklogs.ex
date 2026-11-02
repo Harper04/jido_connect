@@ -22,6 +22,7 @@ defmodule Jido.Connect.Tempo.Client.Worklogs do
 
   alias Jido.Connect.Error
   alias Jido.Connect.Tempo.Client.{Pagination, Request, Response}
+  alias Jido.Connect.Tempo.Input.DateRange
   alias Jido.Connect.Tempo.Worklog
 
   @bounds [:limit, :max_pages, :max_results]
@@ -41,7 +42,7 @@ defmodule Jido.Connect.Tempo.Client.Worklogs do
   @spec list_own(Request.t(), keyword()) ::
           {:ok, [Worklog.t()]} | {:error, Error.ProviderError.t() | Error.ValidationError.t()}
   def list_own(%Request{} = request, opts) when is_list(opts) do
-    with {:ok, range} <- range(opts),
+    with {:ok, range} <- DateRange.parse(Keyword.get(opts, :from), Keyword.get(opts, :to)),
          {:ok, results} <-
            Pagination.collect(
              request,
@@ -54,37 +55,6 @@ defmodule Jido.Connect.Tempo.Client.Worklogs do
 
   defp path(%Request{account_id: account_id}),
     do: "/4/worklogs/user/" <> URI.encode(account_id, &URI.char_unreserved?/1)
-
-  defp range(opts) do
-    with {:ok, first} <- date(opts, :from),
-         {:ok, last} <- date(opts, :to) do
-      if Date.compare(first, last) == :gt do
-        invalid_range(:to, "must not be before from")
-      else
-        {:ok, %{from: opts[:from], to: opts[:to], first: first, last: last}}
-      end
-    end
-  end
-
-  defp date(opts, field) do
-    value = Keyword.get(opts, field)
-
-    with true <- is_binary(value) and Regex.match?(~r/\A\d{4}-\d{2}-\d{2}\z/, value),
-         {:ok, date} <- Date.from_iso8601(value) do
-      {:ok, date}
-    else
-      _invalid -> invalid_range(field, "must be an ISO date such as 2026-10-01")
-    end
-  end
-
-  defp invalid_range(field, message) do
-    {:error,
-     Error.validation("Invalid Tempo date range",
-       reason: :invalid_date_range,
-       subject: field,
-       details: %{field: field, message: message}
-     )}
-  end
 
   defp own(results, account_id, range) do
     results

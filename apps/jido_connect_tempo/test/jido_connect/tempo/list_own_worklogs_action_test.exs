@@ -203,6 +203,30 @@ defmodule Jido.Connect.Tempo.ListOwnWorklogsActionTest do
       refute_received :requested
     end
 
+    test "an invalid range fails before an injected provider client is called" do
+      context = context(:api_token)
+
+      for {input, field} <- [
+            {%{from: "2026-10-31", to: "2026-10-01"}, :to},
+            {%{from: "2026-10-01", to: "31.10.2026"}, :to},
+            {%{from: "yesterday", to: "2026-10-31"}, :from}
+          ] do
+        assert {:error,
+                %Error.ValidationError{
+                  reason: :invalid_date_range,
+                  subject: ^field,
+                  details: %{field: ^field}
+                }} =
+                 ListOwnWorklogs.run(input, %{
+                   integration_context: context,
+                   credential_lease: lease(context),
+                   provider_client: RecordingClient
+                 })
+      end
+
+      refute_received {:list_own_worklogs, _request, _opts}
+    end
+
     test "a missing tempo.worklogs.read grant stops the call" do
       assert {:error,
               %Error.AuthError{reason: :missing_scopes, missing_scopes: ["tempo.worklogs.read"]}} =
