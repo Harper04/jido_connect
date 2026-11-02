@@ -18,11 +18,6 @@ defmodule Jido.Connect.Google.Calendar.EventChangedPollerTest do
   @calendar_id "primary"
   @events_path "/v3/calendars/primary/events"
 
-  # The recorded weekly series of the test calendar: six Monday occurrences
-  # from 2026-11-09 08:00 Berlin, the second one moved to 09:00.
-  @weekly_master_id "v5omtsjvsa9lrul21cen00t1fo"
-  @weekly_exception_id "v5omtsjvsa9lrul21cen00t1fo_20261116T070000Z"
-
   setup {Req.Test, :verify_on_exit!}
 
   setup do
@@ -91,6 +86,12 @@ defmodule Jido.Connect.Google.Calendar.EventChangedPollerTest do
       # and a nextSyncToken.
       page = recorded("event_cancelled_init_unexpanded")
 
+      # The weekly series of the test calendar has six Monday occurrences
+      # from 2026-11-09 08:00 Berlin; its second one, the only moved
+      # occurrence in the recording, starts at 09:00.
+      assert [%{"id" => exception_id, "recurringEventId" => master_id}] =
+               Enum.filter(page["items"], &moved?/1)
+
       expect_page(page, fn params ->
         assert params["singleEvents"] == "false"
         assert params["syncToken"] == "sync-1"
@@ -101,15 +102,15 @@ defmodule Jido.Connect.Google.Calendar.EventChangedPollerTest do
 
       assert checkpoint == page["nextSyncToken"]
 
-      master = signal!(signals, @weekly_master_id)
+      master = signal!(signals, master_id)
       assert master.change_type == "updated"
       assert master.event.recurrence == ["RRULE:FREQ=WEEKLY;COUNT=6;BYDAY=MO"]
       assert master.event.recurring_event_id == nil
 
-      exception = signal!(signals, @weekly_exception_id)
+      exception = signal!(signals, exception_id)
       assert exception.change_type == "updated"
       assert exception.start == "2026-11-16T09:00:00+01:00"
-      assert exception.event.recurring_event_id == @weekly_master_id
+      assert exception.event.recurring_event_id == master_id
       assert exception.event.original_start == "2026-11-16T08:00:00+01:00"
       assert exception.event.recurrence == []
     end
@@ -211,14 +212,20 @@ defmodule Jido.Connect.Google.Calendar.EventChangedPollerTest do
     end
 
     test "a cancelled occurrence keeps its series and original start" do
+      # The second of three weekly occurrences from 2027-01-11 08:00 Berlin,
+      # cancelled; the other two are unchanged.
       page = recorded("event_cancelled_occurrence")
+
+      assert [%{"id" => occurrence_id, "recurringEventId" => series_id}] =
+               Enum.filter(page["items"], &(&1["status"] == "cancelled"))
+
       expect_page(page, fn _params -> :ok end)
 
       assert {:ok, %{signals: signals}} = poll(%{calendar_id: @calendar_id}, "sync-1")
 
-      occurrence = signal!(signals, "jcle2rsc61jcr6_20270118T070000Z")
+      occurrence = signal!(signals, occurrence_id)
       assert occurrence.change_type == "cancelled"
-      assert occurrence.event.recurring_event_id == "jcle2rsc61jcr6"
+      assert occurrence.event.recurring_event_id == series_id
       assert occurrence.event.original_start == "2027-01-18T08:00:00+01:00"
     end
 
@@ -226,10 +233,11 @@ defmodule Jido.Connect.Google.Calendar.EventChangedPollerTest do
       # Derived: the recorded cancelled master with start and end removed;
       # Google returned it with its times.
       page = recorded("event_cancelled_series_unexpanded")
+      assert [%{"id" => master_id}] = Enum.filter(page["items"], &Map.has_key?(&1, "recurrence"))
 
       items =
         Enum.map(page["items"], fn
-          %{"id" => "jcle2rsc61jcr6"} = master -> Map.drop(master, ["start", "end"])
+          %{"id" => ^master_id} = master -> Map.drop(master, ["start", "end"])
           item -> item
         end)
 
@@ -240,7 +248,7 @@ defmodule Jido.Connect.Google.Calendar.EventChangedPollerTest do
       assert {:ok, %{signals: signals}} =
                poll(%{calendar_id: @calendar_id, single_events: false}, "sync-1")
 
-      master = signal!(signals, "jcle2rsc61jcr6")
+      master = signal!(signals, master_id)
       assert master.change_type == "cancelled"
       refute Map.has_key?(master, :start)
       refute Map.has_key?(master, :end)
@@ -277,6 +285,12 @@ defmodule Jido.Connect.Google.Calendar.EventChangedPollerTest do
       check.(conn.query_params)
       Req.Test.json(conn, body)
     end)
+  end
+
+  # An occurrence moved away from its place in the series.
+  defp moved?(item) do
+    Map.has_key?(item, "recurringEventId") and
+      get_in(item, ["start", "dateTime"]) != get_in(item, ["originalStartTime", "dateTime"])
   end
 
   defp signal!(signals, event_id) do
