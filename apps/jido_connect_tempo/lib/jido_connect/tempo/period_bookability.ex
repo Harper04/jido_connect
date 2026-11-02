@@ -81,6 +81,7 @@ defmodule Jido.Connect.Tempo.PeriodBookability do
   @type approval_result :: {:ok, TimesheetApproval.t()} | {:error, term()}
 
   @blocking ["IN_REVIEW", "APPROVED"]
+  @max_periods 20
 
   @doc """
   Builds the result for the range of `attrs` from Tempo's `periods`.
@@ -92,9 +93,17 @@ defmodule Jido.Connect.Tempo.PeriodBookability do
   remaining period, in date order, with that period and returns its
   approval as `Jido.Connect.Tempo.Client.get_timesheet_approval/3` does; an
   error leaves the segment without evidence and sets its `approval_error`.
+
+  `:max_periods` (#{@max_periods}) bounds the approval reads: more
+  intersecting periods fail with a `Jido.Connect.Error.ProviderError` with
+  reason `:period_limit_exceeded` and `details.max_periods` before the
+  first read; exactly this many succeed. A bound that is not a positive
+  integer is a `Jido.Connect.Error.ValidationError` with reason
+  `:invalid_bookability_option`, also before any read.
   """
-  @spec build(map(), [period()], (period() -> approval_result())) :: t()
-  def build(%{from: from, to: to} = attrs, periods, read_approval) do
+  @spec build(map(), [period()], (period() -> approval_result()), keyword()) ::
+          {:ok, t()} | {:error, Error.ProviderError.t() | Error.ValidationError.t()}
+  def build(%{from: from, to: to} = attrs, periods, read_approval, opts \\ []) do
     {:ok, range} = DateRange.parse(from, to)
 
     intersections =
@@ -102,21 +111,25 @@ defmodule Jido.Connect.Tempo.PeriodBookability do
       |> Enum.flat_map(&intersection(&1, range))
       |> Enum.sort_by(&elem(&1, 0), Date)
 
-    segments =
-      Enum.map(intersections, fn {first, last, period} ->
-        segment(first, last, period, read_approval.(period))
-      end)
+    with {:ok, max_periods} <- max_periods(opts),
+         :ok <- within(intersections, max_periods) do
+      segments =
+        Enum.map(intersections, fn {first, last, period} ->
+          segment(first, last, period, read_approval.(period))
+        end)
 
-    Zoi.parse!(@schema, %{
-      account_id: attrs.account_id,
-      from: from,
-      to: to,
-      checked_at: attrs.checked_at,
-      complete:
-        covered?(intersections, range) and Enum.all?(segments, &is_binary(&1.approval_status)),
-      state: if(Enum.any?(segments, &(&1.state == :blocked)), do: :blocked, else: :unknown),
-      segments: segments
-    })
+      {:ok,
+       Zoi.parse!(@schema, %{
+         account_id: attrs.account_id,
+         from: from,
+         to: to,
+         checked_at: attrs.checked_at,
+         complete:
+           covered?(intersections, range) and Enum.all?(segments, &is_binary(&1.approval_status)),
+         state: if(Enum.any?(segments, &(&1.state == :blocked)), do: :blocked, else: :unknown),
+         segments: segments
+       })}
+    end
   end
 
   @doc "Returns the result as plain maps for action output."
@@ -125,6 +138,34 @@ defmodule Jido.Connect.Tempo.PeriodBookability do
     bookability
     |> Map.from_struct()
     |> Map.update!(:segments, fn segments -> Enum.map(segments, &Map.from_struct/1) end)
+  end
+
+  defp max_periods(opts) do
+    case Keyword.get(opts, :max_periods, @max_periods) do
+      max when is_integer(max) and max > 0 ->
+        {:ok, max}
+
+      _other ->
+        {:error,
+         Error.validation("Invalid Tempo period bookability option",
+           reason: :invalid_bookability_option,
+           subject: :max_periods,
+           details: %{option: :max_periods, message: "must be a positive integer"}
+         )}
+    end
+  end
+
+  # One approval read per intersecting period, at most max_periods.
+  defp within(intersections, max_periods) when length(intersections) <= max_periods, do: :ok
+
+  defp within(_intersections, max_periods) do
+    {:error,
+     Error.provider("Tempo range exceeds the period limit",
+       provider: :tempo,
+       reason: :period_limit_exceeded,
+       delivery: :response_received,
+       details: %{max_periods: max_periods}
+     )}
   end
 
   # The part of the range in the period as {first, last, period}, or none.

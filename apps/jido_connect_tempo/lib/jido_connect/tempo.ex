@@ -25,7 +25,7 @@ defmodule Jido.Connect.Tempo do
   approval evidence of every Tempo period that intersects the range, with
   closure evidence `:unknown` and a state derived from the evidence. It
   reads `GET /4/periods` once and the user's approval once per intersecting
-  period, with that period's exact boundaries, and requires
+  period, at most 20, with that period's exact boundaries, and requires
   `tempo.periods.read` and `tempo.approvals.read`. See
   `Jido.Connect.Tempo.PeriodBookability` for the evidence, `complete` and
   the derivation. The result is neither a reservation nor a write

@@ -228,6 +228,14 @@ you mean from '2026-08-01' to '2026-08-31'?`. All requests are GETs; the
 `Jido.Connect.Tempo.Client.list_periods/2` and
 `Jido.Connect.Tempo.Client.get_timesheet_approval/3` offer the two reads.
 
+At most 20 periods are read. A range that intersects more fails after the
+periods read and before the first approval read with a
+`Jido.Connect.Error.ProviderError` with reason `:period_limit_exceeded` and
+`details.max_periods: 20`; a range of exactly 20 periods succeeds. The bound
+is the `:max_periods` option of
+`Jido.Connect.Tempo.PeriodBookability.build/4`. The action uses the
+default, and its input cannot change it.
+
 ### Evidence
 
 | Output | Meaning |
@@ -432,7 +440,8 @@ reduced to a value-free summary.
 
 ## Limits Owned by the Host
 
-The package bounds the number of pages and results per read. It does not
+The package bounds the number of pages and results per read, and the
+approval reads of one period bookability read to 20 periods. It does not
 limit bytes: response size, the size of results passed to an agent and
 storage quotas are host policy.
 

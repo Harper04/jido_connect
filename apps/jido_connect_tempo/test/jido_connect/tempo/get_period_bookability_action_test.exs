@@ -529,6 +529,40 @@ defmodule Jido.Connect.Tempo.GetPeriodBookabilityActionTest do
     end
   end
 
+  describe "period limit" do
+    # The recorded periods replaced by twenty monthly periods from January
+    # 2026, each answered with the recorded OPEN approval with `period`
+    # replaced.
+    test "a range of twenty periods reads each of them" do
+      periods = months(20)
+      serve(periods: &Map.put(&1, "periods", periods), approvals: open_approvals(periods))
+
+      assert {:ok, %{complete: true, segments: segments}} =
+               invoke(:api_token, %{from: "2026-01-01", to: "2027-08-31"})
+
+      firsts = Enum.map(periods, & &1["from"])
+      assert Enum.map(segments, & &1.period_from) == firsts
+      assert approval_requests() == firsts
+    end
+
+    # The recorded periods replaced by twenty-one monthly periods.
+    test "a range of more than twenty periods fails before any approval read" do
+      serve(periods: &Map.put(&1, "periods", months(21)))
+
+      assert {:error,
+              %Error.ProviderError{
+                provider: :tempo,
+                reason: :period_limit_exceeded,
+                delivery: :response_received,
+                details: %{max_periods: 20}
+              }} = invoke(:api_token, %{from: "2026-01-01", to: "2027-09-30"})
+
+      assert requests() == [
+               {"GET", "/4/periods", %{"from" => "2026-01-01", "to" => "2027-09-30"}}
+             ]
+    end
+  end
+
   describe "output" do
     test "omits approval comments, reviewer profiles and action URLs" do
       serve()
@@ -706,6 +740,21 @@ defmodule Jido.Connect.Tempo.GetPeriodBookabilityActionTest do
 
   defp approval_requests do
     for {_method, "/4/timesheet-approvals/user/" <> _, query} <- requests(), do: query["from"]
+  end
+
+  # `count` monthly periods from January 2026 on, in Tempo's form.
+  defp months(count) do
+    for month <- 0..(count - 1) do
+      first = Date.shift(~D[2026-01-01], month: month)
+      %{"from" => Date.to_iso8601(first), "to" => Date.to_iso8601(Date.end_of_month(first))}
+    end
+  end
+
+  # The recorded OPEN approval for each period, with `period` replaced.
+  defp open_approvals(periods) do
+    Map.new(periods, fn %{"from" => from, "to" => to} ->
+      {from, {"period_bookability.4", &approval(&1, from, to, @account)}}
+    end)
   end
 
   # Keeps the recorded periods at the given indexes, in the given order.
