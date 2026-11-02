@@ -215,8 +215,8 @@ the status and `details.retry_after` from an integer `Retry-After` header:
 | other | `:http_error` |
 
 `details.message` holds Tempo's error text from `{"errors": [{"message":
-...}]}`, several messages joined with `; `. Tempo answers 401 without a
-body. A 2xx response without valid JSON is `:invalid_response`; an error
+...}]}`, several messages joined with `; `, else the top-level `message`
+that the token endpoint sends. Tempo answers 401 without a body. A 2xx response without valid JSON is `:invalid_response`; an error
 response with a malformed JSON body keeps its status, reason and
 `retry_after`. A transport failure, such as a timeout, is `:request_error`.
 Raw bodies are reduced to a value-free summary.
@@ -230,8 +230,11 @@ storage quotas are host policy.
 ## Live Smoke Tests
 
 The `:live_smoke` tests read from the test account with the API token and
-the OAuth access token, record the fixtures under `test/fixtures/tempo/recorded`
-and never refresh the OAuth token. Run them from the umbrella root:
+the OAuth access token and record the fixtures under
+`test/fixtures/tempo/recorded`. They never use the stored refresh token. One
+test exchanges an authorization code and refreshes the new pair once; it
+runs only with `TEMPO_OAUTH_CODE` and writes each new pair to
+`TEMPO_OAUTH_TOKEN_FILE`. Run them from the umbrella root:
 
 ```sh
 set -a; source ~/.config/jido_connect/live/atlassian.env; set +a
