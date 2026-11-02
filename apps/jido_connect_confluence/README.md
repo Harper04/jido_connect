@@ -91,7 +91,9 @@ chooses the outcome:
 
 - `"fail"`, the default, fails the read with the error that page reads
   returned before this input existed: a `Jido.Connect.Error.ProviderError`
-  with reason `:invalid_response`.
+  with reason `:invalid_response`. Its `details.adf_reason` is
+  `:unsupported_adf_content`, which tells the caller that `"degrade"` would
+  read the page.
 - `"degrade"` returns the supported text and adds `unsupported_nodes`, which
   lists each skipped node or mark type once, in document order. The list is
   empty for a page without unsupported content.
@@ -108,8 +110,14 @@ such as `annotation`, is skipped while its text stays.
 
 Malformed ADF and documents beyond the projection's nesting depth (default
 64) or node count (default 50,000) fail the read in both modes with the
-invalid-response error. The `jido_connect_atlassian` README describes how to
-change these limits.
+invalid-response error. Its `details.adf_reason` is `:invalid_adf`,
+`:adf_depth_limit_exceeded` or `:adf_node_limit_exceeded`. The
+`jido_connect_atlassian` README describes how to change these limits.
+
+`details.field` is `"body"` whenever `adf_reason` is present. Other invalid
+page responses, such as a body value that is not a JSON object or an unusable
+`_links` entry, carry no `adf_reason`. Error details never name node types or
+carry page text.
 
 ### Truncation
 

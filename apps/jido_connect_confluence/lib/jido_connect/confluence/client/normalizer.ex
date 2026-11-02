@@ -2,7 +2,7 @@ defmodule Jido.Connect.Confluence.Client.Normalizer do
   @moduledoc "Strict normalization for Confluence Cloud space, page, and effect responses."
 
   alias Jido.Connect.Atlassian.ADF
-  alias Jido.Connect.Data
+  alias Jido.Connect.{Data, Error}
   alias Jido.Connect.Confluence.Contract
 
   @identifier_max Contract.maximum_identifier_length()
@@ -70,8 +70,14 @@ defmodule Jido.Connect.Confluence.Client.Normalizer do
   `site_url` and the unsupported-content policy as `on_unsupported`
   (`:fail`, the default, or `:degrade`). With `:degrade` the result adds
   `unsupported_nodes`.
+
+  A body that the projection rejects returns `{:error, details}`, where
+  `details` names the field and the projection's reason, such as
+  `:unsupported_adf_content` or `:adf_node_limit_exceeded`, and no content.
+  Any other invalid response returns `:error`.
   """
-  @spec page(map(), String.t(), pos_integer(), map()) :: {:ok, map()} | :error
+  @spec page(map(), String.t(), pos_integer(), map()) ::
+          {:ok, map()} | {:error, %{field: String.t(), adf_reason: atom()}} | :error
   def page(body, expected_id, max_characters, context)
       when is_map(body) and is_map(context) do
     mode = Map.get(context, :on_unsupported, :fail)
@@ -79,8 +85,7 @@ defmodule Jido.Connect.Confluence.Client.Normalizer do
     with {:ok, metadata} <- page_metadata(body, expected_id),
          {:ok, url} <- page_url(body, context.site_url),
          {:ok, adf} <- adf_body(body),
-         {:ok, %{text: text, unsupported_nodes: skipped}} <-
-           ADF.project(adf, on_unsupported: mode),
+         {:ok, %{text: text, unsupported_nodes: skipped}} <- project(adf, mode),
          true <- valid_account?(context.account),
          true <-
            is_integer(max_characters) and
@@ -103,6 +108,7 @@ defmodule Jido.Connect.Confluence.Client.Normalizer do
 
       {:ok, put_unsupported_nodes(page, mode, skipped)}
     else
+      {:error, %{adf_reason: _reason}} = projection_error -> projection_error
       _invalid -> :error
     end
   end
@@ -262,6 +268,18 @@ defmodule Jido.Connect.Confluence.Client.Normalizer do
       web_url(site_url, Data.get(links, :webui))
     else
       _invalid -> :error
+    end
+  end
+
+  # Keeps only the projection's reason. Its error details list node types,
+  # which page errors leave out.
+  defp project(adf, mode) do
+    case ADF.project(adf, on_unsupported: mode) do
+      {:ok, projection} ->
+        {:ok, projection}
+
+      {:error, %Error.ValidationError{reason: reason}} ->
+        {:error, %{field: "body", adf_reason: reason}}
     end
   end
 

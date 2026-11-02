@@ -155,6 +155,28 @@ defmodule Jido.Connect.Confluence.RecordedADFTest do
     assert length(long_text) == 12
   end
 
+  test "a page beyond the projection's node limit fails in both modes and names the limit" do
+    # The plain page stays below the default limit of 50,000 nodes, so this
+    # test lowers the shared configured limit to 10 instead of changing the
+    # recording.
+    previous = Application.get_env(:jido_connect_atlassian, ADF)
+    Application.put_env(:jido_connect_atlassian, ADF, max_nodes: 10)
+
+    on_exit(fn ->
+      if previous do
+        Application.put_env(:jido_connect_atlassian, ADF, previous)
+      else
+        Application.delete_env(:jido_connect_atlassian, ADF)
+      end
+    end)
+
+    body = LiveSmoke.fixture!(:confluence, "plain_page_adf")
+
+    for input <- [%{id: body["id"]}, %{id: body["id"], on_unsupported: "degrade"}] do
+      assert_projection_error(body, input, :adf_node_limit_exceeded)
+    end
+  end
+
   test "the plain page truncates by characters, not bytes, in both modes" do
     body = LiveSmoke.fixture!(:confluence, "plain_page_adf")
 
@@ -173,21 +195,34 @@ defmodule Jido.Connect.Confluence.RecordedADFTest do
     end
   end
 
-  # Today's unsupported-content error, without the input and with "fail".
+  # Today's unsupported-content error, without the input and with "fail". Its
+  # public map names the projection's reason, so a caller can tell that
+  # "degrade" would read the page.
   defp assert_fails_closed(body) do
     for input <- [%{id: body["id"]}, %{id: body["id"], on_unsupported: "fail"}] do
-      Req.Test.expect(__MODULE__, &Req.Test.json(&1, body))
-
-      assert {:error,
-              %Error.ProviderError{
-                message: "Confluence page response was invalid",
-                provider: :confluence,
-                reason: :invalid_response,
-                delivery: :response_received,
-                mutation?: false,
-                details: %{body_summary: %{type: :map}}
-              }} = Client.get_page(input, request())
+      assert_projection_error(body, input, :unsupported_adf_content)
     end
+  end
+
+  defp assert_projection_error(body, input, adf_reason) do
+    Req.Test.expect(__MODULE__, &Req.Test.json(&1, body))
+
+    assert {:error,
+            %Error.ProviderError{
+              message: "Confluence page response was invalid",
+              provider: :confluence,
+              reason: :invalid_response,
+              delivery: :response_received,
+              mutation?: false,
+              details: %{body_summary: %{type: :map}, field: "body", adf_reason: ^adf_reason}
+            } = error} = Client.get_page(input, request())
+
+    public_reason = Atom.to_string(adf_reason)
+
+    assert %{
+             reason: :invalid_response,
+             details: %{"field" => "body", "adf_reason" => ^public_reason}
+           } = Error.to_map(error)
   end
 
   defp read(body, input \\ %{}) do

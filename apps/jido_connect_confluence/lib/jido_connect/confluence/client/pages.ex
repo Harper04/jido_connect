@@ -167,8 +167,16 @@ defmodule Jido.Connect.Confluence.Client.Pages do
     }
 
     case Normalizer.page(body, input.id, input.max_characters, context) do
-      {:ok, result} -> {:ok, result}
-      :error -> Transport.invalid_success_response("Confluence page response was invalid", body)
+      {:ok, result} ->
+        {:ok, result}
+
+      {:error, details} ->
+        Transport.invalid_success_response("Confluence page response was invalid", body,
+          details: details
+        )
+
+      :error ->
+        Transport.invalid_success_response("Confluence page response was invalid", body)
     end
   end
 

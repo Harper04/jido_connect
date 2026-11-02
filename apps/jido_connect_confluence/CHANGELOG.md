@@ -11,6 +11,10 @@
 - Add the optional `confluence.page.get` input `on_unsupported`. `"fail"`, the
   default, keeps the invalid-response error for unsupported ADF content;
   `"degrade"` returns the supported text and adds `unsupported_nodes`.
+- When the ADF projection rejects a page body, the invalid-response error of
+  `confluence.page.get` adds `details.field` `"body"` and `details.adf_reason`,
+  such as `:unsupported_adf_content` or `:adf_node_limit_exceeded`. Message,
+  reason and `body_summary` stay as before.
 - Move ADF conversion into the shared `jido_connect_atlassian` package.
   `Jido.Connect.Confluence.ADF` stays as a delegating alias; `to_text/1` and
   `from_markdown/1` keep their names, return shapes and results.

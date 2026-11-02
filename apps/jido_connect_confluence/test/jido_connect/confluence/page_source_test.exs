@@ -59,7 +59,8 @@ defmodule Jido.Connect.Confluence.PageSourceTest do
 
   test "an unusable webui link or a foreign base fails the read and names no other host" do
     # The test site returns only valid links, so each case changes one part of
-    # the recorded `_links`.
+    # the recorded `_links`. The error names no ADF reason, because the page
+    # body is not at fault.
     page = "/spaces/JCL/pages/3754688664/JCL+plain+page"
 
     changes = [
@@ -88,6 +89,7 @@ defmodule Jido.Connect.Confluence.PageSourceTest do
               } = error} = Client.get_page(input, request())
 
       refute rendered(error) =~ "attacker.example"
+      refute Map.has_key?(error.details, :adf_reason)
     end
   end
 
