@@ -22,6 +22,9 @@ defmodule Jido.Connect.Google.Calendar.LiveEventReadTest do
     time_zone: "Europe/Berlin"
   }
   @page_size 5
+  # The window holds about a dozen events, three pages; a page token that
+  # never ends stops here instead of calling, and recording, without bound.
+  @max_pages 10
 
   @prepared_events [
     %{
@@ -237,6 +240,8 @@ defmodule Jido.Connect.Google.Calendar.LiveEventReadTest do
 
   # Follows next_page_token through the action until the last page.
   defp list_pages(input, access_token, pages \\ []) do
+    assert length(pages) < @max_pages, "pagination did not end after #{@max_pages} pages"
+
     assert {:ok, page} =
              LiveCalendar.invoke(
                "google.calendar.event.list",
