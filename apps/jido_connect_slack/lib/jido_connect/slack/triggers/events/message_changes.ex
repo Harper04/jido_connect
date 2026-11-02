@@ -5,9 +5,10 @@ defmodule Jido.Connect.Slack.Triggers.Events.MessageChanges do
 
   # Edits and deletions arrive through the four message subscriptions as a
   # `message` event with the subtype `message_changed` or `message_deleted`;
-  # `Jido.Connect.Slack.MessageChange` describes the signal. Each
-  # notification has its own `event_id`, so dedupe keeps two edits of the
-  # same message apart.
+  # `Jido.Connect.Slack.MessageChange` describes the signal. A deleted
+  # thread parent with replies arrives as a `message_changed` with a
+  # tombstone, which the deletion triggers take. Each notification has its
+  # own `event_id`, so dedupe keeps two edits of the same message apart.
 
   @verification %{
     kind: :slack_signed_request,
@@ -15,7 +16,7 @@ defmodule Jido.Connect.Slack.Triggers.Events.MessageChanges do
     timestamp_header: "x-slack-request-timestamp"
   }
 
-  @source_ts "ts of the edited or deleted message, from message.ts of an edit and deleted_ts of a deletion. With channel it names the original message; it is not the ts of this notification."
+  @source_ts "ts of the edited or deleted message, from message.ts of an edit or a tombstone and deleted_ts of a deletion. With channel it names the original message; it is not the ts of this notification."
   @notification_ts "ts of this notification. Slack gives every edit and deletion a new one."
   @event_ts "Slack's event_ts of this notification."
   @changed_subtype "Always message_changed: an edit, marked by a new message.edited."
@@ -25,8 +26,8 @@ defmodule Jido.Connect.Slack.Triggers.Events.MessageChanges do
   @edited_ts "Time of the edit, from message.edited.ts."
   @text "Full text after the edit. An empty string when the edit left only blocks or attachments."
   @deleted_subtype "Always message_deleted."
-  @deleted_thread_ts "thread_ts of the deleted message, from previous_message when Slack sends it."
-  @deleted_user "Author of the deleted message, from previous_message when Slack sends it. Slack does not say who deleted it."
+  @deleted_thread_ts "thread_ts of the deleted message, from message of a tombstone and otherwise from previous_message when Slack sends it."
+  @deleted_user "Author of the deleted message, from previous_message when Slack sends it and it is no tombstone. Slack does not say who deleted it."
 
   triggers do
     webhook :public_channel_message_changed do
@@ -36,7 +37,7 @@ defmodule Jido.Connect.Slack.Triggers.Events.MessageChanges do
       data_classification :workspace_content
       label "Public channel message edit"
 
-      description "Receive edits of public channel messages from Slack Events API message.channels callbacks with the subtype message_changed and a new message.edited. Other message_changed callbacks, such as link unfurls or reply count updates, yield no signal."
+      description "Receive edits of public channel messages from Slack Events API message.channels callbacks with the subtype message_changed and a new message.edited. Other message_changed callbacks, such as link unfurls, reply count updates or tombstones, yield no signal."
 
       verification @verification
       dedupe %{key: [:team_id, :event_id]}
@@ -79,7 +80,7 @@ defmodule Jido.Connect.Slack.Triggers.Events.MessageChanges do
       data_classification :workspace_content
       label "Public channel message deletion"
 
-      description "Receive deletions of public channel messages from Slack Events API message.channels callbacks with the subtype message_deleted. The signal carries no message text."
+      description "Receive deletions of public channel messages from Slack Events API message.channels callbacks with the subtype message_deleted, or message_changed with a tombstone for a deleted thread parent with replies. The signal carries no message text."
 
       verification @verification
       dedupe %{key: [:team_id, :event_id]}
@@ -119,7 +120,7 @@ defmodule Jido.Connect.Slack.Triggers.Events.MessageChanges do
       data_classification :workspace_content
       label "Private channel message edit"
 
-      description "Receive edits of private channel messages from Slack Events API message.groups callbacks with the subtype message_changed and a new message.edited. Other message_changed callbacks, such as link unfurls or reply count updates, yield no signal. Requires Slack groups:history for private channel history events."
+      description "Receive edits of private channel messages from Slack Events API message.groups callbacks with the subtype message_changed and a new message.edited. Other message_changed callbacks, such as link unfurls, reply count updates or tombstones, yield no signal. Requires Slack groups:history for private channel history events."
 
       verification @verification
       dedupe %{key: [:team_id, :event_id]}
@@ -162,7 +163,7 @@ defmodule Jido.Connect.Slack.Triggers.Events.MessageChanges do
       data_classification :workspace_content
       label "Private channel message deletion"
 
-      description "Receive deletions of private channel messages from Slack Events API message.groups callbacks with the subtype message_deleted. The signal carries no message text. Requires Slack groups:history for private channel history events."
+      description "Receive deletions of private channel messages from Slack Events API message.groups callbacks with the subtype message_deleted, or message_changed with a tombstone for a deleted thread parent with replies. The signal carries no message text. Requires Slack groups:history for private channel history events."
 
       verification @verification
       dedupe %{key: [:team_id, :event_id]}
@@ -202,7 +203,7 @@ defmodule Jido.Connect.Slack.Triggers.Events.MessageChanges do
       data_classification :workspace_content
       label "Direct message edit"
 
-      description "Receive edits of direct messages from Slack Events API message.im callbacks with the subtype message_changed and a new message.edited. Other message_changed callbacks, such as link unfurls or reply count updates, yield no signal. Requires Slack im:history for direct message history events."
+      description "Receive edits of direct messages from Slack Events API message.im callbacks with the subtype message_changed and a new message.edited. Other message_changed callbacks, such as link unfurls, reply count updates or tombstones, yield no signal. Requires Slack im:history for direct message history events."
 
       verification @verification
       dedupe %{key: [:team_id, :event_id]}
@@ -245,7 +246,7 @@ defmodule Jido.Connect.Slack.Triggers.Events.MessageChanges do
       data_classification :workspace_content
       label "Direct message deletion"
 
-      description "Receive deletions of direct messages from Slack Events API message.im callbacks with the subtype message_deleted. The signal carries no message text. Requires Slack im:history for direct message history events."
+      description "Receive deletions of direct messages from Slack Events API message.im callbacks with the subtype message_deleted, or message_changed with a tombstone for a deleted thread parent with replies. The signal carries no message text. Requires Slack im:history for direct message history events."
 
       verification @verification
       dedupe %{key: [:team_id, :event_id]}
@@ -285,7 +286,7 @@ defmodule Jido.Connect.Slack.Triggers.Events.MessageChanges do
       data_classification :workspace_content
       label "Multi-person direct message edit"
 
-      description "Receive edits of multi-person direct messages from Slack Events API message.mpim callbacks with the subtype message_changed and a new message.edited. Other message_changed callbacks, such as link unfurls or reply count updates, yield no signal. Requires Slack mpim:history for multi-person direct message history events."
+      description "Receive edits of multi-person direct messages from Slack Events API message.mpim callbacks with the subtype message_changed and a new message.edited. Other message_changed callbacks, such as link unfurls, reply count updates or tombstones, yield no signal. Requires Slack mpim:history for multi-person direct message history events."
 
       verification @verification
       dedupe %{key: [:team_id, :event_id]}
@@ -328,7 +329,7 @@ defmodule Jido.Connect.Slack.Triggers.Events.MessageChanges do
       data_classification :workspace_content
       label "Multi-person direct message deletion"
 
-      description "Receive deletions of multi-person direct messages from Slack Events API message.mpim callbacks with the subtype message_deleted. The signal carries no message text. Requires Slack mpim:history for multi-person direct message history events."
+      description "Receive deletions of multi-person direct messages from Slack Events API message.mpim callbacks with the subtype message_deleted, or message_changed with a tombstone for a deleted thread parent with replies. The signal carries no message text. Requires Slack mpim:history for multi-person direct message history events."
 
       verification @verification
       dedupe %{key: [:team_id, :event_id]}

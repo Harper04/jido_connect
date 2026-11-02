@@ -4,9 +4,10 @@ defmodule Jido.Connect.Slack.MessageChange do
   event with the subtype `message_changed` or `message_deleted`.
 
   `subtype` says which one it is. `ts` is the source key: the `ts` of the
-  message that was edited or deleted, taken from `message.ts` of an edit and
-  from `deleted_ts` of a deletion. With `channel` it names the original
-  message, as `slack.conversation.history` and the message triggers do.
+  message that was edited or deleted, taken from `message.ts` of an edit or
+  a tombstone and from `deleted_ts` of a deletion. With `channel` it names
+  the original message, as `slack.conversation.history` and the message
+  triggers do.
   `notification_ts` is the `ts` of the change event itself and `event_ts`
   Slack's `event_ts`; Slack gives each notification a new one, so neither
   names the message. `event_id` differs for every notification, also for
@@ -21,6 +22,15 @@ defmodule Jido.Connect.Slack.MessageChange do
   A deletion carries no text. Its `user`, `bot_id`, `app_id` and
   `thread_ts` come from `previous_message` when Slack sends it, and are
   `nil` without it. Slack does not say who deleted a message.
+
+  Slack reports the deletion of a thread parent that has replies as a
+  `message_changed` event whose `message` is a tombstone, with the subtype
+  `tombstone` and Slackbot as `user`. It becomes a deletion with the
+  `message_deleted` subtype: `ts` and `thread_ts` come from the tombstone,
+  the author from `previous_message`. When the last reply is deleted, Slack
+  removes the tombstone with a `message_deleted` event whose
+  `previous_message` is the tombstone; that second deletion of the same
+  `ts` names no author.
 
   IDs and timestamps stay Slack's exact strings. `team_id`, `event_id`,
   `channel` and `ts` must be non-empty strings; every other field is a

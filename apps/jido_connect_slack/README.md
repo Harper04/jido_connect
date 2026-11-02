@@ -350,12 +350,24 @@ of an edited message repeats the last edit. An edit therefore needs another
 `edited.ts` than `previous_message.edited.ts`, or another text than
 `previous_message.text`, since two edits within one second share their
 `edited.ts`; without `previous_message`, `message.edited` alone marks an
-edit. Every other `message_changed` event returns `:not_an_edit`, and its
-verified delivery keeps `normalized_signal: nil`.
+edit. Every other `message_changed` event, apart from a tombstone, returns
+`:not_an_edit`, and its verified delivery keeps `normalized_signal: nil`.
+
+Slack reports the deletion of a thread parent that has replies as a
+`message_changed` event whose `message` is a tombstone: it has the subtype
+`tombstone`, Slackbot as `user` and no `edited`. The deletion triggers, the
+generic `message` event and `normalize_event/1` turn it into a deletion
+signal with the subtype `message_deleted`, whose `ts` and `thread_ts` come
+from the tombstone and whose author comes from `previous_message`. The edit
+triggers return `:not_an_edit` for it. When the thread's last reply is
+deleted, Slack removes the tombstone with a `message_deleted` event whose
+`previous_message` is the tombstone. That event yields a second deletion
+signal for the same `ts`, with its own `event_id` and no author. The host
+dedupes the deletions of one message by `channel` and `ts` if it needs to.
 
 The signal, described by `Jido.Connect.Slack.MessageChange`, names the
-original message by `channel` and `ts`: `message.ts` of an edit and
-`deleted_ts` of a deletion. `notification_ts` and `event_ts` belong to the
+original message by `channel` and `ts`: `message.ts` of an edit or a
+tombstone and `deleted_ts` of a deletion. `notification_ts` and `event_ts` belong to the
 notification. Every edit and deletion has its own `event_id`, also two
 edits of one message, and the triggers dedupe on `team_id` and `event_id`.
 IDs and timestamps stay Slack's strings.
@@ -367,7 +379,8 @@ IDs and timestamps stay Slack's strings.
   `chat.update` names the bot user as author and editor.
 - A deletion carries no text. Its author and `thread_ts` come from
   `previous_message` when Slack sends it; without it the signal names only
-  the message. Slack does not say who deleted a message.
+  the message. A tombstone in `previous_message` gives `thread_ts` but no
+  author. Slack does not say who deleted a message.
 
 A missing or empty team, event, channel or source `ts`, a field that is no
 string, or a `message` or `previous_message` that is no object fail with
@@ -380,9 +393,12 @@ one message by `edited_ts`.
 The changes captured from the test workspace were two edits and a deletion
 of a message in each conversation class and of a thread reply, each by the
 person who wrote it, and bot edits through `chat.update`, one of them to an
-empty text beside an attachment. An edit by another person than the author,
-a deletion without `previous_message` and a change that repeats an earlier
-edit were not captured.
+empty text beside an attachment. The deletion of a thread parent with
+replies was captured for two bot messages deleted through `chat.delete`,
+one of them after an edit, together with the removal of a tombstone. An
+edit by another person than the author, a deletion without
+`previous_message`, a change that repeats an earlier edit and a person's
+deletion of a thread parent with replies were not captured.
 
 ## Interactivity
 

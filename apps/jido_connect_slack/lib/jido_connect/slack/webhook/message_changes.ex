@@ -6,6 +6,12 @@ defmodule Jido.Connect.Slack.Webhook.MessageChanges do
   # `Jido.Connect.Slack.MessageChange` that are not nil. The signal's `ts` is
   # the edited or deleted message's `ts`, never the notification's.
   #
+  # Slack reports the deletion of a thread parent with replies as a
+  # `message_changed` whose `message` is a tombstone, and the removal of the
+  # tombstone after the last reply as a `message_deleted` whose
+  # `previous_message` is the tombstone. Both are deletions; a tombstone
+  # names Slackbot as author, so neither takes its author from one.
+  #
   # Every value is read at a fixed payload path. A missing or empty
   # identity, a value that is no string, or a step on a path that is no map
   # fails with `:invalid_message_change`; a `previous_message.ts` that names
@@ -18,9 +24,9 @@ defmodule Jido.Connect.Slack.Webhook.MessageChanges do
 
   @channel_types [nil, "channel", "group", "im", "mpim"]
 
-  # The event of each change trigger, with the subtype and the channel types
-  # it accepts. Like `message.channels`, the public channel family also
-  # takes an event without `channel_type`.
+  # The event of each change trigger, with the subtype of its signals and
+  # the channel types it accepts. Like `message.channels`, the public
+  # channel family also takes an event without `channel_type`.
   @trigger_events %{
     "message.channels.changed" => {"message_changed", [nil, "channel"]},
     "message.channels.deleted" => {"message_deleted", [nil, "channel"]},
@@ -37,7 +43,6 @@ defmodule Jido.Connect.Slack.Webhook.MessageChanges do
     event_id: ["event_id"],
     channel: ["event", "channel"],
     channel_type: ["event", "channel_type"],
-    subtype: ["event", "subtype"],
     notification_ts: ["event", "ts"],
     event_ts: ["event", "event_ts"]
   ]
@@ -62,6 +67,21 @@ defmodule Jido.Connect.Slack.Webhook.MessageChanges do
                        bot_id: ["event", "previous_message", "bot_id"],
                        app_id: ["event", "previous_message", "app_id"]
                      ]
+
+  @tombstone_fields @identity_fields ++
+                      [
+                        ts: ["event", "message", "ts"],
+                        thread_ts: ["event", "message", "thread_ts"],
+                        user: ["event", "previous_message", "user"],
+                        bot_id: ["event", "previous_message", "bot_id"],
+                        app_id: ["event", "previous_message", "app_id"]
+                      ]
+
+  @tombstone_removal_fields @identity_fields ++
+                              [
+                                ts: ["event", "deleted_ts"],
+                                thread_ts: ["event", "previous_message", "thread_ts"]
+                              ]
 
   @previous ["event", "previous_message"]
   @previous_ts ["event", "previous_message", "ts"]
@@ -88,13 +108,12 @@ defmodule Jido.Connect.Slack.Webhook.MessageChanges do
          subtypes,
          channel_types
        ) do
-    fields = fields(event)
-
-    with :ok <- require_subtype(event, subtypes),
+    with {:ok, kind} <- change_kind(event, subtypes),
          :ok <- require_channel_type(event, channel_types),
-         :ok <- require_edit(payload),
+         :ok <- require_edit(payload, kind),
+         fields = fields(kind, event),
          {:ok, attrs} <- attrs(payload, fields),
-         {:ok, change} <- build(attrs, fields),
+         {:ok, change} <- build(Map.put(attrs, :subtype, signal_subtype(kind)), fields),
          :ok <- require_same_source(payload, change, fields) do
       {:ok, to_signal(change)}
     end
@@ -108,20 +127,37 @@ defmodule Jido.Connect.Slack.Webhook.MessageChanges do
      )}
   end
 
-  defp require_subtype(event, subtypes) do
+  # The change that `event` describes, if `subtypes` take it: an edit, a
+  # deletion, or a tombstone. A trigger that takes only edits gets a
+  # tombstone as an edit, which require_edit/2 rejects.
+  defp change_kind(event, subtypes) do
     subtype = Data.get(event, "subtype")
+    deletions? = "message_deleted" in subtypes
 
-    if subtype in subtypes do
-      :ok
-    else
-      {:error,
-       Error.provider("Unsupported Slack message subtype",
-         provider: :slack,
-         reason: :unsupported_message_subtype,
-         details: %{subtype: subtype}
-       )}
+    cond do
+      subtype == "message_deleted" and deletions? ->
+        {:ok, :deletion}
+
+      subtype == "message_changed" and deletions? and tombstone?(Data.get(event, "message")) ->
+        {:ok, :tombstone}
+
+      subtype == "message_changed" and "message_changed" in subtypes ->
+        {:ok, :edit}
+
+      true ->
+        {:error,
+         Error.provider("Unsupported Slack message subtype",
+           provider: :slack,
+           reason: :unsupported_message_subtype,
+           details: %{subtype: subtype}
+         )}
     end
   end
+
+  defp tombstone?(message), do: is_map(message) and Data.get(message, "subtype") == "tombstone"
+
+  defp signal_subtype(:edit), do: "message_changed"
+  defp signal_subtype(_deletion), do: "message_deleted"
 
   defp require_channel_type(event, channel_types) do
     channel_type = Data.get(event, "channel_type")
@@ -138,12 +174,13 @@ defmodule Jido.Connect.Slack.Webhook.MessageChanges do
     end
   end
 
-  # Slack also sends `message_changed` when it unfurls a link or updates a
-  # thread parent's replies. Only a new `message.edited` marks an edit.
-  defp require_edit(%{"event" => %{"subtype" => "message_changed"} = event} = payload) do
+  # Slack also sends `message_changed` when it unfurls a link, updates a
+  # thread parent's replies or leaves a tombstone. Only a new
+  # `message.edited` marks an edit.
+  defp require_edit(%{"event" => event} = payload, :edit) do
     case Data.get(event, "message") do
       %{} = message ->
-        if is_nil(Data.get(message, "edited")),
+        if is_nil(Data.get(message, "edited")) or tombstone?(message),
           do: {:error, not_an_edit()},
           else: require_new_edit(payload)
 
@@ -153,7 +190,7 @@ defmodule Jido.Connect.Slack.Webhook.MessageChanges do
     end
   end
 
-  defp require_edit(_deletion), do: :ok
+  defp require_edit(_payload, _deletion), do: :ok
 
   # Slack keeps `edited` on a message after an edit, so a later unfurl or
   # reply count update repeats the last edit. A new edit has another
@@ -192,8 +229,14 @@ defmodule Jido.Connect.Slack.Webhook.MessageChanges do
   end
 
   # A deletion reads no text: the deleted text is only in `previous_message`.
-  defp fields(%{"subtype" => "message_deleted"}), do: @deletion_fields
-  defp fields(_edit), do: @edit_fields
+  defp fields(:edit, _event), do: @edit_fields
+  defp fields(:tombstone, _event), do: @tombstone_fields
+
+  defp fields(:deletion, event) do
+    if tombstone?(Data.get(event, "previous_message")),
+      do: @tombstone_removal_fields,
+      else: @deletion_fields
+  end
 
   defp attrs(payload, fields) do
     Enum.reduce_while(fields, {:ok, %{}}, fn {key, path}, {:ok, attrs} ->

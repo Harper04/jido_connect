@@ -15,7 +15,9 @@ defmodule Jido.Connect.Slack.MessageChangesTest do
   # posted `edit-public`, `edit-private`, `edit-dm`, `edit-group-dm` and the
   # thread reply `edit-thread`, edited each twice and deleted it. The bot
   # posted `edit-bot` and `edit-bot-empty`, edited them with chat.update and
-  # deleted them with chat.delete.
+  # deleted them with chat.delete. It also posted two thread parents with a
+  # reply each and deleted the parents, one after an edit, and then the
+  # replies.
 
   describe "an edit" do
     test "keeps the edited message's ts, its full text, its author and its editor" do
@@ -160,6 +162,128 @@ defmodule Jido.Connect.Slack.MessageChangesTest do
                notification_ts: "1793628616.005400",
                event_ts: "1793628616.005400"
              }
+    end
+  end
+
+  describe "the deletion of a thread parent with replies" do
+    # The bot posted a thread parent, replied to it and deleted the parent
+    # with chat.delete, once without and once after an edit. Slack kept a
+    # tombstone in place of the parent and sent it as a `message_changed`.
+    # After the last reply was deleted, it removed the tombstone with a
+    # `message_deleted` whose `previous_message` is the tombstone.
+
+    test "arrives as a tombstone and keeps the parent's ts and author, and no text" do
+      payload = payload!("message_changed_tombstone")
+      %{"message" => tombstone, "previous_message" => previous} = payload["event"]
+      assert %{"subtype" => "tombstone", "user" => "USLACKBOT"} = tombstone
+
+      assert {:ok, %WebhookDelivery{event: "message", normalized_signal: delivered}} =
+               replay("message_changed_tombstone")
+
+      signal = Map.delete(delivered, :delivery)
+
+      assert signal == %{
+               team_id: "T0CEE692400",
+               event_id: "Ev0CF11H3GGY",
+               channel: "C0CEEB41FU0",
+               channel_type: "channel",
+               subtype: "message_deleted",
+               ts: "1793637515.439379",
+               thread_ts: "1793637515.439379",
+               user: "U0CDHUEBVEJ",
+               bot_id: "B0CDHUEB8MC",
+               app_id: "A0CDHUBBHRC",
+               notification_ts: "1793637527.000200",
+               event_ts: "1793637527.000200"
+             }
+
+      for event <- ["message", "message.channels.deleted"] do
+        assert {:ok, ^signal} = Webhook.normalize_signal(event, payload), event
+      end
+
+      assert {:ok, ^signal} = Webhook.normalize_event(payload)
+      refute_text(signal, previous["text"])
+      refute_text(signal, tombstone["text"])
+    end
+
+    test "after an edit names neither editor nor edit time" do
+      assert %{"edited" => %{"ts" => _edited_ts}} =
+               payload!("message_changed_tombstone_edited")["event"]["previous_message"]
+
+      assert {:ok, %WebhookDelivery{normalized_signal: delivered}} =
+               replay("message_changed_tombstone_edited")
+
+      assert Map.delete(delivered, :delivery) == %{
+               team_id: "T0CEE692400",
+               event_id: "Ev0CE6EWN4N6",
+               channel: "C0CEEB41FU0",
+               channel_type: "channel",
+               subtype: "message_deleted",
+               ts: "1793637591.015939",
+               thread_ts: "1793637591.015939",
+               user: "U0CDHUEBVEJ",
+               bot_id: "B0CDHUEB8MC",
+               app_id: "A0CDHUBBHRC",
+               notification_ts: "1793637605.000700",
+               event_ts: "1793637605.000700"
+             }
+    end
+
+    test "as a tombstone is no edit, and only its own family's deletion trigger takes it" do
+      for fixture <- ~w(message_changed_tombstone message_changed_tombstone_edited) do
+        payload = payload!(fixture)
+
+        assert {:error, %Error.ProviderError{reason: :not_an_edit} = error} =
+                 Webhook.normalize_signal("message.channels.changed", payload)
+
+        refute_text(error, payload["event"]["previous_message"]["text"])
+
+        for family <- ~w(message.groups message.im message.mpim), action <- ~w(changed deleted) do
+          assert {:error,
+                  %Error.ProviderError{
+                    reason: :unsupported_channel_type,
+                    details: %{channel_type: "channel"}
+                  }} = Webhook.normalize_signal("#{family}.#{action}", payload),
+                 "#{fixture} #{family}.#{action}"
+        end
+
+        assert {:error,
+                %Error.ProviderError{
+                  reason: :unsupported_message_subtype,
+                  details: %{subtype: "message_changed"}
+                }} = Webhook.normalize_signal("message.channels", payload)
+      end
+    end
+
+    test "ends with the removal of the tombstone, a second deletion that names no author" do
+      payload = payload!("message_deleted_tombstone")
+
+      assert %{"subtype" => "tombstone", "user" => "USLACKBOT"} =
+               payload["event"]["previous_message"]
+
+      assert {:ok, %WebhookDelivery{normalized_signal: delivered}} =
+               replay("message_deleted_tombstone")
+
+      signal = Map.delete(delivered, :delivery)
+
+      assert signal == %{
+               team_id: "T0CEE692400",
+               event_id: "Ev0CE0DCKK5Z",
+               channel: "C0CEEB41FU0",
+               channel_type: "channel",
+               subtype: "message_deleted",
+               ts: "1793637515.439379",
+               thread_ts: "1793637515.439379",
+               notification_ts: "1793637559.000400",
+               event_ts: "1793637559.000400"
+             }
+
+      assert {:ok, ^signal} = Webhook.normalize_event(payload)
+      assert {:ok, ^signal} = Webhook.normalize_signal("message.channels.deleted", payload)
+
+      {:ok, deleted} = Webhook.normalize_event(payload!("message_changed_tombstone"))
+      assert deleted.ts == signal.ts
+      refute deleted.event_id == signal.event_id
     end
   end
 
@@ -321,9 +445,11 @@ defmodule Jido.Connect.Slack.MessageChangesTest do
     test "fails on every path with the payload path of the field, and yields no signal" do
       edit = "message_changed_thread_reply"
       deletion = "message_deleted_thread_reply"
+      tombstone = "message_changed_tombstone"
 
-      # Derived: the captured edit and deletion of the thread reply with one
-      # field left out, emptied or of another type.
+      # Derived: the captured edit and deletion of the thread reply and the
+      # captured tombstone with one field left out, emptied or of another
+      # type.
       rows = [
         {edit, "changed", &Map.delete(&1, "team_id"), "team_id"},
         {deletion, "deleted", &Map.put(&1, "event_id", ""), "event_id"},
@@ -357,7 +483,14 @@ defmodule Jido.Connect.Slack.MessageChangesTest do
          "event.previous_message.edited"},
         {deletion, "deleted", &put_in(&1, ["event", "previous_message", "user"], 7),
          "event.previous_message.user"},
-        {deletion, "deleted", &put_in(&1, ["event", "event_ts"], 1_793_628_616), "event.event_ts"}
+        {deletion, "deleted", &put_in(&1, ["event", "event_ts"], 1_793_628_616),
+         "event.event_ts"},
+        {tombstone, "deleted",
+         &update_in(&1, ["event", "message"], fn message ->
+           Map.delete(message, "ts")
+         end), "event.message.ts"},
+        {tombstone, "deleted", &put_in(&1, ["event", "previous_message", "bot_id"], 7),
+         "event.previous_message.bot_id"}
       ]
 
       for {fixture, action, change, field} <- rows do
@@ -384,11 +517,12 @@ defmodule Jido.Connect.Slack.MessageChangesTest do
     end
 
     test "that names two different messages fails with both payload paths" do
-      # Derived: the captured edit and deletion whose `previous_message`
-      # names another message than the change.
+      # Derived: the captured edit, deletion and tombstone whose
+      # `previous_message` names another message than the change.
       rows = [
         {"message_changed_public", "changed", "event.message.ts"},
-        {"message_deleted_public", "deleted", "event.deleted_ts"}
+        {"message_deleted_public", "deleted", "event.deleted_ts"},
+        {"message_changed_tombstone", "deleted", "event.message.ts"}
       ]
 
       for {fixture, action, field} <- rows do
@@ -519,7 +653,8 @@ defmodule Jido.Connect.Slack.MessageChangesTest do
              )
              |> Kernel.++(~w(message_changed_bot_empty_text message_deleted_bot_empty_text
                   message_changed_thread_parent message_changed_broadcast_root
-                  message_changed_unfurl))
+                  message_changed_unfurl message_changed_tombstone
+                  message_changed_tombstone_edited message_deleted_tombstone))
 
     test "verifies only with its signature, unchanged and in time" do
       for fixture <- @changes do
@@ -558,10 +693,9 @@ defmodule Jido.Connect.Slack.MessageChangesTest do
     end
 
     test "deletion signals and errors leave out the message text" do
-      for fixture <- @changes, String.starts_with?(fixture, "message_deleted_") do
-        payload = payload!(fixture)
-        {:ok, signal} = Webhook.normalize_event(payload)
-
+      for fixture <- @changes,
+          payload = payload!(fixture),
+          {:ok, %{subtype: "message_deleted"} = signal} <- [Webhook.normalize_event(payload)] do
         refute Map.has_key?(signal, :text)
 
         with %{"text" => text} when text != "" <- payload["event"]["previous_message"] do
@@ -587,7 +721,11 @@ defmodule Jido.Connect.Slack.MessageChangesTest do
 
   # The change trigger event for `payload`, such as message.channels.changed.
   defp trigger_event(%{"event" => event}) do
-    action = if event["subtype"] == "message_changed", do: "changed", else: "deleted"
+    action =
+      if event["subtype"] == "message_changed" and event["message"]["subtype"] != "tombstone",
+        do: "changed",
+        else: "deleted"
+
     "#{family(event["channel_type"])}.#{action}"
   end
 
