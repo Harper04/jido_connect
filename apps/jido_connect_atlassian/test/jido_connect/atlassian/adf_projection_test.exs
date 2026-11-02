@@ -100,6 +100,52 @@ defmodule Jido.Connect.Atlassian.ADFProjectionTest do
     }
   }
 
+  # The Jira reference has no node pages for task and decision lists. These
+  # fixtures follow `definitions.taskList_node`, `taskItem_node`,
+  # `decisionList_node` and `decisionItem_node` of the ADF JSON schema linked
+  # from the structure page (http://go.atlassian.com/adf-json-schema). A
+  # taskList holds taskItem and taskList nodes, so a nested task list is a
+  # direct child of the outer list; a decisionList holds decisionItem nodes.
+  @task_list %{
+    "type" => "taskList",
+    "attrs" => %{"localId" => "4f9b6d1e-6c5a-4a8e-9f3b-2d7c1e0a5b61"},
+    "content" => [
+      %{
+        "type" => "taskItem",
+        "attrs" => %{"localId" => "4f9b6d1e-6c5a-4a8e-9f3b-2d7c1e0a5b62", "state" => "DONE"},
+        "content" => [%{"type" => "text", "text" => "Parent task"}]
+      },
+      %{
+        "type" => "taskList",
+        "attrs" => %{"localId" => "4f9b6d1e-6c5a-4a8e-9f3b-2d7c1e0a5b63"},
+        "content" => [
+          %{
+            "type" => "taskItem",
+            "attrs" => %{"localId" => "4f9b6d1e-6c5a-4a8e-9f3b-2d7c1e0a5b64", "state" => "TODO"},
+            "content" => [%{"type" => "text", "text" => "Child task"}]
+          }
+        ]
+      },
+      %{
+        "type" => "taskItem",
+        "attrs" => %{"localId" => "4f9b6d1e-6c5a-4a8e-9f3b-2d7c1e0a5b65", "state" => "TODO"},
+        "content" => [%{"type" => "text", "text" => "Next task"}]
+      }
+    ]
+  }
+
+  @decision_list %{
+    "type" => "decisionList",
+    "attrs" => %{"localId" => "8a2e4c7d-1b3f-4d5e-a6c7-9e0f1a2b3c41"},
+    "content" => [
+      %{
+        "type" => "decisionItem",
+        "attrs" => %{"localId" => "8a2e4c7d-1b3f-4d5e-a6c7-9e0f1a2b3c42", "state" => "DECIDED"},
+        "content" => [%{"type" => "text", "text" => "Ship on Friday"}]
+      }
+    ]
+  }
+
   describe "project/2 rendering" do
     test "renders an empty document as empty text in both modes" do
       for mode <- @modes do
@@ -292,6 +338,15 @@ defmodule Jido.Connect.Atlassian.ADFProjectionTest do
                     ),
                   unsupported_nodes: []
                 }}
+    end
+
+    test "indents a nested task list under the task before it and renders decisions as items" do
+      expected = "- Parent task\n  - Child task\n- Next task\n- Ship on Friday"
+
+      for mode <- @modes do
+        assert ADF.project(doc([@task_list, @decision_list]), on_unsupported: mode) ==
+                 {:ok, %{text: expected, unsupported_nodes: []}}
+      end
     end
 
     test "treats null text marks as no marks, as the strict rendering does" do

@@ -13,6 +13,8 @@ defmodule Jido.Connect.Atlassian.ADF.Projection do
   #   {:inline, text}        inline text without a link
   #   {:link, text, href}    inline text under a link mark
   #   {:lines, lines}        block content as a list of lines
+  #   {:list, lines}         a rendered list; a directly enclosing list
+  #                          indents it under the item before it
   #   {:item, lines}         a list item; the enclosing list adds its marker
   #   :none                  a skipped node
 
@@ -195,13 +197,13 @@ defmodule Jido.Connect.Atlassian.ADF.Projection do
 
   defp render("orderedList", node, content, depth, state) do
     with {:ok, fragments, state} <- render_nodes(content, depth, state) do
-      {:ok, {:lines, list_lines(fragments, first_number(node))}, state}
+      {:ok, {:list, list_lines(fragments, first_number(node))}, state}
     end
   end
 
   defp render(type, _node, content, depth, state) when type in @list_nodes do
     with {:ok, fragments, state} <- render_nodes(content, depth, state) do
-      {:ok, {:lines, list_lines(fragments, nil)}, state}
+      {:ok, {:list, list_lines(fragments, nil)}, state}
     end
   end
 
@@ -289,6 +291,7 @@ defmodule Jido.Connect.Atlassian.ADF.Projection do
   defp inline?(_fragment), do: false
 
   defp block_lines({:lines, lines}), do: lines
+  defp block_lines({:list, lines}), do: lines
   defp block_lines({:item, lines}), do: item_lines(lines, "- ")
 
   defp inline_lines(fragments) do
@@ -315,13 +318,22 @@ defmodule Jido.Connect.Atlassian.ADF.Projection do
   defp inline_text({:link, href, href}), do: href
   defp inline_text({:link, text, href}), do: [text, " (", href, ")"]
 
+  # A list directly inside a list, as ADF nests task lists, is indented under
+  # the item before it, like a list inside a list item.
   defp list_lines(fragments, number) do
-    {lines, _number} =
+    {lines, _acc} =
       fragments
       |> Enum.reject(&(&1 == :none))
-      |> Enum.flat_map_reduce(number, fn
-        {:item, lines}, number -> {item_lines(lines, marker(number)), next_number(number)}
-        fragment, number -> {lines([fragment]), number}
+      |> Enum.flat_map_reduce({number, marker(number)}, fn
+        {:item, lines}, {number, _marker} ->
+          marker = marker(number)
+          {item_lines(lines, marker), {next_number(number), marker}}
+
+        {:list, lines}, {_number, marker} = acc ->
+          {indent(lines, marker), acc}
+
+        fragment, acc ->
+          {lines([fragment]), acc}
       end)
 
     lines
