@@ -66,10 +66,15 @@ defmodule Jido.Connect.Google.Calendar.LiveEventChangedTest do
                  token
                )
 
-      LiveCalendar.record("event_changed_created")
-
       {seen, checkpoint} =
-        poll_for(config, checkpoint, token, [event_id], &(&1.change_type == "updated"))
+        poll_for(
+          "event_changed_created",
+          config,
+          checkpoint,
+          token,
+          [event_id],
+          &(&1.change_type == "updated")
+        )
 
       assert [%{change_type: "updated", status: "confirmed", summary: ^summary} = created] = seen
 
@@ -87,10 +92,15 @@ defmodule Jido.Connect.Google.Calendar.LiveEventChangedTest do
                  token
                )
 
-      LiveCalendar.record("event_changed_edited")
-
       {seen, checkpoint} =
-        poll_for(config, checkpoint, token, [event_id], &(&1.summary == edited_summary))
+        poll_for(
+          "event_changed_edited",
+          config,
+          checkpoint,
+          token,
+          [event_id],
+          &(&1.summary == edited_summary)
+        )
 
       assert [%{change_type: "updated", status: "confirmed", summary: ^edited_summary} = edited] =
                seen
@@ -100,9 +110,9 @@ defmodule Jido.Connect.Google.Calendar.LiveEventChangedTest do
       LiveCalendar.record("event_changed_delete")
       assert {:ok, %{deleted?: true}} = delete_event(calendar_id, event_id, token)
 
-      LiveCalendar.record("event_changed_cancelled")
+      {seen, _checkpoint} =
+        poll_for("event_changed_cancelled", config, checkpoint, token, [event_id], &cancelled?/1)
 
-      {seen, _checkpoint} = poll_for(config, checkpoint, token, [event_id], &cancelled?/1)
       assert [%{change_type: "cancelled", status: "cancelled"}] = seen
     end
 
@@ -173,8 +183,16 @@ defmodule Jido.Connect.Google.Calendar.LiveEventChangedTest do
       LiveCalendar.record("event_cancelled_delete")
       assert {:ok, %{deleted?: true}} = delete_event(calendar_id, single_id, token)
 
-      LiveCalendar.record("event_cancelled_removed")
-      {seen, expanded_cp} = poll_for(expanded, expanded_cp, token, [single_id], &cancelled?/1)
+      {seen, expanded_cp} =
+        poll_for(
+          "event_cancelled_removed",
+          expanded,
+          expanded_cp,
+          token,
+          [single_id],
+          &cancelled?/1
+        )
+
       removed = cancelled_signal!(seen, single_id)
       assert removed.event.recurring_event_id == nil
 
@@ -183,14 +201,27 @@ defmodule Jido.Connect.Google.Calendar.LiveEventChangedTest do
       LiveCalendar.record("event_cancelled_delete_occurrence")
       assert {:ok, %{deleted?: true}} = delete_event(calendar_id, second.id, token)
 
-      LiveCalendar.record("event_cancelled_occurrence")
-      {seen, expanded_cp} = poll_for(expanded, expanded_cp, token, [second.id], &cancelled?/1)
+      {seen, expanded_cp} =
+        poll_for(
+          "event_cancelled_occurrence",
+          expanded,
+          expanded_cp,
+          token,
+          [second.id],
+          &cancelled?/1
+        )
+
       assert_cancelled_occurrence(seen, master_id, second)
 
-      LiveCalendar.record("event_cancelled_occurrence_unexpanded")
-
       {seen, unexpanded_cp} =
-        poll_for(unexpanded, unexpanded_cp, token, [second.id], &cancelled?/1)
+        poll_for(
+          "event_cancelled_occurrence_unexpanded",
+          unexpanded,
+          unexpanded_cp,
+          token,
+          [second.id],
+          &cancelled?/1
+        )
 
       assert_cancelled_occurrence(seen, master_id, second)
 
@@ -199,14 +230,30 @@ defmodule Jido.Connect.Google.Calendar.LiveEventChangedTest do
       LiveCalendar.record("event_cancelled_delete_series")
       assert {:ok, %{deleted?: true}} = delete_event(calendar_id, master_id, token)
 
-      LiveCalendar.record("event_cancelled_series_unexpanded")
-      {seen, _cp} = poll_for(unexpanded, unexpanded_cp, token, [master_id], &cancelled?/1)
+      {seen, _cp} =
+        poll_for(
+          "event_cancelled_series_unexpanded",
+          unexpanded,
+          unexpanded_cp,
+          token,
+          [master_id],
+          &cancelled?/1
+        )
+
       master = cancelled_signal!(seen, master_id)
       assert master.event.recurring_event_id == nil
       assert master.event.original_start == nil
 
-      LiveCalendar.record("event_cancelled_series")
-      {seen, _cp} = poll_for(expanded, expanded_cp, token, [first.id, third.id], &cancelled?/1)
+      {seen, _cp} =
+        poll_for(
+          "event_cancelled_series",
+          expanded,
+          expanded_cp,
+          token,
+          [first.id, third.id],
+          &cancelled?/1
+        )
+
       assert_cancelled_occurrence(seen, master_id, first)
       assert_cancelled_occurrence(seen, master_id, third)
     end
@@ -228,8 +275,11 @@ defmodule Jido.Connect.Google.Calendar.LiveEventChangedTest do
   # Polls from `checkpoint` until every event in `event_ids` has a signal
   # that satisfies `done?`, always continuing from the checkpoint the previous
   # poll returned. Returns the signals for `event_ids` across all polls and
-  # the last checkpoint.
-  defp poll_for(config, checkpoint, token, event_ids, done?, attempt \\ 1, seen \\ []) do
+  # the last checkpoint. Each attempt records under `name` again, so the
+  # final poll is the one in `name.json`.
+  defp poll_for(name, config, checkpoint, token, event_ids, done?, attempt \\ 1, seen \\ []) do
+    LiveCalendar.record(name)
+
     assert {:ok, %{signals: signals, checkpoint: next}} =
              LiveCalendar.poll(config, checkpoint, token)
 
@@ -241,7 +291,7 @@ defmodule Jido.Connect.Google.Calendar.LiveEventChangedTest do
       {seen, next}
     else
       Process.sleep(@poll_pause_ms)
-      poll_for(config, next, token, event_ids, done?, attempt + 1, seen)
+      poll_for(name, config, next, token, event_ids, done?, attempt + 1, seen)
     end
   end
 
