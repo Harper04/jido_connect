@@ -18,12 +18,12 @@ defmodule Jido.Connect.Tempo.OAuth do
   invalidates the old access and refresh token, so the host must store both
   new tokens before it uses either. A successful response that is not a
   JSON object, or lacks either token, is an `:invalid_response` error. Once
-  Tempo has sent both tokens it has rotated the pair, so other
-  fields do not discard them: `expires_in` is `nil` unless it is a positive
-  integer, and the expiry is then unknown; `scope` is `nil` unless it is a
-  string, and the host then keeps the labels it recorded before. The token
-  response has no Atlassian account ID; the host records
-  `connection.subject.account_id` from Jira `GET /rest/api/3/myself`.
+  Tempo has sent both tokens it has rotated the pair, so other fields do not
+  discard them: `expires_in` is `nil` unless it is a positive integer, and
+  the expiry is then unknown; `scope` is `nil` unless it is a string, and
+  the host then keeps the labels it recorded before. The token response has
+  no Atlassian account ID; the host records `connection.subject.account_id`
+  from Jira `GET /rest/api/3/myself`.
 
   Rejections and transport failures are `Jido.Connect.Error.ProviderError`s
   normalized like API failures (Tempo rejects an invalid code or refresh
