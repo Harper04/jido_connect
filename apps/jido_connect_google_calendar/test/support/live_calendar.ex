@@ -13,6 +13,7 @@ defmodule Jido.Connect.Google.Calendar.TestSupport.LiveCalendar do
   alias Jido.Connect.TestSupport.LiveSmoke
 
   @events_readonly_scope "https://www.googleapis.com/auth/calendar.events.readonly"
+  @events_scope "https://www.googleapis.com/auth/calendar.events"
 
   # htmlLink carries the event ID and the calendar owner's address in Base64,
   # which the sanitizer does not decode. Meet entry points carry dial-in PINs,
@@ -20,6 +21,7 @@ defmodule Jido.Connect.Google.Calendar.TestSupport.LiveCalendar do
   @record_fields ["htmlLink", "pin", "uri"]
 
   def events_readonly_scope, do: @events_readonly_scope
+  def events_scope, do: @events_scope
 
   @doc "Records the Calendar responses of the current test under `name`."
   def record(name) do
