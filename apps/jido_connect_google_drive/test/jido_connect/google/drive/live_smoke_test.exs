@@ -56,6 +56,17 @@ defmodule Jido.Connect.Google.Drive.LiveSmokeTest do
   @unstarred_name "jcl-live unstarred.txt"
   @selection_fields "id,name,parents,starred,modifiedTime"
 
+  # The edit test changes the Google Doc through the Docs API, the way an
+  # editor would, and marks its insertion with this prefix and a per-run suffix.
+  @docs_api "https://docs.googleapis.com/v1/documents/"
+  @edit_marker_prefix "jcl-live-edit-"
+  @google_doc_mime_type "application/vnd.google-apps.document"
+
+  # Drive can log an edit made through the Docs API late: between 3 and about
+  # 150 s after the edit in the runs of 2026-11-02. Reads for such an edit wait
+  # up to 5 minutes.
+  @docs_change_log_reads 150
+
   @tag env!(["GOOGLE_ACCESS_TOKEN"])
   test "reads the Drive about resource", %{env: env} do
     LiveSmoke.record(@req_options, :google_drive, "about")
@@ -356,6 +367,71 @@ defmodule Jido.Connect.Google.Drive.LiveSmokeTest do
              record_signal(signals, removed_id)
   end
 
+  @tag env!(["GOOGLE_ACCESS_TOKEN", "GOOGLE_DRIVE_EDIT_FILE_ID"])
+  @tag write!(:google)
+  @tag timeout: :timer.minutes(8)
+  test "sees an external edit of the Google Doc by its ID and exports the new marker",
+       %{env: env} do
+    token = env["GOOGLE_ACCESS_TOKEN"]
+    file_id = env["GOOGLE_DRIVE_EDIT_FILE_ID"]
+    marker = @edit_marker_prefix <> Base.encode16(:crypto.strong_rand_bytes(6), case: :lower)
+
+    start = read_document(token, file_id)
+    leftover? = String.contains?(start.text, @edit_marker_prefix)
+    refute leftover?, "the edit document still holds the marker of an earlier run"
+
+    # Registered once the starting text is known: cleanup removes this run's
+    # marker, also when an assertion below fails, and raises unless the
+    # document holds its starting text again.
+    on_exit(fn -> restore_document!(token, file_id, marker, start.digest) end)
+
+    assert {:ok, %{signals: [], checkpoint: checkpoint}} =
+             poll("google.drive.file.changed", %{}, nil, token)
+
+    insert = %{insertText: %{endOfSegmentLocation: %{}, text: marker}}
+
+    assert %{status: 200} =
+             external_docs(:post, "#{file_id}:batchUpdate", token,
+               json: %{requests: [insert], writeControl: %{requiredRevisionId: start.revision_id}}
+             )
+
+    await_change_log(token, checkpoint, [], &change_for(&1, file_id), @docs_change_log_reads)
+
+    LiveSmoke.record(@req_options, :google_drive, "file_changed_edited", @masked)
+
+    assert {:ok, %{signals: signals}} =
+             poll("google.drive.file.changed", %{}, checkpoint, token)
+
+    # The signal names the document but not the edit: a change that Drive logs
+    # late for an earlier edit looks the same, and Drive sets `modifiedTime`
+    # and `version` only when it logs a change and does not advance
+    # `modifiedTime` for every edit. The export ties the signal's document to
+    # this run's marker.
+    assert %{
+             removed: false,
+             change_type: "file",
+             file: %{file_id: ^file_id, mime_type: @google_doc_mime_type}
+           } = file_signal(signals, file_id)
+
+    LiveSmoke.record(@req_options, :google_drive, "file_export_edited", @masked)
+
+    assert {:ok, %{file_content: content}} =
+             invoke(
+               "google.drive.file.export",
+               %{file_id: file_id, mime_type: "text/plain"},
+               token
+             )
+
+    assert Map.take(content, [:file_id, :mime_type]) ==
+             %{file_id: file_id, mime_type: "text/plain"}
+
+    exported? = String.contains?(content.content, marker)
+    assert exported?, "the plain text export lacks this run's marker"
+
+    assert remove_marker!(token, file_id, marker) == 1
+    assert read_document(token, file_id).digest == start.digest
+  end
+
   @tag env!(["GOOGLE_ACCESS_TOKEN", "GOOGLE_DRIVE_UPLOAD_FOLDER_ID"])
   @tag write!(:google)
   test "uploads exactly 5,242,880 bytes into the upload folder and reads them back by ID",
@@ -491,14 +567,17 @@ defmodule Jido.Connect.Google.Drive.LiveSmokeTest do
     end
   end
 
-  defp await_change_log(access_token, page_token, params, done?, read \\ 1) do
+  defp await_change_log(access_token, page_token, params, done?, reads \\ @change_log_reads),
+    do: await_change_log(access_token, page_token, params, done?, reads, 1)
+
+  defp await_change_log(access_token, page_token, params, done?, reads, read) do
     cond do
       done?.(read_change_log(access_token, page_token, params)) ->
         :ok
 
-      read < @change_log_reads ->
+      read < reads ->
         Process.sleep(2_000)
-        await_change_log(access_token, page_token, params, done?, read + 1)
+        await_change_log(access_token, page_token, params, done?, reads, read + 1)
 
       true ->
         flunk("Drive's change log lacked the expected changes after #{read} reads")
@@ -537,6 +616,59 @@ defmodule Jido.Connect.Google.Drive.LiveSmokeTest do
       [method: method, url: @drive_api <> path, auth: {:bearer, access_token}, retry: false] ++
         opts
     )
+  end
+
+  defp external_docs(method, path, access_token, opts \\ []) do
+    Req.request!(
+      [method: method, url: @docs_api <> path, auth: {:bearer, access_token}, retry: false] ++
+        opts
+    )
+  end
+
+  # Reads the document's body text through the Docs API. Callers compare
+  # digests and look for markers, so a failure never prints the document.
+  defp read_document(access_token, document_id) do
+    case external_docs(:get, document_id, access_token) do
+      %{status: 200, body: %{"revisionId" => revision_id, "body" => %{"content" => content}}} ->
+        text =
+          for %{"paragraph" => %{"elements" => elements}} <- content,
+              %{"textRun" => %{"content" => run}} <- elements,
+              into: "",
+              do: run
+
+        %{revision_id: revision_id, text: text, digest: hex_digest(:sha256, text)}
+
+      %{status: status} ->
+        raise "could not read the body of live Docs document #{document_id}: HTTP #{status}"
+    end
+  end
+
+  # Deletes every occurrence of the marker and returns how many there were.
+  defp remove_marker!(access_token, document_id, marker) do
+    request = %{
+      replaceAllText: %{containsText: %{text: marker, matchCase: true}, replaceText: ""}
+    }
+
+    case external_docs(:post, "#{document_id}:batchUpdate", access_token,
+           json: %{requests: [request]}
+         ) do
+      %{status: 200, body: %{"replies" => [reply]}} ->
+        get_in(reply, ["replaceAllText", "occurrencesChanged"]) || 0
+
+      %{status: status} ->
+        raise "cleanup could not remove the marker from live Docs document " <>
+                "#{document_id}: HTTP #{status}"
+    end
+  end
+
+  defp restore_document!(access_token, document_id, marker, digest) do
+    if String.contains?(read_document(access_token, document_id).text, marker) do
+      remove_marker!(access_token, document_id, marker)
+    end
+
+    unless read_document(access_token, document_id).digest == digest do
+      raise "cleanup left live Docs document #{document_id} without its starting text"
+    end
   end
 
   defp poll(trigger_id, config, checkpoint, access_token) do
