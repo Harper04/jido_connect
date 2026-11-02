@@ -11,7 +11,12 @@ defmodule Jido.Connect.Google.Calendar.LiveMeetAssociationTest do
   This test checks the rest of that chain on the Calendar side: the scheduled
   occurrence, which the Meet lookup uses as its `start_time` window, and the
   attached recording and notes, which the Drive live tests download and
-  export. The packages do not depend on each other, so the variables in
+  export. The event also carries the notes document `1FRWev…` of an earlier
+  conference in the same space, `conferenceRecords/6EMi…`, which started about
+  three minutes before the scheduled occurrence; the Meet lookup's window
+  excludes that conference. The window is the host's choice; a host that
+  needs every conference of an event widens it or allows a tolerance. The
+  packages do not depend on each other, so the variables in
   `docs/live_smoke_tests.md` carry the IDs between them.
 
   The response has the shape of `event_get.json`, so this test records nothing.
@@ -22,8 +27,11 @@ defmodule Jido.Connect.Google.Calendar.LiveMeetAssociationTest do
 
   alias Jido.Connect.Google.Calendar.TestSupport.LiveCalendar
 
-  # The scheduled occurrence of the prepared meeting. The Meet record lookup
-  # in jido_connect_google_meet uses the same times as its start_time window.
+  # The scheduled occurrence of the prepared meeting. @scheduled_start and
+  # @scheduled_end in
+  # apps/jido_connect_google_meet/test/jido_connect/google/meet/live_meeting_lookup_test.exs
+  # hold the same instants in UTC as the Meet lookup's start_time window. The
+  # packages do not depend on each other; change both together.
   @scheduled_start "2026-10-30T17:55:00+01:00"
   @scheduled_end "2026-10-30T18:40:00+01:00"
 
@@ -61,7 +69,8 @@ defmodule Jido.Connect.Google.Calendar.LiveMeetAssociationTest do
   end
 
   # The attachment with Drive file `file_id`, by ID only: titles depend on the
-  # locale of the meeting organizer.
+  # locale of the meeting organizer, and both notes documents of the event
+  # carry the same title.
   defp attachment!(event, file_id) do
     assert [attachment] = Enum.filter(event.attachments, &(&1["fileId"] == file_id))
     attachment

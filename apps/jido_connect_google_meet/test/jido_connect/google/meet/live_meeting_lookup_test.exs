@@ -12,8 +12,13 @@ defmodule Jido.Connect.Google.Meet.LiveMeetingLookupTest do
   occurrence. The prepared space hosted two conferences on 2026-10-30: one
   started at 16:52:10 UTC, about three minutes before the scheduled start, and
   `GOOGLE_MEET_CONFERENCE_RECORD` at 17:17:57 UTC. The meeting code matches
-  both; the window keeps the prepared record only. Google deletes a
-  conference record 30 days after the conference ended.
+  both; the window keeps the prepared record only. The earlier conference,
+  `conferenceRecords/6EMi…` in `conference_records_window.2.json`, belongs to
+  the event as well: its notes document `1FRWev…` is attached to the event,
+  and the scheduled window excludes the conference. The window is the host's
+  choice; a host that needs every conference of an event widens it or allows
+  a tolerance around the scheduled times. Google deletes a conference record
+  30 days after the conference ended.
 
   The Drive live tests download `GOOGLE_MEET_RECORDING_FILE_ID` and export
   `GOOGLE_MEET_NOTES_DOCUMENT_ID`; the checks here tie both IDs to the
@@ -38,7 +43,10 @@ defmodule Jido.Connect.Google.Meet.LiveMeetingLookupTest do
   @space_masked [fields: ["pin"]]
 
   # The scheduled occurrence of the prepared event, 17:55 to 18:40 Berlin
-  # time; the Calendar live tests check it against the event.
+  # time. @scheduled_start and @scheduled_end in
+  # apps/jido_connect_google_calendar/test/jido_connect/google/calendar/live_meet_association_test.exs
+  # hold the same instants with the +01:00 offset and check them against the
+  # event. The packages do not depend on each other; change both together.
   @scheduled_start ~U[2026-10-30 16:55:00Z]
   @scheduled_end ~U[2026-10-30 17:40:00Z]
 
