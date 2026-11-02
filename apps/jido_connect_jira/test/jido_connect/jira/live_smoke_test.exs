@@ -170,6 +170,40 @@ defmodule Jido.Connect.Jira.LiveSmokeTest do
              })
   end
 
+  @tag env!(["JIRA_SITE", "JIRA_EMAIL", "JIRA_API_TOKEN", "JIRA_PROJECT_KEY"])
+  test "reads the navigable and all fields of an issue without assignee and due date",
+       %{env: env} do
+    # The test user reported the issue, so the sanitizer learns its account ID
+    # from the body before it reaches the `x-aaccountid` header. Avatar URLs
+    # carry e-mail hashes and initials, so they become placeholders.
+    LiveSmoke.record({:jido_connect_jira, :jira_req_options}, :jira, "issue_fields",
+      fields: ~w(16x16 24x24 32x32 48x48)
+    )
+
+    jql =
+      "project = #{env["JIRA_PROJECT_KEY"]} AND assignee is EMPTY AND duedate is EMPTY " <>
+        "ORDER BY key ASC"
+
+    assert {:ok, %{issues: [found]}} =
+             invoke(env, "jira.issue.search", %{jql: jql, max_results: 1, fields: ["*navigable"]})
+
+    # `*navigable` returns the empty due date as null and leaves out the
+    # non-navigable `timetracking`, which it does not request.
+    assert %{key: key, assignee: nil, due_date: nil, missing_fields: []} = found
+    assert %{reporter: %{account_id: reporter_id}} = found
+    assert is_binary(reporter_id)
+
+    # Without `fields`, Jira returns all fields, the null ones included.
+    assert {:ok, issue} = invoke(env, "jira.issue.get", %{issue_key: key})
+    assert %{key: ^key, missing_fields: []} = issue
+    refute Map.has_key?(issue, :due_date)
+
+    # `id` alone returns issue IDs only; with `key` Jira adds key and `self`
+    # but still no `fields` object.
+    assert {:ok, %{issues: [%{key: ^key, missing_fields: []}]}} =
+             invoke(env, "jira.issue.search", %{jql: jql, max_results: 1, fields: ["id", "key"]})
+  end
+
   @tag env!(["JIRA_WEBHOOK_SECRET", "JIRA_CAPTURE_DIR"])
   test "the newest captured delivery replays before and after sanitizing", %{env: env} do
     secret = env["JIRA_WEBHOOK_SECRET"]
