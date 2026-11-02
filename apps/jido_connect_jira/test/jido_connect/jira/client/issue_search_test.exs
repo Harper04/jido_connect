@@ -139,6 +139,20 @@ defmodule Jido.Connect.Jira.Client.IssueSearchTest do
              Client.search_issues(@jql, api_token_request(), fields: ["-description"])
   end
 
+  test "adds the issue key to a field list that names only id" do
+    # `id` alone returns bare issue IDs, which do not normalize without a key.
+    # `issue_fields.3` answers `["id", "key"]` with key and `self` but no
+    # `fields` object.
+    for fields <- [["id"], ["id", "-description"]] do
+      expect_page(page("issue_fields.3"), fn body ->
+        assert body["fields"] == fields ++ ["key"]
+      end)
+
+      assert {:ok, %{issues: [%{id: "46098", key: "JCL-3", missing_fields: []}]}} =
+               Client.search_issues(@jql, api_token_request(), fields: fields)
+    end
+  end
+
   test "follows two pages with an empty non-final page in between and yields every issue once" do
     # The middle page is the recorded second page without its issues: Jira can
     # answer a non-final page with no issues, and the test site does not.

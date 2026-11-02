@@ -107,7 +107,9 @@ starting with `*` are not resolved. Their absence never shows in
 `jira.issue.search` calls Jira's enhanced JQL search,
 `POST /rest/api/3/search/jql`, with `jql`, `fields`, `maxResults` and
 `nextPageToken`. The default fields are `summary`, `status`, `assignee`,
-`updated`, `description`, `project` and `duedate`. Each call returns one page
+`updated`, `description`, `project` and `duedate`. A field list that names
+only `id` is sent with `key` added, because Jira answers it with bare issue
+IDs and each result carries its key. Each call returns one page
 with `issues`, `next_page_token`, `is_last` and the page size sent as
 `max_results`. Pass `next_page_token` to the next call until `is_last` is
 `true`; a page can be empty while `is_last` is `false`. A page without an

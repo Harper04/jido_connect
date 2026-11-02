@@ -198,10 +198,10 @@ defmodule Jido.Connect.Jira.LiveSmokeTest do
     assert %{key: ^key, missing_fields: []} = issue
     refute Map.has_key?(issue, :due_date)
 
-    # `id` alone returns issue IDs only; with `key` Jira adds key and `self`
-    # but still no `fields` object.
+    # `id` alone returns bare issue IDs, so the search sends `["id", "key"]`:
+    # Jira adds key and `self` but still no `fields` object.
     assert {:ok, %{issues: [%{key: ^key, missing_fields: []}]}} =
-             invoke(env, "jira.issue.search", %{jql: jql, max_results: 1, fields: ["id", "key"]})
+             invoke(env, "jira.issue.search", %{jql: jql, max_results: 1, fields: ["id"]})
   end
 
   @tag env!(["JIRA_WEBHOOK_SECRET", "JIRA_CAPTURE_DIR"])

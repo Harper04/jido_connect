@@ -117,7 +117,9 @@ defmodule Jido.Connect.Jira.Actions.Issues do
             "project",
             "duedate"
           ],
-          description: "List of field keys to return in each issue."
+          description:
+            "List of field keys to return in each issue. A list that names only id " <>
+              "also requests key, which each issue needs."
         )
       end
 

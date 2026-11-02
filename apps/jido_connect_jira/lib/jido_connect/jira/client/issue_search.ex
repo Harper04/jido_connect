@@ -34,7 +34,9 @@ defmodule Jido.Connect.Jira.Client.IssueSearch do
 
   Options are `:max_results` (default 50), `:next_page_token`, `:fields`
   (default `default_fields/0`, also used for an empty list, because Jira
-  returns only issue IDs without fields) and the deprecated `:start_at`.
+  returns only issue IDs without fields) and the deprecated `:start_at`. A
+  `:fields` list that names only `id` is sent with `key` added, because Jira
+  answers it with bare issue IDs and each result needs its key.
 
   Each issue lists the requested fields that Jira left out in
   `missing_fields`. A `:fields` list that only excludes fields, such as
@@ -75,7 +77,13 @@ defmodule Jido.Connect.Jira.Client.IssueSearch do
   end
 
   defp fields(fields) when fields in [nil, []], do: @default_fields
-  defp fields(fields) when is_list(fields), do: fields
+
+  # A list that names only `id` returns bare issue IDs; `key` adds the key
+  # and `self` that each result needs.
+  defp fields(fields) when is_list(fields) do
+    {included, _excluded} = IssueFields.split(fields)
+    if Enum.uniq(included) == ["id"], do: fields ++ ["key"], else: fields
+  end
 
   # Enhanced search answers a list that names no field, such as
   # `["-description"]`, with the navigable fields minus the excluded ones.
