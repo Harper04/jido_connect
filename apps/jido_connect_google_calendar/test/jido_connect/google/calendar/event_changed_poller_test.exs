@@ -122,8 +122,16 @@ defmodule Jido.Connect.Google.Calendar.EventChangedPollerTest do
 
       expect_page(page, fn _params -> :ok end)
 
-      assert {:error, %ProviderError{reason: :invalid_response}} =
-               poll(%{calendar_id: @calendar_id}, nil)
+      assert {:error,
+              %ProviderError{
+                reason: :invalid_response,
+                details: %{
+                  checkpoint_reset: %{
+                    action: :clear_checkpoint,
+                    behavior: :initialize_without_replay
+                  }
+                }
+              }} = poll(%{calendar_id: @calendar_id}, nil)
     end
 
     test "an incremental poll whose final page lacks nextSyncToken fails instead of keeping its checkpoint" do
@@ -133,8 +141,16 @@ defmodule Jido.Connect.Google.Calendar.EventChangedPollerTest do
       expect_page(recorded("event_changed_paged"), fn _params -> :ok end)
       expect_page(last, fn _params -> :ok end)
 
-      assert {:error, %ProviderError{reason: :invalid_response}} =
-               poll(%{calendar_id: @calendar_id, page_size: 2}, "sync-1")
+      assert {:error,
+              %ProviderError{
+                reason: :invalid_response,
+                details: %{
+                  checkpoint_reset: %{
+                    action: :clear_checkpoint,
+                    behavior: :initialize_without_replay
+                  }
+                }
+              }} = poll(%{calendar_id: @calendar_id, page_size: 2}, "sync-1")
     end
 
     test "a later page answered with HTTP 500 returns the provider error and no checkpoint" do
