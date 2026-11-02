@@ -194,9 +194,18 @@ defmodule Jido.Connect.Slack.Client.MessagesTest do
       assert {:ok, %{has_more: false} = second} = invoke(Map.put(input, :cursor, cursor))
       refute Map.has_key?(second, :next_cursor)
 
-      assert_received {:slack_request, first_query}
-      refute Map.has_key?(first_query, "cursor")
-      assert_received {:slack_request, %{"cursor" => ^cursor}}
+      window_query = %{
+        "channel" => @channel,
+        "ts" => @parent,
+        "limit" => "2",
+        "inclusive" => "true",
+        "oldest" => @window_oldest,
+        "latest" => @window_latest
+      }
+
+      assert_received {:slack_request, ^window_query}
+      assert_received {:slack_request, second_query}
+      assert second_query == Map.put(window_query, "cursor", cursor)
 
       # Page one holds two of the thread's 22 replies; the parent's summary
       # names all 22 and the second user's reply as the latest.
