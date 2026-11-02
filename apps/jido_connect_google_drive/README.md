@@ -121,8 +121,12 @@ Jido.Connect.invoke(Jido.Connect.Google.Drive, "google.drive.file.get", link,
 `google.drive.file.get`, `google.drive.file.export` and
 `google.drive.file.download` take an optional `resource_key`. With it, that
 request sends `X-Goog-Drive-Resource-Keys: <fileId>/<resourceKey>`, which Drive
-needs for some link-shared files. The key is never sent as a query parameter
-and does not appear in returned error details.
+needs for some link-shared files. An empty `resource_key` counts as absent. A
+key, or a file ID sent with a key, that contains characters other than
+letters, digits, `-` and `_` returns a `ValidationError` with reason
+`:invalid_resource_key` or `:invalid_file_id` before any request, because `,`
+and `/` would change the header's pairs. The key is never sent as a query
+parameter and does not appear in returned error details.
 
 The default file metadata projection, `Fields.file_metadata()`, requests
 `resourceKey` and `shortcutDetails(targetId,targetMimeType,targetResourceKey)`.

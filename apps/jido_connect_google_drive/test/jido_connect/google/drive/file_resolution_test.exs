@@ -76,6 +76,39 @@ defmodule Jido.Connect.Google.Drive.FileResolutionTest do
       assert {:ok, _result} = apply(Client, client, [Map.put(input, :resource_key, ""), "token"])
     end
 
+    # No Req.Test expectation: a request would fail the test.
+    test "#{operation} rejects a resource key that does not form one header pair, before any request" do
+      %{client: client, input: input} = operation(unquote(operation))
+
+      for key <- [
+            "0-LeakCheck,#{@doc_id}/0-Other",
+            "0-LeakCheck/0-Other",
+            "0-LeakCheck\r\nx-injected: true",
+            "  "
+          ] do
+        assert {:error,
+                %Connect.Error.ValidationError{
+                  reason: :invalid_resource_key,
+                  subject: :resource_key
+                } = error} = apply(Client, client, [Map.put(input, :resource_key, key), "token"])
+
+        refute inspect(error) =~ "0-LeakCheck"
+      end
+    end
+
+    test "#{operation} rejects a file ID that does not form one header pair with the resource key" do
+      %{client: client, input: input} = operation(unquote(operation))
+
+      input =
+        Map.merge(input, %{file_id: "#{input.file_id},#{@doc_id}", resource_key: @resource_key})
+
+      assert {:error,
+              %Connect.Error.ValidationError{reason: :invalid_file_id, subject: :file_id} = error} =
+               apply(Client, client, [input, "token"])
+
+      refute inspect(error) =~ @resource_key
+    end
+
     test "#{operation} action carries resource_key from its input to the wire" do
       %{action: action, input: input, fixture: fixture} = operation(unquote(operation))
 
