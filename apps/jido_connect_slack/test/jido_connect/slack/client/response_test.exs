@@ -3,6 +3,7 @@ defmodule Jido.Connect.Slack.Client.ResponseTest do
 
   alias Jido.Connect.Error
   alias Jido.Connect.Slack.Client
+  alias Jido.Connect.TestSupport.LiveSmoke
 
   setup {Req.Test, :verify_on_exit!}
 
@@ -51,11 +52,20 @@ defmodule Jido.Connect.Slack.Client.ResponseTest do
   end
 
   test "an ok:false rate limit keeps the Retry-After delay as retry metadata" do
+    # Not recorded: triggering a 429 would throttle the test app in the
+    # shared workspace. Status, header and error code follow the acceptance
+    # criteria and Slack's rate-limit documentation; the rest of the body is
+    # the recorded ok:false response of a denied history read.
+    body =
+      :slack
+      |> LiveSmoke.fixture!("conversation_history_not_in_channel")
+      |> Map.put("error", "ratelimited")
+
     Req.Test.stub(__MODULE__, fn conn ->
       conn
       |> Plug.Conn.put_resp_header("retry-after", "30")
       |> Plug.Conn.put_status(429)
-      |> Req.Test.json(%{ok: false, error: "ratelimited"})
+      |> Req.Test.json(body)
     end)
 
     assert {:error,
@@ -64,7 +74,11 @@ defmodule Jido.Connect.Slack.Client.ResponseTest do
               status: 429,
               reason: "ratelimited",
               details: %{retry_after: 30} = details
-            }} = Client.list_channels(%{types: "public_channel"}, "token")
+            }} =
+             Client.get_conversation_history(
+               %{channel: "C0CDDP1JEAX", conversation_type: "public_channel"},
+               "token"
+             )
 
     refute Map.has_key?(details, :body)
   end
