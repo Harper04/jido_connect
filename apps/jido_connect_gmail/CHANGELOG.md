@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+- Add `google.gmail.message.attachment.content.get`. It selects one
+  attachment of a message by Gmail `partId`, an enclosed `message/rfc822`
+  original included, and returns `Jido.Connect.Gmail.AttachmentContent` with
+  the message, thread and part identity and Gmail's base64url `data`. Data
+  that Gmail keeps behind an `attachmentId` is fetched with `attachments.get`;
+  inline data needs no further request. The data must decode to the part's
+  `size`. Gmail converts inline `text/*` data to UTF-8, so such data is
+  returned only when the conversion cannot have changed it, and fails with
+  `:attachment_converted` otherwise. The action requires `gmail.readonly`, or
+  an already granted `gmail.modify` or `https://mail.google.com/`, and joins
+  the `:google_gmail_content` pack. `google.gmail.message.attachment.get` and
+  `Jido.Connect.Gmail.Attachment` are unchanged.
+- Add `Jido.Connect.Gmail.MIME.Traversal.attachment/3`, which selects a part
+  by `partId` under the traversal bounds, `verify_attachment_data/2` and
+  `Jido.Connect.Gmail.MIME.Charset.supported?/1`.
 - Add `google.gmail.message.content.get` and `google.gmail.thread.content.get`.
   Both read Gmail's `format=full` representation and return
   `Jido.Connect.Gmail.MessageContent` and `Jido.Connect.Gmail.ThreadContent`

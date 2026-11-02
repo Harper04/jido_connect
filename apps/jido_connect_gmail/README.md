@@ -15,9 +15,10 @@ structs intentionally avoid raw RFC822 bodies, Gmail `raw` payloads, and MIME
 part `body.data` bytes. Message body and attachment bytes come only from
 actions that declare content access, and the opt-in `:google_gmail_content`
 catalog pack gathers those actions: `google.gmail.message.content.get` and
-`google.gmail.thread.content.get` return full body text, and
+`google.gmail.thread.content.get` return full body text,
 `google.gmail.message.attachment.get` returns Gmail's base64url-encoded
-attachment `data` field.
+attachment `data` field, and `google.gmail.message.attachment.content.get`
+returns the bytes of one attachment selected by MIME part ID.
 
 ## MIME Traversal
 
@@ -47,9 +48,9 @@ repeats, the first `From`, `To`, `Cc`, `Bcc`, `Reply-To`, `Subject`, `Date`,
 attachment manifest and the enclosed `message/rfc822` messages, in the shapes
 that the traversal documents. When Gmail stores a body text part behind an
 `attachmentId`, the action fetches it with `attachments.get` and puts it back
-in Gmail's part order. It never fetches a file attachment; pass an
-`attachment_id` from the manifest to `google.gmail.message.attachment.get` for
-the bytes. An inline forward keeps the quoted original inside its text parts.
+in Gmail's part order. It never fetches a file attachment; pass a `part_id`
+from the manifest to `google.gmail.message.attachment.content.get` for the
+bytes. An inline forward keeps the quoted original inside its text parts.
 A forward as attachment shows the original as an enclosed message, or as a
 `message/rfc822` manifest entry when Gmail supplies no nested parts. Neither
 result verifies a quoted sender or separates a comment from the original.
@@ -59,6 +60,46 @@ walked with the traversal's default `max_depth` and `max_parts`, and the
 thread input `max_messages`, default 100, bounds a thread. A longer thread
 fails with reason `:thread_messages_exceeded`, and a failed fetch of a text
 part fails the whole read. Neither returns partial content.
+
+## Attachment Content
+
+`google.gmail.message.attachment.content.get` takes a `message_id` and a
+`part_id` and returns `attachment`, a `Jido.Connect.Gmail.AttachmentContent`.
+Gmail's `partId` is the only part identity. The manifest of
+`google.gmail.message.content.get` lists the part IDs to choose from: its
+attachment entries and its enclosed messages. The action reads the message in
+`format=full`, selects the part with the MIME traversal and requests
+`attachments.get` only for a part without inline data, with the
+`attachmentId` of the same response. Both paths encode the IDs as single path
+segments.
+
+The result carries the message, thread and history IDs, `part_id`,
+`attachment_id` when Gmail supplied one, `filename`, `mime_type`, `size`,
+`disposition`, `content_id` and `data`, the base64url string that Gmail
+returned, padded or not. `data` decodes to exactly `size` bytes, Gmail's count
+of the original bytes. For an enclosed message the bytes are the whole
+original, headers included. The connector does not extract text or apply a
+format policy. There is no byte cap; the traversal's `max_depth` and
+`max_parts` apply to the whole message, and intake limits belong to the host.
+
+Errors name IDs, never data. An unknown part ID returns a validation error
+with reason `:unknown_part_id`, and a body text part or a container one with
+reason `:not_an_attachment`. A part with neither data nor `attachmentId`
+returns a provider error with reason `:attachment_data_missing`; invalid
+base64url and data of another length return `:invalid_base64url` and
+`:attachment_size_mismatch`.
+
+Gmail keeps a `text/*` part without a filename inline, also when its
+disposition is `attachment`, and returns the data converted to UTF-8 while
+`size` keeps the original count. Such a part has no `attachmentId`, so its
+original bytes cannot be fetched. The action returns inline text only when the
+part declares no charset or UTF-8, US-ASCII, ISO-8859-1, ISO-8859-15 or
+Windows-1252, the data has `size` bytes and contains no U+FFFD. For these
+charsets the conversion changes the length whenever it changes a byte. Other
+inline text fails with reason `:attachment_converted`. In the live test
+account, Gmail kept unnamed binary parts behind an `attachmentId` and returned
+unnamed ISO-8859-1, Windows-1252 and UTF-16LE text converted; the UTF-16LE
+text kept its length, so only its charset shows the conversion.
 
 ## Actions
 
@@ -75,6 +116,7 @@ part fails the whole read. Neither returns partial content.
 - `google.gmail.message.attachment.get`
 - `google.gmail.message.content.get`
 - `google.gmail.thread.content.get`
+- `google.gmail.message.attachment.content.get`
 - `google.gmail.watch.start`
 - `google.gmail.watch.stop`
 - `google.gmail.message.send`
@@ -124,9 +166,10 @@ dedupe is based on Gmail `history_id`.
 - `:google_gmail_destructive` exposes trash and explicit draft, label, message,
   and thread delete operations behind destructive action metadata.
 - `:google_gmail_content` is the opt-in read pack for message content. It adds
-  `google.gmail.message.content.get`, `google.gmail.thread.content.get` and
-  `google.gmail.message.attachment.get` to the metadata tools and excludes
-  send, draft, label mutation, watch, trash, and delete tools.
+  `google.gmail.message.content.get`, `google.gmail.thread.content.get`,
+  `google.gmail.message.attachment.get` and
+  `google.gmail.message.attachment.content.get` to the metadata tools and
+  excludes send, draft, label mutation, watch, trash, and delete tools.
 
 ```elixir
 Jido.Connect.Catalog.search_tools("gmail",
@@ -171,7 +214,7 @@ The connector prefers narrow Gmail scopes:
   `q`, so a query of whitespace counts as a search. Without a query, or with
   an empty one, both resolve like the other metadata reads.
 - `gmail.readonly` or `gmail.modify` for label get, message and thread content,
-  and attachment body retrieval.
+  and attachment body retrieval by attachment ID or MIME part ID.
 - `gmail.send` for direct send, with `gmail.compose` or `gmail.modify` accepted
   when already granted.
 - `gmail.compose` for draft list/get/create/update/send/delete, with
