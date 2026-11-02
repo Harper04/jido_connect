@@ -119,6 +119,44 @@ defmodule Jido.Connect.Google.Meet.ClientTest do
     assert record.space == "spaces/abc"
   end
 
+  test "forwards a meeting code filter with a start time window to the conference record list" do
+    filter =
+      ~s(space.meeting_code = "abc-mnop-xyz") <>
+        ~s( AND start_time >= "2026-05-14T00:00:00Z") <>
+        ~s( AND start_time <= "2026-05-15T00:00:00Z")
+
+    # The client forwards the filter without evaluating it. The response is a
+    # recorded page of one record and a next page token, taken at page size 1.
+    recorded = LiveSmoke.fixture!(:google_meet, "conference_records_window")
+    [recorded_record] = recorded["conferenceRecords"]
+
+    Req.Test.stub(__MODULE__, fn conn ->
+      assert conn.method == "GET"
+      assert conn.request_path == "/v2/conferenceRecords"
+
+      assert conn.query_params == %{
+               "filter" => filter,
+               "pageSize" => "1",
+               "pageToken" => "previous-page"
+             }
+
+      Req.Test.json(conn, recorded)
+    end)
+
+    assert {:ok, %{conference_records: [%ConferenceRecord{} = record], next_page_token: next}} =
+             Client.list_conference_records(
+               %{filter: filter, page_size: 1, page_token: "previous-page"},
+               "token"
+             )
+
+    assert next == recorded["nextPageToken"]
+    assert record.conference_record_name == recorded_record["name"]
+    assert record.space == recorded_record["space"]
+    assert record.start_time == recorded_record["startTime"]
+    assert record.end_time == recorded_record["endTime"]
+    assert record.expire_time == recorded_record["expireTime"]
+  end
+
   test "gets a Meet conference record" do
     Req.Test.stub(__MODULE__, fn conn ->
       assert conn.method == "GET"
@@ -204,6 +242,81 @@ defmodule Jido.Connect.Google.Meet.ClientTest do
              )
 
     assert recording.state == "FILE_GENERATED"
+  end
+
+  test "lists Meet recordings with their start and end times" do
+    recorded = LiveSmoke.fixture!(:google_meet, "recordings")
+
+    assert [%{"startTime" => _start, "endTime" => _end} = recorded_recording] =
+             recorded["recordings"]
+
+    Req.Test.stub(__MODULE__, fn conn ->
+      assert conn.method == "GET"
+      assert conn.request_path == "/v2/conferenceRecords/abc/recordings"
+      assert conn.query_params == %{}
+
+      Req.Test.json(conn, recorded)
+    end)
+
+    assert {:ok, %{recordings: [%Recording{} = recording]} = page} =
+             Client.list_recordings(%{conference_record_name: "conferenceRecords/abc"}, "token")
+
+    refute Map.has_key?(page, :next_page_token)
+    assert_recording(recording, recorded_recording)
+  end
+
+  test "gets a Meet recording with its start and end times" do
+    recorded = LiveSmoke.fixture!(:google_meet, "recording_get")
+    assert %{"startTime" => _start, "endTime" => _end} = recorded
+
+    Req.Test.stub(__MODULE__, fn conn ->
+      assert conn.method == "GET"
+      assert conn.request_path == "/v2/conferenceRecords/abc/recordings/def"
+      assert conn.query_params == %{}
+
+      Req.Test.json(conn, recorded)
+    end)
+
+    assert {:ok, %Recording{} = recording} =
+             Client.get_recording(
+               %{recording_name: "conferenceRecords/abc/recordings/def"},
+               "token"
+             )
+
+    assert_recording(recording, recorded)
+  end
+
+  test "leaves Meet recording start and end times nil when the response has none" do
+    untimed = &Map.drop(&1, ["startTime", "endTime"])
+    recorded_get = untimed.(LiveSmoke.fixture!(:google_meet, "recording_get"))
+
+    recorded_list =
+      :google_meet
+      |> LiveSmoke.fixture!("recordings")
+      |> Map.update!("recordings", &Enum.map(&1, untimed))
+
+    Req.Test.stub(__MODULE__, fn conn ->
+      case conn.request_path do
+        "/v2/conferenceRecords/abc/recordings" -> Req.Test.json(conn, recorded_list)
+        "/v2/conferenceRecords/abc/recordings/def" -> Req.Test.json(conn, recorded_get)
+      end
+    end)
+
+    assert {:ok, %{recordings: [listed]}} =
+             Client.list_recordings(%{conference_record_name: "conferenceRecords/abc"}, "token")
+
+    assert {:ok, fetched} =
+             Client.get_recording(
+               %{recording_name: "conferenceRecords/abc/recordings/def"},
+               "token"
+             )
+
+    [listed_recorded] = recorded_list["recordings"]
+
+    for {recording, recorded} <- [{listed, listed_recorded}, {fetched, recorded_get}] do
+      assert {recording.start_time, recording.end_time} == {nil, nil}
+      assert_recording(recording, recorded)
+    end
   end
 
   test "lists Meet transcript metadata" do
@@ -450,5 +563,13 @@ defmodule Jido.Connect.Google.Meet.ClientTest do
                %{transcript_name: "conferenceRecords/abc/transcripts/ghi"},
                "token"
              )
+  end
+
+  defp assert_recording(recording, recorded) do
+    assert recording.recording_name == recorded["name"]
+    assert recording.state == recorded["state"]
+    assert recording.drive_file_id == recorded["driveDestination"]["file"]
+    assert recording.start_time == recorded["startTime"]
+    assert recording.end_time == recorded["endTime"]
   end
 end

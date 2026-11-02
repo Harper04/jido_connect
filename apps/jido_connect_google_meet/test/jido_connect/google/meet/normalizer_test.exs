@@ -34,6 +34,15 @@ defmodule Jido.Connect.Google.Meet.NormalizerTest do
              })
   end
 
+  test "keeps the name of a Meet space without meeting code and URI" do
+    recorded = LiveSmoke.fixture!(:google_meet, "space_get_name_only")
+
+    assert {:ok, %Space{} = space} = Normalizer.space(recorded)
+
+    assert space.space_name == recorded["name"]
+    assert {space.meeting_code, space.meeting_uri} == {nil, nil}
+  end
+
   test "rejects malformed Meet space payloads" do
     assert {:error, _error} = Normalizer.space(%{"meetingCode" => "missing-name"})
     assert {:error, :invalid_space_payload} = Normalizer.space(nil)
@@ -55,6 +64,20 @@ defmodule Jido.Connect.Google.Meet.NormalizerTest do
                "endTime" => "2026-05-14T19:00:00Z",
                "expireTime" => "2026-06-13T19:00:00Z"
              })
+  end
+
+  test "keeps the start time of a Meet conference record without end and expire times" do
+    [recorded_record] =
+      LiveSmoke.fixture!(:google_meet, "conference_records_window")["conferenceRecords"]
+
+    record_payload = Map.drop(recorded_record, ["endTime", "expireTime"])
+
+    assert {:ok, %ConferenceRecord{} = record} = Normalizer.conference_record(record_payload)
+
+    assert record.conference_record_name == recorded_record["name"]
+    assert record.space == recorded_record["space"]
+    assert record.start_time == recorded_record["startTime"]
+    assert {record.end_time, record.expire_time} == {nil, nil}
   end
 
   test "rejects malformed Meet conference record payloads" do
