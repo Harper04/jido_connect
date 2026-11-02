@@ -199,12 +199,24 @@ as seed input belong to the scripts that create the test data.
 | `TEMPO_OAUTH_ACCESS_TOKEN` | credential | OAuth access token |
 | `TEMPO_OAUTH_REFRESH_TOKEN` | credential | OAuth refresh token; each refresh replaces it |
 | `TEMPO_OAUTH_ACCESS_TOKEN_EXPIRES_AT` | setting | Expiry of the stored access token |
+| `TEMPO_OAUTH_CODE` | credential | Authorization code of one browser authorization |
+| `TEMPO_OAUTH_TOKEN_FILE` | setting | New or empty file that receives the token pair of the exchange test |
 | `SEED_TEMPO_API_TOKEN` | credential | Seed input: Tempo API token with admin rights |
 | `TEMPO_API_ORIGIN` | setting | Tempo API origin |
 | `TEMPO_ACCOUNT_ID` | setting | Tempo account linked to the test project |
 | `TEMPO_JIRA_ISSUE_ID` | setting | Jira issue for worklogs |
 | `TEMPO_JIRA_PROJECT_ID` | setting | Jira project for worklogs |
 | `TEMPO_LIVE_DESTRUCTIVE` | gate | `true` allows tests that create worklogs |
+
+The Tempo exchange test runs only when `TEMPO_OAUTH_CODE` is set, taken from
+the `code` parameter of the redirect after one browser authorization. One run
+consumes the code and rotates the pair: it exchanges the code for a new pair,
+refreshes that pair once and writes each pair at once to
+`TEMPO_OAUTH_TOKEN_FILE`, with mode 0600, as `TEMPO_OAUTH_ACCESS_TOKEN`,
+`TEMPO_OAUTH_REFRESH_TOKEN` and `TEMPO_OAUTH_ACCESS_TOKEN_EXPIRES_AT` lines.
+The file then holds the only valid refresh token of that authorization; copy
+its lines to `atlassian.env` and the password manager. The test does not use
+the stored `TEMPO_OAUTH_REFRESH_TOKEN`.
 
 ### Confluence
 

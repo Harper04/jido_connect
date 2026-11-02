@@ -17,7 +17,7 @@ defmodule Jido.Connect.Tempo.LiveSmokeTest do
 
   alias Jido.Connect.{Connection, Error}
   alias Jido.Connect.Tempo.Client.{Pagination, Request, Transport}
-  alias Jido.Connect.Tempo.OAuth
+  alias Jido.Connect.Tempo.{OAuth, ScopeResolver}
 
   @recorder {:jido_connect_tempo, :tempo_req_options}
   @oauth_recorder {:jido_connect_tempo, :tempo_oauth_req_options}
@@ -120,9 +120,11 @@ defmodule Jido.Connect.Tempo.LiveSmokeTest do
     assert own?, "every worklog belongs to the test user"
   end
 
-  # A live code exchange needs a browser authorization, and a live refresh
-  # replaces the stored tokens, so only the token endpoint's rejections are
-  # recorded, with an invented code and an invented refresh token.
+  # The token endpoint's rejections are recorded with an invented code and an
+  # invented refresh token. A successful exchange needs the code of one
+  # browser authorization and every refresh replaces both tokens, so that
+  # test runs only with TEMPO_OAUTH_CODE and never uses the stored refresh
+  # token.
   @tag env!(@oauth)
   test "the token endpoint rejects an invented authorization code", %{env: env} do
     LiveSmoke.record(@oauth_recorder, :tempo, "oauth_invalid_code")
@@ -143,6 +145,139 @@ defmodule Jido.Connect.Tempo.LiveSmokeTest do
              OAuth.refresh("jido-connect-invented-refresh-token", oauth_opts(env))
 
     refute_leak(error, env["TEMPO_OAUTH_CLIENT_SECRET"])
+  end
+
+  # Consumes the code and rotates the new pair once. Each pair is written to
+  # TEMPO_OAUTH_TOKEN_FILE before anything else can fail: the code is spent
+  # after the exchange, and the exchanged pair is invalid after the refresh.
+  @tag env!(["TEMPO_OAUTH_CODE", "TEMPO_OAUTH_TOKEN_FILE", "TEMPO_API_ORIGIN"] ++ @oauth ++ @jira)
+  test "exchanges a code and refreshes the new pair once", %{env: env} do
+    code = env["TEMPO_OAUTH_CODE"]
+    file = env["TEMPO_OAUTH_TOKEN_FILE"]
+    prepare_token_file!(file)
+
+    LiveSmoke.record(@oauth_recorder, :tempo, "oauth_exchange")
+    issued_at = DateTime.utc_now()
+    exchanged = token!(OAuth.exchange_code(code, oauth_opts(env)), "code exchange")
+    write_token_file!(file, exchanged, issued_at)
+    refute_recorded_secrets!("oauth_exchange", [code | token_values(exchanged)])
+
+    LiveSmoke.record(@oauth_recorder, :tempo, "oauth_refresh")
+    issued_at = DateTime.utc_now()
+    refreshed = token!(OAuth.refresh(refresh_token(exchanged), oauth_opts(env)), "refresh")
+    write_token_file!(file, refreshed, issued_at)
+
+    refute_recorded_secrets!(
+      "oauth_refresh",
+      [code | token_values(exchanged) ++ token_values(refreshed)]
+    )
+
+    assert usable_token?(exchanged), "the exchanged token lacks expiry, scope or worklog read"
+    assert usable_token?(refreshed), "the refreshed token lacks expiry, scope or worklog read"
+    assert rotated?(exchanged, refreshed), "the refresh returned a token of the exchanged pair"
+
+    read =
+      env
+      |> request!(:oauth2_user, access_token(refreshed))
+      |> Transport.get("/4/periods", @october)
+
+    assert match?({:ok, %{"periods" => [_ | _]}}, read),
+           "the refreshed access token did not read /4/periods"
+
+    stale =
+      env
+      |> request!(:oauth2_user, access_token(exchanged))
+      |> Transport.get("/4/periods", @october)
+
+    assert match?({:error, %Error.ProviderError{reason: :unauthorized, status: 401}}, stale),
+           "the exchanged access token did not get a 401 after the refresh"
+  end
+
+  # The helpers below take token maps. Each has a clause for any argument, so
+  # no FunctionClauseError prints a token.
+
+  defp token!({:ok, %{access_token: _, refresh_token: _} = token}, _step), do: token
+
+  defp token!({:error, %Error.ProviderError{} = error}, step),
+    do: flunk("the #{step} failed: #{inspect(error.reason)}, status #{inspect(error.status)}")
+
+  defp token!(_result, step), do: flunk("the #{step} returned an unexpected result")
+
+  defp access_token(%{access_token: token}), do: token
+  defp access_token(_token), do: flunk("no access token")
+
+  defp refresh_token(%{refresh_token: token}), do: token
+  defp refresh_token(_token), do: flunk("no refresh token")
+
+  defp token_values(%{access_token: access, refresh_token: refresh}), do: [access, refresh]
+  defp token_values(_token), do: flunk("no token pair")
+
+  defp usable_token?(%{expires_in: expires_in, scope: [_ | _] = scope})
+       when is_integer(expires_in) and expires_in > 0,
+       do: "tempo.worklogs.read" in ScopeResolver.granted_labels(scope)
+
+  defp usable_token?(_token), do: false
+
+  defp rotated?(%{access_token: a1, refresh_token: r1}, %{access_token: a2, refresh_token: r2}),
+    do: a1 != a2 and r1 != r2
+
+  defp rotated?(_exchanged, _refreshed), do: false
+
+  # The file must be new or empty, so a run cannot overwrite an env file. It
+  # is created with mode 0600 at once, which also shows that its directory is
+  # writable before the code is spent.
+  defp prepare_token_file!(file) do
+    case File.read(file) do
+      {:ok, ""} -> :ok
+      {:error, :enoent} -> :ok
+      _other -> flunk("TEMPO_OAUTH_TOKEN_FILE must name a missing or empty file")
+    end
+
+    File.write!(file, "")
+    File.chmod!(file, 0o600)
+  end
+
+  # Writes a temporary file with mode 0600 before any secret goes in, then
+  # renames it over the token file, so the previous pair stays readable until
+  # the new one is complete.
+  defp write_token_file!(file, %{access_token: access, refresh_token: refresh} = token, issued_at) do
+    temporary = file <> ".tmp"
+    File.write!(temporary, "")
+    File.chmod!(temporary, 0o600)
+
+    File.write!(temporary, [
+      "TEMPO_OAUTH_ACCESS_TOKEN=#{access}\n",
+      "TEMPO_OAUTH_REFRESH_TOKEN=#{refresh}\n",
+      expires_at_line(token, issued_at)
+    ])
+
+    File.rename!(temporary, file)
+  end
+
+  defp write_token_file!(_file, _token, _issued_at), do: flunk("no token pair to write")
+
+  defp expires_at_line(%{expires_in: seconds}, issued_at) when is_integer(seconds) do
+    expires_at =
+      issued_at |> DateTime.add(seconds, :second) |> DateTime.truncate(:second)
+
+    "TEMPO_OAUTH_ACCESS_TOKEN_EXPIRES_AT=#{DateTime.to_iso8601(expires_at)}\n"
+  end
+
+  defp expires_at_line(_token, _issued_at), do: []
+
+  # The recorder redacts token fields by key and checks configured
+  # credentials; freshly issued tokens are not configured, so this checks the
+  # written fixture for them and for the code.
+  defp refute_recorded_secrets!(name, secrets) do
+    if LiveSmoke.recording?() do
+      path = Path.join([File.cwd!(), "test", "fixtures", "tempo", "recorded", name <> ".json"])
+      text = File.read!(path)
+
+      if Enum.any?(secrets, &String.contains?(text, &1)) do
+        File.rm!(path)
+        flunk("#{name}.json contained a token or the code and was deleted")
+      end
+    end
   end
 
   defp oauth_opts(env) do
