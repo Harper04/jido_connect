@@ -227,13 +227,116 @@ defmodule Jido.Connect.Slack.DeliveryTest do
     end
   end
 
-  defp expect_fixture(name) do
+  describe "failures" do
+    # The ok:false bodies are recorded. HTTP and transport failures are not:
+    # Slack cannot be made to answer 503 or drop a connection on purpose, so
+    # their status, text body and transport reason come from Req.Test.
+    test "slack.message.post keeps ok:false, HTTP and transport failures apart and sends each once" do
+      assert_failures(
+        "slack.message.post",
+        %{channel: "C0CDDP1JEAX", text: "Hello"},
+        ["chat:write"],
+        {"chat_post_message_not_in_channel", "not_in_channel"}
+      )
+    end
+
+    test "slack.conversation.open keeps ok:false, HTTP and transport failures apart and sends each once" do
+      assert_failures(
+        "slack.conversation.open",
+        %{users: ["U0000000000"]},
+        ["im:write"],
+        {"conversations_open_user_not_found", "user_not_found"}
+      )
+    end
+  end
+
+  test "both actions stay workspace-policy writes that AI callers confirm" do
+    assert {:ok,
+            %{
+              mutation?: true,
+              risk: :write,
+              confirmation: :required_for_ai,
+              provider_idempotency?: false,
+              policies: [:workspace_access],
+              scopes: ["chat:write"],
+              auth_profiles: [:bot, :user]
+            }} = Connect.action(Jido.Connect.Slack, "slack.message.post")
+
+    assert {:ok,
+            %{
+              mutation?: true,
+              risk: :write,
+              confirmation: :required_for_ai,
+              provider_idempotency?: false,
+              policies: [:workspace_access],
+              scopes: ["im:write"],
+              scope_resolver: Jido.Connect.Slack.ScopeResolver,
+              auth_profiles: [:bot]
+            }} = Connect.action(Jido.Connect.Slack, "slack.conversation.open")
+  end
+
+  defp assert_failures(action_id, input, scopes, {fixture, slack_error}) do
+    invoke = fn -> Connect.invoke(Jido.Connect.Slack, action_id, input, runtime(scopes)) end
+
+    expect_fixture(fixture)
+
+    assert {:error,
+            %Connect.Error.ProviderError{
+              provider: :slack,
+              status: 200,
+              reason: ^slack_error,
+              delivery: :response_received,
+              mutation?: true
+            }} = invoke.()
+
+    assert_one_request()
+
+    stub_response(fn conn ->
+      conn |> Plug.Conn.put_status(503) |> Req.Test.text("Service Unavailable")
+    end)
+
+    assert {:error,
+            %Connect.Error.ProviderError{
+              provider: :slack,
+              status: 503,
+              reason: :http_error,
+              delivery: :rejected,
+              mutation?: true
+            }} = invoke.()
+
+    assert_one_request()
+
+    stub_response(&Req.Test.transport_error(&1, :timeout))
+
+    assert {:error,
+            %Connect.Error.ProviderError{
+              provider: :slack,
+              status: nil,
+              reason: :request_error,
+              delivery: :sent_outcome_unknown,
+              mutation?: true
+            }} = invoke.()
+
+    assert_one_request()
+  end
+
+  defp assert_one_request do
+    assert_received {:slack_request, "POST", _path, _body}
+    refute_received {:slack_request, _method, _path, _body}
+  end
+
+  defp expect_fixture(name),
+    do: stub_response(&Req.Test.json(&1, LiveSmoke.fixture!(:slack, name)))
+
+  # Reports every request to the test process, so a second request, such as
+  # a retry, shows up as a second message.
+  defp stub_response(respond) do
     test_pid = self()
 
-    Req.Test.expect(__MODULE__, fn conn ->
+    Req.Test.stub(__MODULE__, fn conn ->
       {:ok, body, conn} = Plug.Conn.read_body(conn)
       send(test_pid, {:slack_request, conn.method, conn.request_path, Jason.decode!(body)})
-      Req.Test.json(conn, LiveSmoke.fixture!(:slack, name))
+      respond.(conn)
     end)
   end
 
