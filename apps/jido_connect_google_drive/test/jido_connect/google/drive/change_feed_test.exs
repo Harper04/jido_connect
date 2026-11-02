@@ -15,6 +15,9 @@ defmodule Jido.Connect.Google.Drive.ChangeFeedTest do
   @removed "169L8tikOCrVn8N3aHI4ZPRnn0xY0Rr9C"
   @shared_drive "0ANlr4uaAlMbAUk9PVA"
 
+  # The ID of the recorded lookup of a missing file.
+  @missing "1JclLiveSmokeMissingFile000000000"
+
   # Drive's page tokens are opaque; the host passes its stored one back.
   @checkpoint "stored-checkpoint"
 
@@ -99,6 +102,59 @@ defmodule Jido.Connect.Google.Drive.ChangeFeedTest do
                changed_at: "2026-11-02T09:46:54.413Z"
              }
     end
+
+    # The next two tests watch an object of the recordings in place of the
+    # watch folder. The folder lookup answers with the recorded lookup of the
+    # watch folder, its `id` replaced by the stand-in's ID.
+
+    test "matches a change to the watched folder itself" do
+      expect_folder_lookup("collection_changes_added", @subfolder)
+      expect_change_page("collection_changes_added.2", @checkpoint)
+
+      assert {:ok, %{signals: signals}} =
+               poll("google.drive.collection.changes", %{collection_id: @subfolder})
+
+      assert %{collection_match: "yes", record: %{parents: [@watch_folder]}} =
+               record_signal(signals, @subfolder)
+
+      assert %{collection_match: "yes"} = record_signal(signals, @nested)
+      assert %{collection_match: "no"} = record_signal(signals, @added)
+    end
+
+    # A removal names only the file ID, so the recorded removal of a file
+    # stands in for a removal of the watched folder that Drive records between
+    # the folder lookup and the change read.
+    test "cannot place a removal of the watched folder itself" do
+      expect_folder_lookup("collection_changes_trashed", @removed)
+      expect_change_page("collection_changes_trashed.2", @checkpoint)
+      expect_change_page("collection_changes_trashed.3", "112")
+
+      assert {:ok, %{signals: signals}} =
+               poll("google.drive.collection.changes", %{collection_id: @removed})
+
+      assert %{collection_match: "unknown", change_type: "deleted", removed?: true} =
+               record_signal(signals, @removed)
+    end
+
+    # Drive answers the lookup of a deleted folder, or of one the user can no
+    # longer see, as it answered the recorded lookup of a missing file.
+    test "fails without checkpoint_reset once the watched folder is gone" do
+      for checkpoint <- [@checkpoint, nil] do
+        Req.Test.expect(__MODULE__, fn conn ->
+          assert conn.request_path == "/v3/files/#{@missing}"
+
+          conn
+          |> Plug.Conn.put_status(404)
+          |> Req.Test.json(LiveSmoke.fixture!(:google_drive, "file_get_not_found"))
+        end)
+
+        assert {:error,
+                %Connect.Error.ProviderError{reason: :http_error, status: 404, details: details}} =
+                 poll("google.drive.collection.changes", %{collection_id: @missing}, checkpoint)
+
+        refute Map.has_key?(details, :checkpoint_reset)
+      end
+    end
   end
 
   describe "google.drive.file.changed" do
@@ -153,7 +209,7 @@ defmodule Jido.Connect.Google.Drive.ChangeFeedTest do
     end
   end
 
-  defp poll(trigger_id, config) do
+  defp poll(trigger_id, config, checkpoint \\ @checkpoint) do
     scopes = ["https://www.googleapis.com/auth/drive.metadata.readonly"]
 
     connection =
@@ -188,16 +244,18 @@ defmodule Jido.Connect.Google.Drive.ChangeFeedTest do
     Connect.poll(Drive.integration(), trigger_id, config,
       context: context,
       credential_lease: lease,
-      checkpoint: @checkpoint
+      checkpoint: checkpoint
     )
   end
 
-  defp expect_folder_lookup(fixture) do
+  defp expect_folder_lookup(fixture, folder_id \\ @watch_folder) do
     Req.Test.expect(__MODULE__, fn conn ->
-      assert conn.request_path == "/v3/files/#{@watch_folder}"
+      assert conn.request_path == "/v3/files/#{folder_id}"
       assert conn.query_params["fields"] == @folder_lookup_fields
       assert conn.query_params["supportsAllDrives"] == "true"
-      Req.Test.json(conn, LiveSmoke.fixture!(:google_drive, fixture))
+
+      body = LiveSmoke.fixture!(:google_drive, fixture)
+      Req.Test.json(conn, Map.put(body, "id", folder_id))
     end)
   end
 
