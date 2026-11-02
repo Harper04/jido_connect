@@ -265,6 +265,29 @@ defmodule Jido.Connect.Slack.InteractivityTest do
              } = delivery.payload
     end
 
+    test "sets team_id to nil when an org-wide install sends a null team" do
+      # The property table of
+      # https://docs.slack.dev/reference/interaction-payloads/block_actions-payload
+      # says team is null if the app is org-installed. The documented payload
+      # is changed only in that field.
+      json =
+        String.replace(
+          @block_actions_payload,
+          ~r/"team": \{[^}]*\}/,
+          ~S("team": null),
+          global: false
+        )
+
+      assert json =~ ~S("team": null,)
+
+      assert {:ok,
+              %WebhookDelivery{
+                event: "block_actions",
+                metadata: %{team_id: nil, api_app_id: "AABA1ABCD"},
+                payload: %{"team" => nil}
+              }} = verify(form_body(json))
+    end
+
     test "marks byte-identical redelivery as duplicate and separates a one-byte change" do
       body = form_body(@block_actions_payload)
 
