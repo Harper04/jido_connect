@@ -144,7 +144,14 @@ defmodule Jido.Connect.Google.Drive.LiveSmokeTest do
                ]
              )
 
-    assert [%{"id" => unstarred_id, "starred" => false} = unstarred] = twins
+    # `seed.py drive` recreates a missing or trashed twin and unstars it, but
+    # leaves extra copies in place.
+    assert match?([%{"starred" => false}], twins),
+           "expected one unstarred #{@unstarred_name} next to the starred file, found " <>
+             "#{length(twins)}, #{Enum.count(twins, & &1["starred"])} of them starred; " <>
+             "move every copy to the trash and run `seed.py drive` to create it again"
+
+    [%{"id" => unstarred_id} = unstarred] = twins
 
     expected =
       Map.new([starred, unstarred], fn file ->
