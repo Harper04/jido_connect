@@ -12,8 +12,10 @@ defmodule Jido.Connect.Tempo.Client.WorklogsTest do
   # October 31 in Europe/Berlin and has a description of 778 bytes. The
   # sanitizer replaced the test user's account ID with `account-1`.
   # `worklogs_own_small_page` holds the five worklogs of October 1 in pages
-  # of two, `worklogs_own_day` the one of October 31 and `worklogs_own_day.2`
-  # the empty answer for July.
+  # of two, `worklogs_own_day` the one of October 31, `worklogs_own_day.2`
+  # the empty answer for July and `worklogs_own_jira` the three of October
+  # 28, two of them created in Jira, without a comment (79167) and with an
+  # empty one (79168).
   @account "account-1"
   @path "/4/worklogs/user/account-1"
   @periods [from: "2026-08-01", to: "2026-10-31"]
@@ -116,8 +118,9 @@ defmodule Jido.Connect.Tempo.Client.WorklogsTest do
 
       assert %{billable_seconds: 0, time_spent_seconds: 900} = by_id[79_101]
 
-      # Seeded without a description and with an empty one: Tempo answers
-      # both with its default text, so they differ only in IDs and times.
+      # Created through Tempo without a description and with an empty one:
+      # Tempo answers both with its default text, so they differ only in IDs
+      # and times.
       volatile = [:tempo_worklog_id, :self, :created_at, :updated_at]
       assert Map.drop(by_id[79_099], volatile) == Map.drop(by_id[79_100], volatile)
       assert by_id[79_099].description == "Working on work item JCL-2"
@@ -263,17 +266,33 @@ defmodule Jido.Connect.Tempo.Client.WorklogsTest do
       end
     end
 
-    # Tempo answers an absent and an empty description with its default
-    # text, so both cases are the recorded worklogs changed in that field.
-    test "an absent description stays nil and an empty one stays empty" do
-      expect_pages(@pages,
-        first: &Map.put(&1, "description", ""),
-        last: &Map.delete(&1, "description")
-      )
+    test "an empty description stays empty" do
+      Req.Test.expect(__MODULE__, &Fixture.respond(&1, "worklogs_own_jira"))
 
-      assert {:ok, worklogs} = Client.list_own_worklogs(request(), @periods)
-      assert %Worklog{tempo_worklog_id: 79_093, description: ""} = List.first(worklogs)
-      assert %Worklog{tempo_worklog_id: 79_166, description: nil} = List.last(worklogs)
+      assert {:ok,
+              [
+                %Worklog{
+                  tempo_worklog_id: 79_128,
+                  description: "JCL live seed worklog: filler 27"
+                },
+                %Worklog{tempo_worklog_id: 79_167, description: ""},
+                %Worklog{tempo_worklog_id: 79_168, description: ""}
+              ]} = Client.list_own_worklogs(request(), from: "2026-10-28", to: "2026-10-28")
+    end
+
+    # No recording leaves the description out: Tempo answers a worklog
+    # created through Tempo without one with its default text, and one
+    # created in Jira without a comment with "". So the absent case is the
+    # recorded worklog without that field.
+    test "an absent description stays nil" do
+      Req.Test.expect(__MODULE__, fn conn ->
+        Fixture.respond(conn, "worklogs_own_jira",
+          body: &update_result(&1, 1, fn worklog -> Map.delete(worklog, "description") end)
+        )
+      end)
+
+      assert {:ok, [_seed, %Worklog{tempo_worklog_id: 79_167, description: nil}, _empty]} =
+               Client.list_own_worklogs(request(), from: "2026-10-28", to: "2026-10-28")
     end
 
     test "optional fields that Tempo leaves out stay nil" do

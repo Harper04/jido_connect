@@ -15,7 +15,10 @@ defmodule Jido.Connect.Tempo.LiveSmokeTest do
   October 1 and 30); five on October 1, among them two that differ only in
   their IDs and one with zero billable seconds; and worklog 79166 on
   October 31, booked at 00:30 Europe/Berlin, so its UTC date is October 30,
-  with a description of 778 bytes. The test user has no worklog in July
+  with a description of 778 bytes. On October 28, besides seed worklog
+  79128, the test user has two worklogs created through Jira's worklog API:
+  79167 at 10:00 for 1200 seconds without a comment and 79168 at 11:00 for
+  1260 seconds with an empty comment. The test user has no worklog in July
   2026.
 
   ExUnit prints the arguments of a failing call, so checks that involve a real
@@ -226,6 +229,31 @@ defmodule Jido.Connect.Tempo.LiveSmokeTest do
       )
 
     assert %{worklogs: [], complete: true, from: "2026-07-01", to: "2026-07-31"} = empty
+  end
+
+  # Tempo answers a worklog created through Tempo without a description with
+  # its default text, but one created in Jira without a comment or with an
+  # empty comment with an empty description.
+  @tag env!(["TEMPO_API_TOKEN", "TEMPO_API_ORIGIN" | @jira])
+  test "worklogs created in Jira come back with an empty description", %{env: env} do
+    token = env["TEMPO_API_TOKEN"]
+    context = context!(env, :api_token)
+    range = %{from: "2026-10-28", to: "2026-10-28"}
+    LiveSmoke.record(@recorder, :tempo, "worklogs_own_jira")
+
+    result = ok!(invoke(context, :api_token, token, range), "the October 28 read")
+    raw = raw_worklogs!(env, token, range)
+
+    assert Enum.map(result.worklogs, &key/1) == Enum.map(raw, &raw_key/1)
+
+    assert [
+             %{tempo_worklog_id: 79_128, description: "JCL live seed worklog: filler 27"},
+             %{tempo_worklog_id: 79_167, description: "", time_spent_seconds: 1200},
+             %{tempo_worklog_id: 79_168, description: "", time_spent_seconds: 1260}
+           ] = result.worklogs
+
+    assert Enum.map(raw, &Map.fetch(&1, "description")) ==
+             [{:ok, "JCL live seed worklog: filler 27"}, {:ok, ""}, {:ok, ""}]
   end
 
   # The token endpoint's rejections are recorded with an invented code and an

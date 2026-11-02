@@ -4,8 +4,9 @@ defmodule Jido.Connect.Tempo.ListOwnWorklogsActionTest do
   # `tempo.worklogs.list_own` through the runtime and through the generated
   # Jido action, against the reads that the live tests recorded: the 60
   # worklogs from August 1 to October 31, 2026 on `worklogs_own` (50, with a
-  # `next` link) and `worklogs_own.2` (10, without one), and the empty answer
-  # for July on `worklogs_own_day.2`.
+  # `next` link) and `worklogs_own.2` (10, without one), the empty answer for
+  # July on `worklogs_own_day.2`, and October 28 on `worklogs_own_jira`, where
+  # two worklogs created in Jira have an empty description.
 
   alias Jido.Connect
   alias Jido.Connect.{Connection, Context, CredentialLease, Error}
@@ -119,21 +120,34 @@ defmodule Jido.Connect.Tempo.ListOwnWorklogsActionTest do
               }} = invoke(:oauth2_user, %{from: "2026-07-01", to: "2026-07-31"})
     end
 
+    test "an empty description stays an empty string in the output" do
+      Req.Test.expect(__MODULE__, &Fixture.respond(&1, "worklogs_own_jira"))
+
+      assert {:ok, %{worklogs: [_seed, from_jira, _empty]}} =
+               invoke(:api_token, %{from: "2026-10-28", to: "2026-10-28"})
+
+      assert %{tempo_worklog_id: 79_167, description: ""} = from_jira
+      assert {:ok, json} = Jason.encode(from_jira)
+      assert json =~ ~s("description":"")
+    end
+
+    # No recording leaves the description or the optional fields out, so
+    # this is the recorded worklog without them.
     test "an absent description stays null in the output map, optional fields stay out" do
       Req.Test.expect(__MODULE__, fn conn ->
-        Fixture.respond(conn, "worklogs_own_day",
+        Fixture.respond(conn, "worklogs_own_jira",
           body: fn body ->
-            update_in(body, ["results"], fn [worklog] ->
-              [Map.drop(worklog, ["description", "startTime", "billableSeconds"])]
+            update_in(body, ["results"], fn [seed, from_jira, empty] ->
+              [seed, Map.drop(from_jira, ["description", "startTime", "billableSeconds"]), empty]
             end)
           end
         )
       end)
 
-      assert {:ok, %{worklogs: [worklog]}} =
-               invoke(:api_token, %{from: "2026-10-31", to: "2026-10-31"})
+      assert {:ok, %{worklogs: [_seed, worklog, _empty]}} =
+               invoke(:api_token, %{from: "2026-10-28", to: "2026-10-28"})
 
-      assert %{tempo_worklog_id: 79_166, description: nil} = worklog
+      assert %{tempo_worklog_id: 79_167, description: nil} = worklog
       refute Map.has_key?(worklog, :start_time)
       refute Map.has_key?(worklog, :billable_seconds)
       assert {:ok, json} = Jason.encode(worklog)
