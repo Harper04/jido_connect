@@ -48,9 +48,6 @@ defmodule Jido.Connect.Google.Drive.LiveSmokeTest do
   @change_log_reads 15
   @change_log_fields "nextPageToken,changes(fileId,removed,changeType,driveId,file(id,trashed))"
 
-  # The upload test's file in GOOGLE_DRIVE_UPLOAD_FOLDER_ID. Cleanup deletes
-  # every file of this name in the folder.
-  @upload_name "jcl-live upload.bin"
   @upload_limit 5_242_880
 
   @tag env!(["GOOGLE_ACCESS_TOKEN"])
@@ -308,8 +305,11 @@ defmodule Jido.Connect.Google.Drive.LiveSmokeTest do
     folder_id = env["GOOGLE_DRIVE_UPLOAD_FOLDER_ID"]
     content = upload_limit_content()
 
-    # Also covers an upload whose response is lost and that returns no ID.
-    on_exit(fn -> delete_uploads_named(token, folder_id, @upload_name) end)
+    # A name of this run only, so a concurrent run's cleanup leaves the file
+    # alone. The cleanup by name covers an upload whose response is lost and
+    # that returns no ID.
+    name = "jcl-live upload #{Base.encode16(:crypto.strong_rand_bytes(6), case: :lower)}.bin"
+    on_exit(fn -> delete_uploads_named(token, folder_id, name) end)
 
     LiveSmoke.record(@req_options, :google_drive, "file_upload", @masked)
 
@@ -317,7 +317,7 @@ defmodule Jido.Connect.Google.Drive.LiveSmokeTest do
              invoke(
                "google.drive.file.upload",
                %{
-                 name: @upload_name,
+                 name: name,
                  content_base64: Base.encode64(content),
                  mime_type: "application/octet-stream",
                  parents: [folder_id]
@@ -325,7 +325,10 @@ defmodule Jido.Connect.Google.Drive.LiveSmokeTest do
                token
              )
 
+    # Deletes the file by ID, also when it landed outside the upload folder.
     file_id = uploaded.file_id
+    on_exit(fn -> delete_leftover(token, "/files/#{file_id}") end)
+
     assert uploaded.parents == [folder_id]
     assert uploaded.size == @upload_limit
 
@@ -345,8 +348,6 @@ defmodule Jido.Connect.Google.Drive.LiveSmokeTest do
 
     assert hex_digest(:sha256, Base.decode64!(downloaded.content_base64)) ==
              hex_digest(:sha256, content)
-
-    delete_externally(token, file_id)
   end
 
   # Every byte value, 20,480 times: exactly the multipart limit.
