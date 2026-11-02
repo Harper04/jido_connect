@@ -32,10 +32,14 @@ defmodule Jido.Connect.Slack.Interactivity do
   `event` is the payload `type`, such as `"block_actions"`. `metadata` holds
   `team_id` (from `team.id`) and `api_app_id`; either is `nil` when the
   payload lacks it. `payload` is the decoded object without the temporary
-  capabilities `token`, `response_url`, `response_urls` and `trigger_id`.
-  A `view_submission` can also carry `response_urls` inside `view`, where it
-  is dropped as well. Other nested objects stay as Slack sent them, because
-  `view.state.values` uses keys chosen by the host. The raw body is not kept.
+  capabilities `token`, `bot_access_token`, `response_url`, `response_urls`
+  and `trigger_id`. A `view_submission` can also carry `response_urls` inside
+  `view`, and an interaction from a workflow step (custom function) carries
+  `interactivity.interactivity_pointer`, which opens modals like
+  `trigger_id`; both nested fields are dropped as well, while `interactor`
+  and `function_data` stay. Other nested objects stay as Slack sent them,
+  because `view.state.values` uses keys chosen by the host. The raw body is
+  not kept.
 
   The payload is handed to a normalizer for its `type` together with the
   options. No type has a normalizer yet, so `normalized_signal` stays `nil`.
@@ -49,8 +53,15 @@ defmodule Jido.Connect.Slack.Interactivity do
   alias Jido.Connect.Webhook, as: CoreWebhook
 
   @max_body_bytes 256 * 1024
-  @temporary_capabilities ["token", "response_url", "response_urls", "trigger_id"]
+  @temporary_capabilities [
+    "token",
+    "bot_access_token",
+    "response_url",
+    "response_urls",
+    "trigger_id"
+  ]
   @view_temporary_capabilities ["response_urls"]
+  @interactivity_temporary_capabilities ["interactivity_pointer"]
 
   @doc """
   Verifies a Slack interactivity request and returns it as a verified delivery.
@@ -101,12 +112,13 @@ defmodule Jido.Connect.Slack.Interactivity do
     end
   end
 
-  # Only the named nested objects are touched: view.state.values carries keys
-  # chosen by the host, so a recursive drop could remove host data.
+  # Only the named nested objects are touched, because view.state.values
+  # carries keys chosen by the host and a recursive drop could remove host data.
   defp drop_temporary_capabilities(payload) do
     payload
     |> Map.drop(@temporary_capabilities)
     |> drop_nested("view", @view_temporary_capabilities)
+    |> drop_nested("interactivity", @interactivity_temporary_capabilities)
   end
 
   defp drop_nested(payload, key, fields) do

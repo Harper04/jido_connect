@@ -199,9 +199,18 @@ defmodule Jido.Connect.Slack.InteractivityTest do
                              ""
                            )
 
+  # Made-up workflow token and interactivity pointer for the custom step
+  # fixtures built by function_payload/1. Slack documents no example values;
+  # workflow tokens start with xwfp- per
+  # https://docs.slack.dev/authentication/tokens/
+  @workflow_token "xwfp-0000000000-0000000000-made-up-workflow-token"
+  @interactivity_pointer "5527141823.8534564800.0c2e9a1d7b5f4e3c8a6d9b1f0e2c4a7d"
+
   # Temporary capabilities and credentials of the documented examples.
   @secret_values [
     @doc_secret,
+    @workflow_token,
+    @interactivity_pointer,
     "xyzz0WbapA4vBCDEFasx0q6G",
     "398738663015.47445629121.803a0bc887a14d10d2c447fce8b6703c",
     "9s8d9as89d8as9d8as989",
@@ -420,6 +429,33 @@ defmodule Jido.Connect.Slack.InteractivityTest do
                    }
                  }
                } = delivered_view
+
+        refute_secrets(delivery.payload, body)
+        refute_secrets(WebhookDelivery.to_public_map(delivery), body)
+        refute_secrets(inspect(delivery, limit: :infinity, printable_limit: :infinity), body)
+      end
+    end
+
+    test "drops the workflow token and interactivity pointer of custom step interactions" do
+      for {json, event} <- [
+            {function_payload(@block_actions_payload), "block_actions"},
+            {function_payload(@view_submission_payload), "view_submission"}
+          ] do
+        body = form_body(json)
+
+        assert {:ok, %WebhookDelivery{event: ^event} = delivery} = verify(body)
+
+        refute Map.has_key?(delivery.payload, "bot_access_token")
+
+        assert %{
+                 "interactivity" => interactivity,
+                 "function_data" => %{
+                   "execution_id" => "Fx0000000001",
+                   "function" => %{"callback_id" => "approve_request"}
+                 }
+               } = delivery.payload
+
+        assert interactivity == %{"interactor" => %{"secret" => "made-up", "id" => "U0000001"}}
 
         refute_secrets(delivery.payload, body)
         refute_secrets(WebhookDelivery.to_public_map(delivery), body)
@@ -660,6 +696,35 @@ defmodule Jido.Connect.Slack.InteractivityTest do
   defp pad_to(body, size), do: body <> String.duplicate("+", size - byte_size(body))
 
   defp form_body(payload_json), do: "payload=" <> URI.encode_www_form(payload_json)
+
+  # Turns a documented payload into one from a custom step (function). The
+  # property tables of
+  # https://docs.slack.dev/reference/interaction-payloads/block_actions-payload
+  # and
+  # https://docs.slack.dev/reference/interaction-payloads/view-interactions-payload
+  # list function_data, interactivity and bot_access_token only for functions
+  # and token, response_url and response_urls only for other apps. Neither page
+  # shows a function example, so the added values are made up in the shape of
+  # the Bolt JS payload types and the Deno Slack SDK interactivity object.
+  defp function_payload(json) do
+    payload = json |> Jason.decode!() |> Map.drop(["token", "response_url"])
+
+    payload
+    |> Map.replace_lazy("view", &Map.delete(&1, "response_urls"))
+    |> Map.merge(%{
+      "function_data" => %{
+        "execution_id" => "Fx0000000001",
+        "function" => %{"callback_id" => "approve_request"},
+        "inputs" => %{"requester" => "U0000001"}
+      },
+      "interactivity" => %{
+        "interactor" => %{"secret" => "made-up", "id" => "U0000001"},
+        "interactivity_pointer" => @interactivity_pointer
+      },
+      "bot_access_token" => @workflow_token
+    })
+    |> Jason.encode!()
+  end
 
   defp signed_headers(body, opts \\ []) do
     timestamp = Keyword.get(opts, :timestamp, @doc_timestamp)
