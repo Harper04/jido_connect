@@ -331,11 +331,7 @@ storage quotas are host policy.
 
 The `:live_smoke` tests read from the test account with the API token and
 the OAuth access token and record the fixtures under
-`test/fixtures/tempo/recorded`. The own worklog checks read the test user's
-prepared worklogs from August to October 2026 through the action and compare
-IDs, dates and seconds with a direct Tempo read; `worklogs_own.json`,
-`worklogs_own_small_page.json`, `worklogs_own_day.json` and
-`worklogs_own_jira.json` and their numbered pages are their recordings. They never use the stored refresh token. One
+`test/fixtures/tempo/recorded`. They never use the stored refresh token. One
 test exchanges an authorization code and refreshes the new pair once; it
 runs only with `TEMPO_OAUTH_CODE` and writes each new pair to
 `TEMPO_OAUTH_TOKEN_FILE`. Run them from the umbrella root:
@@ -344,6 +340,23 @@ runs only with `TEMPO_OAUTH_CODE` and writes each new pair to
 set -a; source ~/.config/jido_connect/live/atlassian.env; set +a
 MIX_ENV=test mix do --app jido_connect_tempo test --only live_smoke
 ```
+
+The own worklog checks rely on the test user's seeded worklogs from August
+to October 2026. Each read except the empty range compares every worklog's
+ID, booking day, start time, UTC start, seconds, billable seconds, issue ID
+and description with a direct Tempo read outside the package:
+
+| Check | Path | Recording |
+| --- | --- | --- |
+| August 1 to October 31: every period boundary day, more than one page | action, API token | `worklogs_own` |
+| October 1 in pages of two | client, OAuth access token | `worklogs_own_small_page` |
+| October 31 as a one-day range | action, OAuth access token | `worklogs_own_day` |
+| October 30, then July 2026 as the empty range | action, OAuth access token | `worklogs_own_empty` |
+| October 28, with the descriptions as Tempo sends them | action, API token | `worklogs_own_jira` |
+
+The empty range must return `worklogs: []` and `complete: true`. Some of
+these recordings also hold worklogs that the seeded data lacks; see the
+Tempo section of `docs/live_smoke_tests.md`.
 
 The successful code exchange and refresh are recorded in
 `oauth_exchange.json` and `oauth_refresh.json`, the rejections in
