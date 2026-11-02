@@ -640,13 +640,14 @@ defmodule Jido.Connect.Google.Drive.ClientTest do
     refute Map.has_key?(content, :content_base64)
   end
 
-  # `LiveSmoke.fixture!/2` returns only the body of a recording, and the body
-  # of a recorded binary download is null.
+  # The replay needs the recorded status and headers, which
+  # `LiveSmoke.fixture!/2` leaves out, so this loads the whole recording.
   defp recorded_download!(name) do
-    "../../../fixtures/google_drive/recorded/#{name}.json"
-    |> Path.expand(__DIR__)
-    |> Elixir.File.read!()
-    |> Jason.decode!()
+    Jido.Connect.Google.TestSupport.ConnectorContracts.google_fixture!(
+      :google_drive,
+      "recorded/#{name}.json",
+      __DIR__
+    )
   end
 
   # Answers with the recorded status and headers around `body`, leaving out
