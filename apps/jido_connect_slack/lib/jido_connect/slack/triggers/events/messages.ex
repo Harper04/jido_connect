@@ -7,6 +7,7 @@ defmodule Jido.Connect.Slack.Triggers.Events.Messages do
   @human_message_subtypes ["file_share", "thread_broadcast"]
 
   @subtype "Slack's subtype of a new message a person writes: file_share for a message with files, thread_broadcast for a thread reply also sent to the channel. Plain messages have none."
+  @shared_messages "Messages shared natively into a direct message, one per attachment with is_share: channel and ts of the shared message, its author as user, its text and from_url. The person who shared them is the signal's user."
   @file_ids "IDs of the files of a file_share message. File content and links are not part of the signal."
 
   triggers do
@@ -78,9 +79,7 @@ defmodule Jido.Connect.Slack.Triggers.Events.Messages do
         field :ts, :string
         field :thread_ts, :string
         field :event_ts, :string
-
         field :subtype, :string, enum: @human_message_subtypes, description: @subtype
-
         field :file_ids, {:array, :string}, description: @file_ids
       end
     end
@@ -119,9 +118,7 @@ defmodule Jido.Connect.Slack.Triggers.Events.Messages do
         field :ts, :string
         field :thread_ts, :string
         field :event_ts, :string
-
         field :subtype, :string, enum: @human_message_subtypes, description: @subtype
-
         field :file_ids, {:array, :string}, description: @file_ids
       end
     end
@@ -133,7 +130,7 @@ defmodule Jido.Connect.Slack.Triggers.Events.Messages do
       data_classification :workspace_content
       label "Direct message"
 
-      description "Receive Slack Events API message.im callbacks for new direct messages: plain messages, file shares and broadcast thread replies. Requires Slack im:history for direct message history events."
+      description "Receive Slack Events API message.im callbacks for new direct messages: plain messages, file shares, broadcast thread replies and messages shared into the DM. Requires Slack im:history for direct message history events."
 
       verification %{
         kind: :slack_signed_request,
@@ -164,10 +161,9 @@ defmodule Jido.Connect.Slack.Triggers.Events.Messages do
         field :event_ts, :string
         field :sender, :map
         field :conversation, :map
-
         field :subtype, :string, enum: @human_message_subtypes, description: @subtype
-
         field :file_ids, {:array, :string}, description: @file_ids
+        field :shared_messages, {:array, :map}, description: @shared_messages
       end
     end
 
@@ -178,7 +174,7 @@ defmodule Jido.Connect.Slack.Triggers.Events.Messages do
       data_classification :workspace_content
       label "Multi-person direct message"
 
-      description "Receive Slack Events API message.mpim callbacks for new multi-person direct messages: plain messages, file shares and broadcast thread replies. Requires Slack mpim:history for multi-person direct message history events."
+      description "Receive Slack Events API message.mpim callbacks for new multi-person direct messages: plain messages, file shares, broadcast thread replies and messages shared into the conversation. Requires Slack mpim:history for multi-person direct message history events."
 
       verification %{
         kind: :slack_signed_request,
@@ -209,10 +205,9 @@ defmodule Jido.Connect.Slack.Triggers.Events.Messages do
         field :event_ts, :string
         field :sender, :map
         field :conversation, :map
-
         field :subtype, :string, enum: @human_message_subtypes, description: @subtype
-
         field :file_ids, {:array, :string}, description: @file_ids
+        field :shared_messages, {:array, :map}, description: @shared_messages
       end
     end
 
@@ -254,10 +249,9 @@ defmodule Jido.Connect.Slack.Triggers.Events.Messages do
         field :event_ts, :string
         field :sender, :map
         field :conversation, :map
-
         field :subtype, :string, enum: @human_message_subtypes, description: @subtype
-
         field :file_ids, {:array, :string}, description: @file_ids
+        field :shared_messages, {:array, :map}, description: @shared_messages
       end
     end
   end

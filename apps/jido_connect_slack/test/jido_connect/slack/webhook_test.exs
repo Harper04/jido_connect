@@ -379,6 +379,100 @@ defmodule Jido.Connect.Slack.WebhookTest do
       end
     end
 
+    test "a message shared into the bot DM keeps the shared message apart from the sharer" do
+      rows = [
+        {"message_im_shared_public", "Ev0CEZBJ89KJ", "1793628518.622089", "C0CEEB41FU0",
+         "1793627736.679599", "plain-public", 705},
+        {"message_im_shared_private", "Ev0CDZME08LD", "1793628541.312839", "C0CD4JEJ9V5",
+         "1793627741.845469", "plain-private", 706}
+      ]
+
+      for {name, event_id, ts, source_channel, source_ts, label, bytes} <- rows do
+        assert {:ok, %WebhookDelivery{event: "message", normalized_signal: delivered}} =
+                 replay(name)
+
+        signal = Map.delete(delivered, :delivery)
+        assert {:ok, ^signal} = Webhook.normalize_signal("message.im", payload!(name))
+        assert %{shared_messages: [%{text: text} = shared]} = signal
+        assert_capture_text(text, label, bytes)
+
+        # The sanitizer replaced the workspace URL in `from_url`.
+        assert shared == %{
+                 channel: source_channel,
+                 ts: source_ts,
+                 user: "U0CDPFT1RDJ",
+                 text: text,
+                 from_url: "from_url-1"
+               }
+
+        # The share has no comment, so the signal has no text of its own.
+        assert signal == %{
+                 team_id: "T0CEE692400",
+                 event_id: event_id,
+                 channel: "D0CD4G48UFR",
+                 channel_type: "im",
+                 user: "U0CDPFT1RDJ",
+                 ts: ts,
+                 event_ts: ts,
+                 sender: %{id: "U0CDPFT1RDJ"},
+                 conversation: %{id: "D0CD4G48UFR", type: "im"},
+                 shared_messages: [shared]
+               }
+      end
+
+      # Derived: the captured share with the second user as the sharer.
+      shared_by_other =
+        put_in(payload!("message_im_shared_public"), ["event", "user"], "U0CDEL6734M")
+
+      assert {:ok,
+              %{
+                user: "U0CDEL6734M",
+                sender: %{id: "U0CDEL6734M"},
+                shared_messages: [%{user: "U0CDPFT1RDJ"}]
+              }} = Webhook.normalize_signal("message.im", shared_by_other)
+    end
+
+    test "a DM without a shared attachment has no shared_messages, a malformed one fails" do
+      assert {:ok, signal} = Webhook.normalize_signal("message.im", payload!("message_im"))
+      refute Map.has_key?(signal, :shared_messages)
+
+      # Derived: the captured share with `is_share` false, like an unfurl.
+      unfurl = change_shared_attachment(&Map.put(&1, "is_share", false))
+      assert {:ok, signal} = Webhook.normalize_signal("message.im", unfurl)
+      refute Map.has_key?(signal, :shared_messages)
+
+      # Derived: the captured share with one field of its attachment changed.
+      rows = [
+        {"channel_id left out", &Map.delete(&1, "channel_id"), "attachments.0.channel_id"},
+        {"channel_id empty", &Map.put(&1, "channel_id", ""), "attachments.0.channel_id"},
+        {"ts left out", &Map.delete(&1, "ts"), "attachments.0.ts"},
+        {"ts a number", &Map.put(&1, "ts", 1_793_627_736.679599), "attachments.0.ts"},
+        {"author_id a list", &Map.put(&1, "author_id", ["U0CDPFT1RDJ"]),
+         "attachments.0.author_id"},
+        {"text an object", &Map.put(&1, "text", %{"type" => "mrkdwn"}), "attachments.0.text"},
+        {"from_url a number", &Map.put(&1, "from_url", 1), "attachments.0.from_url"}
+      ]
+
+      for {label, change, field} <- rows, event <- ["message", "message.im"] do
+        assert {:error, %Error.ProviderError{reason: :invalid_shared_message, details: details}} =
+                 Webhook.normalize_signal(event, change_shared_attachment(change)),
+               label
+
+        assert details == %{field: field}, label
+      end
+
+      # Derived: the captured share with its attachment list replaced by the
+      # attachment itself.
+      not_a_list =
+        update_in(payload!("message_im_shared_public"), ["event", "attachments"], &hd/1)
+
+      assert {:error,
+              %Error.ProviderError{
+                reason: :invalid_shared_message,
+                details: %{field: "attachments"}
+              }} = Webhook.normalize_signal("message.im", not_a_list)
+    end
+
     test "an app mention and a message with the same mention text stay distinct" do
       assert {:ok, %WebhookDelivery{event: "app_mention", normalized_signal: mention}} =
                replay("app_mention")
@@ -480,7 +574,8 @@ defmodule Jido.Connect.Slack.WebhookTest do
            "message_file_share"
          ]},
         {"slack.event.message.groups", "message.groups", ["message_private"]},
-        {"slack.event.message.im", "message.im", ["message_im"]},
+        {"slack.event.message.im", "message.im",
+         ["message_im", "message_im_shared_public", "message_im_shared_private"]},
         {"slack.event.message.mpim", "message.mpim", ["message_mpim"]},
         {"slack.event.message.thread_reply", "message.thread_reply",
          ["message_thread_reply", "message_thread_broadcast"]}
@@ -954,6 +1049,12 @@ defmodule Jido.Connect.Slack.WebhookTest do
   defp payload!(name), do: name |> capture!() |> Map.fetch!("body") |> Jason.decode!()
 
   defp replay(name), do: name |> capture!() |> LiveSmoke.replay(webhook: Webhook)
+
+  defp change_shared_attachment(change) do
+    update_in(payload!("message_im_shared_public"), ["event", "attachments"], fn [shared] ->
+      [change.(shared)]
+    end)
+  end
 
   # The checklist text arrives whole: its label, its opening words and its
   # closing words, at the byte size of the captured text.

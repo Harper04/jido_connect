@@ -2,6 +2,7 @@ defmodule Jido.Connect.Slack.Webhook.Normalizer do
   @moduledoc false
 
   alias Jido.Connect.{Data, Error, WebhookDelivery}
+  alias Jido.Connect.Slack.Webhook.SharedMessages
 
   @human_message_subtypes ["file_share", "thread_broadcast"]
 
@@ -34,7 +35,7 @@ defmodule Jido.Connect.Slack.Webhook.Normalizer do
       ) do
     with :ok <- reject_message_subtype(event),
          :ok <- require_message_channel_type(event, [nil, "channel", "group", "im", "mpim"]) do
-      {:ok, message_signal(payload, event)}
+      message_signal(payload, event)
     end
   end
 
@@ -172,7 +173,7 @@ defmodule Jido.Connect.Slack.Webhook.Normalizer do
        ) do
     with :ok <- reject_message_subtype(event),
          :ok <- require_message_channel_type(event, channel_types) do
-      {:ok, message_signal(payload, event)}
+      message_signal(payload, event)
     end
   end
 
@@ -190,7 +191,7 @@ defmodule Jido.Connect.Slack.Webhook.Normalizer do
     with :ok <- reject_message_subtype(event),
          :ok <- require_message_channel_type(event, [nil, "channel", "group", "im", "mpim"]),
          :ok <- require_thread_reply(event) do
-      {:ok, message_signal(payload, event)}
+      message_signal(payload, event)
     end
   end
 
@@ -220,10 +221,12 @@ defmodule Jido.Connect.Slack.Webhook.Normalizer do
 
     case Data.get(event, "channel_type") do
       channel_type when channel_type in ["im", "mpim"] ->
-        Map.merge(signal, direct_message_metadata(event))
+        with {:ok, metadata} <- direct_message_metadata(event) do
+          {:ok, Map.merge(signal, metadata)}
+        end
 
       _other ->
-        signal
+        {:ok, signal}
     end
   end
 
@@ -264,12 +267,16 @@ defmodule Jido.Connect.Slack.Webhook.Normalizer do
   end
 
   defp direct_message_metadata(event) do
-    Data.compact(%{
-      user_team: Data.get(event, "user_team"),
-      source_team: Data.get(event, "source_team"),
-      sender: sender_metadata(event),
-      conversation: conversation_metadata(event)
-    })
+    with {:ok, shared_messages} <- SharedMessages.from_event(event) do
+      {:ok,
+       Data.compact(%{
+         user_team: Data.get(event, "user_team"),
+         source_team: Data.get(event, "source_team"),
+         sender: sender_metadata(event),
+         conversation: conversation_metadata(event),
+         shared_messages: shared_messages
+       })}
+    end
   end
 
   defp sender_metadata(event) do

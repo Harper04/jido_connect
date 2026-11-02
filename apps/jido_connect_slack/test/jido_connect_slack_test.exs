@@ -1162,7 +1162,8 @@ defmodule Jido.Connect.SlackTest do
              :sender,
              :conversation,
              :subtype,
-             :file_ids
+             :file_ids,
+             :shared_messages
            ]
 
     assert {:ok,
@@ -1196,7 +1197,8 @@ defmodule Jido.Connect.SlackTest do
              :sender,
              :conversation,
              :subtype,
-             :file_ids
+             :file_ids,
+             :shared_messages
            ]
 
     assert {:ok,
@@ -1230,7 +1232,8 @@ defmodule Jido.Connect.SlackTest do
              :sender,
              :conversation,
              :subtype,
-             :file_ids
+             :file_ids,
+             :shared_messages
            ]
 
     assert {:ok,
