@@ -2,8 +2,18 @@ defmodule Jido.Connect.Slack.Message do
   @moduledoc """
   A Slack message as `conversations.history` returns it, with its source.
 
-  `channel` and `conversation_type` name the conversation the page was read
-  from. Timestamps stay Slack's exact strings. `user`, `bot_id` and `app_id`
+  `channel` is the channel ID the page was requested for. `conversation_type`
+  is the type the caller declared in the request, copied unchecked: Slack
+  returns no type, and the package uses the declared one only to choose the
+  history scope it checks before the call. It is not sent to Slack. A group
+  DM declared as `public_channel` passes that check with `channels:history`;
+  if the token also holds `mpim:history`, which Slack requires, the read
+  succeeds and each message carries `conversation_type: "public_channel"`.
+  Hosts must not base visibility, indexing or policy decisions on this field;
+  the conversation's flags from `slack.conversation.info` or the host's own
+  record say what it is.
+
+  Timestamps stay Slack's exact strings. `user`, `bot_id` and `app_id`
   carry the author identity Slack supplies; none of them is derived. `text`
   is the full text: `""` when Slack sends an empty text, `nil` when it sends
   none. `blocks`, `attachments` and `files` keep Slack's nested maps as they

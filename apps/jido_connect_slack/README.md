@@ -97,6 +97,15 @@ from a person or from the bot, without the `file_share` subtype. A record
 without `ts` or with a wrongly typed field makes the call fail with
 `:invalid_response`.
 
+`channel` and `conversation_type` repeat the input. Slack returns no
+conversation type, so `conversation_type` is the caller's unchecked
+declaration and only chose the scope check. A group DM declared as
+`public_channel` passes that check with `channels:history`; if the token also
+holds `mpim:history`, which Slack requires, the read succeeds and its messages
+say `public_channel`. Do not base visibility, indexing or policies on this
+field. The `is_private`, `is_im` and `is_mpim` flags of
+`slack.conversation.info` or the host's own record say what a conversation is.
+
 ## Rate limits
 
 Slack answers a rate-limited call with HTTP 429 and `ok: false`. Every Slack
