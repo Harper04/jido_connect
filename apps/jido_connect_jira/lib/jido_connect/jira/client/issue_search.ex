@@ -21,6 +21,7 @@ defmodule Jido.Connect.Jira.Client.IssueSearch do
 
   alias Jido.Connect.Error
   alias Jido.Connect.Jira.Client.{Request, Response, Transport}
+  alias Jido.Connect.Jira.Client.Normalizer.IssueFields
 
   @default_fields ~w(summary status assignee updated description project duedate)
 
@@ -34,6 +35,11 @@ defmodule Jido.Connect.Jira.Client.IssueSearch do
   Options are `:max_results` (default 50), `:next_page_token`, `:fields`
   (default `default_fields/0`, also used for an empty list, because Jira
   returns only issue IDs without fields) and the deprecated `:start_at`.
+
+  Each issue lists the requested fields that Jira left out in
+  `missing_fields`. A `:fields` list that only excludes fields, such as
+  `["-description"]`, counts from `*navigable`, because enhanced search
+  answers it with the navigable fields minus the excluded ones.
   """
   @spec search(String.t(), Request.t(), keyword()) :: {:ok, map()} | {:error, Error.error()}
   def search(jql, %Request{} = request, opts \\ []) when is_binary(jql) and is_list(opts) do
@@ -48,7 +54,7 @@ defmodule Jido.Connect.Jira.Client.IssueSearch do
       request
       |> Transport.request()
       |> Req.post(url: Request.url(request, "/rest/api/3/search/jql"), json: body)
-      |> Response.handle_issue_search_response(fields)
+      |> Response.handle_issue_search_response(requested(fields))
       |> case do
         {:ok, page} -> {:ok, Map.put(page, :max_results, max_results)}
         {:error, _error} = error -> error
@@ -70,6 +76,15 @@ defmodule Jido.Connect.Jira.Client.IssueSearch do
 
   defp fields(fields) when fields in [nil, []], do: @default_fields
   defp fields(fields) when is_list(fields), do: fields
+
+  # Enhanced search answers a list that names no field, such as
+  # `["-description"]`, with the navigable fields minus the excluded ones.
+  defp requested(fields) do
+    case IssueFields.split(fields) do
+      {[], _excluded} -> ["*navigable" | fields]
+      _split -> fields
+    end
+  end
 
   defp put_token(body, token) when is_binary(token) and token != "",
     do: Map.put(body, :nextPageToken, token)

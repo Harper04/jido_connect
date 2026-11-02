@@ -30,7 +30,9 @@ defmodule Jido.Connect.Jira do
   plain-text `description` with `description_unsupported_nodes` and the
   date-only `due_date`. Fields that Jira returns as `null` are absent from the
   output; `missing_fields` lists the requested Jira field keys that the
-  response does not contain at all.
+  response does not contain at all. The selectors `*all` and `*navigable`
+  count only the issue fields the connector reads; custom fields behind them
+  and other `*` selectors are not checked.
 
   ## Issue Search
 

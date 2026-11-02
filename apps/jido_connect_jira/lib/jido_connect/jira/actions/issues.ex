@@ -62,7 +62,9 @@ defmodule Jido.Connect.Jira.Actions.Issues do
         field(:missing_fields, {:array, :string},
           description:
             "Requested Jira field keys that the response does not contain. A requested " <>
-              "field that Jira returns as null is absent from the output but not listed here."
+              "field that Jira returns as null is absent from the output but not listed here. " <>
+              "*all, the default, and *navigable count only the issue fields this action " <>
+              "reads; custom fields behind them and other * selectors are not checked."
         )
       end
     end

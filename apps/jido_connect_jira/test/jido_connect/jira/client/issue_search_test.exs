@@ -115,6 +115,30 @@ defmodule Jido.Connect.Jira.Client.IssueSearchTest do
     assert third.missing_fields == ["parent"]
   end
 
+  test "lists a navigable field that the page leaves out, apart from one Jira returns as null" do
+    # `issue_fields` answers `*navigable` for JCL-3, whose due date is null.
+    # The copy without `duedate` stands for a site that hides the field.
+    expect_page(page("issue_fields"), fn body -> assert body["fields"] == ["*navigable"] end)
+    expect_page(without_fields(page("issue_fields"), ["duedate"]))
+
+    assert {:ok, %{issues: [%{key: "JCL-3", due_date: nil, missing_fields: []}]}} =
+             Client.search_issues(@jql, api_token_request(), fields: ["*navigable"])
+
+    assert {:ok, %{issues: [%{key: "JCL-3", due_date: nil, missing_fields: ["duedate"]}]}} =
+             Client.search_issues(@jql, api_token_request(), fields: ["*navigable"])
+  end
+
+  test "starts a field list of only exclusions from the navigable fields" do
+    # Enhanced search answers `-description` with the navigable fields except
+    # description, so the non-navigable `timetracking` is not missing.
+    expect_page(without_fields(page("issue_fields"), ["description", "duedate"]), fn body ->
+      assert body["fields"] == ["-description"]
+    end)
+
+    assert {:ok, %{issues: [%{key: "JCL-3", missing_fields: ["duedate"]}]}} =
+             Client.search_issues(@jql, api_token_request(), fields: ["-description"])
+  end
+
   test "follows two pages with an empty non-final page in between and yields every issue once" do
     # The middle page is the recorded second page without its issues: Jira can
     # answer a non-final page with no issues, and the test site does not.
@@ -252,7 +276,14 @@ defmodule Jido.Connect.Jira.Client.IssueSearchTest do
     if page.is_last, do: Enum.reverse(pages), else: follow(fetch, page.next_page_token, pages)
   end
 
-  defp page(n), do: LiveSmoke.fixture!(:jira, "issue_context.#{n}")
+  defp page(n) when is_integer(n), do: LiveSmoke.fixture!(:jira, "issue_context.#{n}")
+  defp page(name) when is_binary(name), do: LiveSmoke.fixture!(:jira, name)
+
+  defp without_fields(page, keys) do
+    Map.update!(page, "issues", fn issues ->
+      Enum.map(issues, &update_in(&1, ["fields"], fn fields -> Map.drop(fields, keys) end))
+    end)
+  end
 
   defp expect_page(body, check \\ fn _body -> :ok end) do
     Req.Test.expect(__MODULE__, fn conn ->

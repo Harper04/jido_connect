@@ -32,6 +32,9 @@
   `due_date` and `missing_fields` to the `jira.issue.get` output.
   `missing_fields`, also on `Issue` and on each search result, lists requested
   field keys that Jira left out, apart from fields it returned as `null`.
+  `*all` and `*navigable` count as the issue fields the connector reads, and a
+  list that only excludes fields starts from Jira's selection for it. Custom
+  fields behind a selector and other `*` selectors are not checked.
   `issue_key` accepts a numeric issue ID and is sent as one encoded path
   segment.
 - Return the nested status, assignee and reporter of issue reads as plain

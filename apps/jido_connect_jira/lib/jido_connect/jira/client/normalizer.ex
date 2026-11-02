@@ -31,7 +31,12 @@ defmodule Jido.Connect.Jira.Client.Normalizer do
   Pass the request's field list as `requested_fields:` to fill
   `missing_fields` with the requested keys that the payload leaves out; use
   `["*all"]` when the request named no fields. Without the option the list
-  stays empty.
+  stays empty. `*all` and `*navigable` count as the fields this function
+  reads, `timetracking` only for `*all`; other fields behind them and other
+  `*` selectors are not checked. A list that names no field, such as
+  `["-description"]`, starts from `*all`, as an issue read does; pass
+  `["*navigable" | list]` for enhanced search, which starts it from
+  `*navigable`.
   """
   @spec issue(map(), keyword()) :: {:ok, Issue.t()} | {:error, term()}
   def issue(payload, opts \\ [])

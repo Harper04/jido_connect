@@ -88,8 +88,21 @@ output carries `id`, `key`, `url` (the API `self` URL), `project`,
 `description_unsupported_nodes`, the date-only `due_date` and the
 timestamps. A field that Jira returns as `null` is absent from the output.
 `missing_fields` lists the requested Jira field keys, such as `parent` on a
-top-level issue, that the response does not contain at all, so an empty field
-and an unavailable one stay apart.
+top-level issue or a field that the site's field configuration hides, that the
+response does not contain at all, so an empty field and an unavailable one
+stay apart.
+
+Without `fields`, a read requests `*all`. The selectors `*all` and
+`*navigable` count as the issue fields the connector reads: `summary`,
+`description`, `status`, `issuetype`, `project`, `assignee`, `reporter`,
+`priority`, `labels`, `components`, `fixVersions`, `duedate`, `resolution`,
+`created`, `updated` and, for `*all` only, `timetracking`, which Jira does not
+count as navigable. A list that only excludes fields, such as
+`-description`, starts from `*all` for `jira.issue.get` and from `*navigable`
+for `jira.issue.search`, as Jira does. Two limits remain: other fields that a
+selector brings, such as custom fields, are not checked, and other selectors
+starting with `*` are not resolved. Their absence never shows in
+`missing_fields`.
 
 `jira.issue.search` calls Jira's enhanced JQL search,
 `POST /rest/api/3/search/jql`, with `jql`, `fields`, `maxResults` and
