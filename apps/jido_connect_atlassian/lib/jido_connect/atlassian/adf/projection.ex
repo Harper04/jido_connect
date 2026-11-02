@@ -145,7 +145,7 @@ defmodule Jido.Connect.Atlassian.ADF.Projection do
 
   defp text_shape("text", node) do
     with :ok <- text_value(Map.get(node, "text")) do
-      marks_shape(Map.get(node, "marks", []))
+      marks_shape(text_marks_of(node))
     end
   end
 
@@ -153,6 +153,9 @@ defmodule Jido.Connect.Atlassian.ADF.Projection do
 
   defp text_value(text) when is_binary(text), do: :ok
   defp text_value(_text), do: malformed(:text)
+
+  # A missing or null `marks` means no marks, as in the strict rendering.
+  defp text_marks_of(node), do: Map.get(node, "marks") || []
 
   defp marks_shape(marks) when is_list(marks) do
     if Enum.all?(marks, &mark_shape?/1), do: :ok, else: malformed(:marks)
@@ -166,7 +169,7 @@ defmodule Jido.Connect.Atlassian.ADF.Projection do
   # Rendering
 
   defp render("text", node, content, depth, state) do
-    {href, state} = text_marks(Map.get(node, "marks", []), state)
+    {href, state} = text_marks(text_marks_of(node), state)
     text = Map.fetch!(node, "text")
     fragment = if href, do: {:link, text, href}, else: {:inline, text}
     leaf(fragment, content, depth, state)

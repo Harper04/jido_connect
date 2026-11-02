@@ -294,6 +294,19 @@ defmodule Jido.Connect.Atlassian.ADFProjectionTest do
                 }}
     end
 
+    test "treats null text marks as no marks, as the strict rendering does" do
+      # https://developer.atlassian.com/cloud/jira/platform/apis/document/nodes/text/
+      # with an explicit null `marks`.
+      document = doc([paragraph([%{"type" => "text", "text" => "Hello world", "marks" => nil}])])
+
+      assert {:ok, "Hello world"} = ADF.to_text(document)
+
+      for mode <- @modes do
+        assert ADF.project(document, on_unsupported: mode) ==
+                 {:ok, %{text: "Hello world", unsupported_nodes: []}}
+      end
+    end
+
     test "renders an emoji by its short name when it has no text" do
       # https://developer.atlassian.com/cloud/jira/platform/apis/document/nodes/emoji/
       # without the optional `attrs.text`.
