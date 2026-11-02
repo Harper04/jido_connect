@@ -67,16 +67,15 @@ defmodule Jido.Connect.Google.Meet.NormalizerTest do
   end
 
   test "keeps the start time of a Meet conference record without end and expire times" do
-    [recorded_record] =
-      LiveSmoke.fixture!(:google_meet, "conference_records_window")["conferenceRecords"]
+    # Recorded with the field projection "name,space,startTime".
+    recorded = LiveSmoke.fixture!(:google_meet, "conference_record_get_start_only")
+    assert Enum.sort(Map.keys(recorded)) == ["name", "space", "startTime"]
 
-    record_payload = Map.drop(recorded_record, ["endTime", "expireTime"])
+    assert {:ok, %ConferenceRecord{} = record} = Normalizer.conference_record(recorded)
 
-    assert {:ok, %ConferenceRecord{} = record} = Normalizer.conference_record(record_payload)
-
-    assert record.conference_record_name == recorded_record["name"]
-    assert record.space == recorded_record["space"]
-    assert record.start_time == recorded_record["startTime"]
+    assert record.conference_record_name == recorded["name"]
+    assert record.space == recorded["space"]
+    assert record.start_time == recorded["startTime"]
     assert {record.end_time, record.expire_time} == {nil, nil}
   end
 

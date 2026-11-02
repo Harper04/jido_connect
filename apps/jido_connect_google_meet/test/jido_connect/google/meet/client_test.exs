@@ -287,31 +287,38 @@ defmodule Jido.Connect.Google.Meet.ClientTest do
   end
 
   test "leaves Meet recording start and end times nil when the response has none" do
-    untimed = &Map.drop(&1, ["startTime", "endTime"])
-    recorded_get = untimed.(LiveSmoke.fixture!(:google_meet, "recording_get"))
+    # Recorded with field projections that leave both times out.
+    get_fields = "name,state,driveDestination"
+    list_fields = "recordings(#{get_fields})"
+    recorded_get = LiveSmoke.fixture!(:google_meet, "recording_get_untimed")
+    recorded_list = LiveSmoke.fixture!(:google_meet, "recordings_untimed")
+    [listed_recorded] = recorded_list["recordings"]
 
-    recorded_list =
-      :google_meet
-      |> LiveSmoke.fixture!("recordings")
-      |> Map.update!("recordings", &Enum.map(&1, untimed))
+    for recorded <- [recorded_get, listed_recorded] do
+      assert Enum.sort(Map.keys(recorded)) == ["driveDestination", "name", "state"]
+    end
 
     Req.Test.stub(__MODULE__, fn conn ->
-      case conn.request_path do
-        "/v2/conferenceRecords/abc/recordings" -> Req.Test.json(conn, recorded_list)
-        "/v2/conferenceRecords/abc/recordings/def" -> Req.Test.json(conn, recorded_get)
+      case {conn.request_path, conn.query_params} do
+        {"/v2/conferenceRecords/abc/recordings", %{"fields" => ^list_fields}} ->
+          Req.Test.json(conn, recorded_list)
+
+        {"/v2/conferenceRecords/abc/recordings/def", %{"fields" => ^get_fields}} ->
+          Req.Test.json(conn, recorded_get)
       end
     end)
 
     assert {:ok, %{recordings: [listed]}} =
-             Client.list_recordings(%{conference_record_name: "conferenceRecords/abc"}, "token")
-
-    assert {:ok, fetched} =
-             Client.get_recording(
-               %{recording_name: "conferenceRecords/abc/recordings/def"},
+             Client.list_recordings(
+               %{conference_record_name: "conferenceRecords/abc", fields: list_fields},
                "token"
              )
 
-    [listed_recorded] = recorded_list["recordings"]
+    assert {:ok, fetched} =
+             Client.get_recording(
+               %{recording_name: "conferenceRecords/abc/recordings/def", fields: get_fields},
+               "token"
+             )
 
     for {recording, recorded} <- [{listed, listed_recorded}, {fetched, recorded_get}] do
       assert {recording.start_time, recording.end_time} == {nil, nil}
