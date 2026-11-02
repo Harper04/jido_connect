@@ -37,9 +37,11 @@ defmodule Jido.Connect.Tempo.Client.Response do
   @doc """
   Returns the decoded JSON body of a successful response or a normalized error.
 
-  Options: `:message`, the error message, and `:redact`, values replaced by
+  Options: `:message`, the error message; `:redact`, values replaced by
   `[redacted]` in Tempo's error text before the error is built and that
-  text is cut to 256 bytes.
+  text is cut to 256 bytes; and `:delivery`, which overrides the delivery
+  inferred for a transport failure, such as `:not_sent` for a request that
+  was stopped before it was sent.
   """
   @spec handle(term(), keyword()) :: {:ok, map() | list()} | {:error, Error.ProviderError.t()}
   def handle(response, opts \\ [])
@@ -69,9 +71,10 @@ defmodule Jido.Connect.Tempo.Client.Response do
   end
 
   def handle(response, opts) do
-    Transport.provider_error(response,
-      provider: :tempo,
-      message: Keyword.get(opts, :message, @message)
+    Transport.provider_error(
+      response,
+      [provider: :tempo, message: Keyword.get(opts, :message, @message)] ++
+        Keyword.take(opts, [:delivery])
     )
   end
 

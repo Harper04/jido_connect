@@ -164,7 +164,7 @@ never leaves that origin:
 
 - every request built by `Transport.request/2` checks its final URL before
   it is sent; another scheme, host or port fails with
-  `details.reason: :foreign_origin`
+  `details.reason: :foreign_origin` and `delivery: :not_sent`
 - redirects are not followed; a 3xx response is an error
 - the Req options `:tempo_req_options`, meant for `Req.Test`, cannot change
   the base URL, the auth or the redirect policy

@@ -11,7 +11,8 @@ defmodule Jido.Connect.Tempo.Client.Transport do
   - Every request built by `request/2` checks its final URL before it is
     sent. Scheme, host and port must equal the connection's origin;
     otherwise Req returns `{:error, %OriginError{}}`, which `get/3`
-    normalizes to a `:request_error` with `details.reason: :foreign_origin`.
+    normalizes to a `:request_error` with `details.reason: :foreign_origin`
+    and `delivery: :not_sent`.
   - Redirects are not followed. A 3xx response becomes a
     `Jido.Connect.Error.ProviderError`, so a `Location` on another origin
     never receives the `authorization` header.
@@ -66,8 +67,12 @@ defmodule Jido.Connect.Tempo.Client.Transport do
     request
     |> request(opts)
     |> Transport.request(:get, url: path, params: Keyword.get(opts, :params, []))
-    |> Response.handle()
+    |> handle()
   end
+
+  # The origin guard halts before the adapter runs, so nothing was sent.
+  defp handle({:error, %OriginError{}} = result), do: Response.handle(result, delivery: :not_sent)
+  defp handle(result), do: Response.handle(result)
 
   defp origin_guard(api_origin) do
     %URI{scheme: scheme, host: host, port: port} = URI.parse(api_origin)

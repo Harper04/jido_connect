@@ -135,6 +135,7 @@ defmodule Jido.Connect.Tempo.Client.TransportTest do
               %Error.ProviderError{
                 provider: :tempo,
                 reason: :request_error,
+                delivery: :not_sent,
                 details: %{reason: :foreign_origin}
               }} = Transport.get(request, url)
 
