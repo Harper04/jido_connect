@@ -624,6 +624,22 @@ defmodule Jido.Connect.Slack.Client.ConversationsTest do
       end
     end
 
+    test "string keys fail validation like missing ones, since only atom keys are sent" do
+      Req.Test.stub(__MODULE__, fn _conn -> flunk("no request expected") end)
+
+      assert {:error, %Error.ValidationError{reason: :missing_channel}} =
+               Client.get_conversation_history(
+                 %{"channel" => @channel, "conversation_type" => "im"},
+                 "token"
+               )
+
+      assert {:error, %Error.ValidationError{reason: :invalid_conversation_type}} =
+               Client.get_conversation_history(
+                 %{:channel => @channel, "conversation_type" => "im"},
+                 "token"
+               )
+    end
+
     defp params(overrides \\ []) do
       Enum.into(overrides, %{channel: @channel, conversation_type: "public_channel"})
     end

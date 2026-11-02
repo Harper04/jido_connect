@@ -1,7 +1,7 @@
 defmodule Jido.Connect.Slack.Client.Conversations do
   @moduledoc "Slack Conversations API boundary."
 
-  alias Jido.Connect.{Data, Error}
+  alias Jido.Connect.Error
   alias Jido.Connect.Slack.Client.{Params, Response, Transport}
   alias Jido.Connect.Slack.Message
 
@@ -15,13 +15,14 @@ defmodule Jido.Connect.Slack.Client.Conversations do
   @doc """
   Reads one page of `conversations.history`, newest message first.
 
-  `params` needs `channel` and `conversation_type`, one of
+  `params` is an atom-keyed map, as in the other client calls. It needs
+  `channel` and `conversation_type`, one of
   `Jido.Connect.Slack.Message.conversation_types/0`; `cursor`, `oldest`,
-  `latest`, `inclusive` and `limit` are passed on. A missing channel or an
-  unknown type fails before any request. The result holds the page's
-  `Jido.Connect.Slack.Message` structs, `next_cursor` (`""` on the last page),
-  `has_more` and, when Slack sends it, `is_limited`. There is no retry and no
-  further page request.
+  `latest`, `inclusive` and `limit` are passed on. A missing channel, an
+  unknown type or a string-keyed map fails before any request. The result
+  holds the page's `Jido.Connect.Slack.Message` structs, `next_cursor` (`""`
+  on the last page), `has_more` and, when Slack sends it, `is_limited`. There
+  is no retry and no further page request.
   """
   def get_conversation_history(params, access_token)
       when is_map(params) and is_binary(access_token) do
@@ -112,8 +113,8 @@ defmodule Jido.Connect.Slack.Client.Conversations do
   end
 
   defp validate_history_params(params) do
-    channel = Data.get(params, :channel)
-    type = Data.get(params, :conversation_type)
+    channel = Map.get(params, :channel)
+    type = Map.get(params, :conversation_type)
 
     cond do
       not is_binary(channel) or channel == "" ->

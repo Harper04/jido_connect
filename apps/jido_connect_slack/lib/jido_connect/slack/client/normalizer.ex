@@ -16,8 +16,8 @@ defmodule Jido.Connect.Slack.Client.Normalizer do
     message
     |> Map.take(@history_message_keys)
     |> Map.merge(%{
-      "channel" => Data.get(params, :channel),
-      "conversation_type" => Data.get(params, :conversation_type)
+      "channel" => Map.get(params, :channel),
+      "conversation_type" => Map.get(params, :conversation_type)
     })
     |> Message.new()
   end
