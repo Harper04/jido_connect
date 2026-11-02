@@ -83,9 +83,33 @@ defmodule Jido.Connect.Tempo.Client.Transport do
     |> handle()
   end
 
+  @doc """
+  Sends one JSON POST of `opts[:json]` to `path` and returns the decoded
+  JSON body.
+
+  A POST is a mutation that Tempo does not deduplicate. It is sent once:
+  `retry: false` is set after the Req options of the app and the caller are
+  merged, so no Req option can resend it. Errors follow the mutation rules
+  of `Jido.Connect.Tempo.Client.Response.handle/2`. Options: `:json`,
+  `:req_options` and `:reasons` of `Response.handle/2`.
+  """
+  @spec post(Request.t(), String.t(), keyword()) ::
+          {:ok, map() | list()} | {:error, Jido.Connect.Error.ProviderError.t()}
+  def post(%Request{} = request, path, opts) when is_binary(path) do
+    request
+    |> request(opts)
+    |> Req.merge(retry: false)
+    |> Transport.request(:post, url: path, json: Keyword.fetch!(opts, :json))
+    |> handle(mutation?: true, reasons: Keyword.get(opts, :reasons, []))
+  end
+
   # The origin guard halts before the adapter runs, so nothing was sent.
-  defp handle({:error, %OriginError{}} = result), do: Response.handle(result, delivery: :not_sent)
-  defp handle(result), do: Response.handle(result)
+  defp handle(result, opts \\ [])
+
+  defp handle({:error, %OriginError{}} = result, opts),
+    do: Response.handle(result, Keyword.put(opts, :delivery, :not_sent))
+
+  defp handle(result, opts), do: Response.handle(result, opts)
 
   defp origin_guard(api_origin) do
     %URI{scheme: scheme, host: host, port: port} = URI.parse(api_origin)
