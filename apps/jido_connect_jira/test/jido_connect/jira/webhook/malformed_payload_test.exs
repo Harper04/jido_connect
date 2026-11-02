@@ -22,6 +22,7 @@ defmodule Jido.Connect.Jira.Webhook.MalformedPayloadTest do
       {"changelog items not a list", &put_in(&1, ["changelog", "items"], %{}), "changelog.items"},
       {"changelog item not an object", &put_in(&1, ["changelog", "items"], ["status"]),
        "changelog.items"},
+      {"changelog item null", &put_in(&1, ["changelog", "items"], [nil]), "changelog.items"},
       {"assignee not an object", &put_in(&1, ["issue", "fields", "assignee"], "account-1"),
        "issue.fields.assignee"},
       {"timestamp a word", &Map.put(&1, "timestamp", "yesterday"), "timestamp"},

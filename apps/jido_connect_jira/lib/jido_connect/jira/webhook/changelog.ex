@@ -9,8 +9,9 @@ defmodule Jido.Connect.Jira.Webhook.Changelog do
   Jira leaves out stays absent. Values pass through unchanged, so status IDs
   and date-only due dates such as `"2026-12-15"` are not converted.
 
-  A changelog that is not an object, `items` that is not a list, and an item
-  that is not an object fail with `:invalid_webhook_event`.
+  A changelog that is neither an object nor `null`, `items` that is neither a
+  list nor `null`, and an item that is not an object, `null` included, fail
+  with `:invalid_webhook_event`.
   """
 
   alias Jido.Connect.Data

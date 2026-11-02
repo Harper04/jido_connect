@@ -307,16 +307,26 @@ the body as a plain string, which passes through with an empty
 `comment_body_unsupported_nodes`. A body that projects to an empty text keeps
 `comment_body: ""`.
 
-`normalize_event/1` never raises on a malformed payload. A missing issue or
-comment, a missing or non-string issue or comment `id`, `fields`, `user`,
-`changelog`, `changelog.items` entries, `fields.assignee`, `comment.author`
-or `comment.updateAuthor` that are neither objects nor `null`, a malformed
-`timestamp` or `matchedWebhookIds`, and a comment body that is not valid ADF
-return a `Jido.Connect.Error.ProviderError` with reason
-`:invalid_webhook_event`. Its details name the event type and the payload
-path, such as `"issue.id"`, and hold no payload values. Other event names
-return `:unsupported_webhook_event`. `verify_delivery/4` then returns the
-verified delivery without a normalized signal.
+`normalize_event/1` never raises on a malformed payload. It returns a
+`Jido.Connect.Error.ProviderError` with reason `:invalid_webhook_event` for:
+
+- a missing issue or comment, and an issue or comment `id` that is not a
+  non-empty string;
+- in issue deliveries, `fields`, `user`, `changelog` or `fields.assignee`
+  that is neither an object nor `null`, `changelog.items` that is neither a
+  list nor `null`, and a `changelog.items` entry that is not an object, a
+  `null` entry included;
+- in comment deliveries, `comment.author` or `comment.updateAuthor` that is
+  neither an object nor `null`, and a comment body that is not valid ADF;
+- a malformed `timestamp` or `matchedWebhookIds`.
+
+Comment deliveries do not read `fields`, `user` or `changelog`. The error
+details name the event type and the payload path, such as `"issue.id"`, and
+for a comment body also the ADF reason; they hold no payload values. A
+payload without a string `webhookEvent` returns `:invalid_webhook_event`
+with empty details, and other event names return
+`:unsupported_webhook_event`. `verify_delivery/4` then returns the verified
+delivery without a normalized signal.
 
 The signal keeps full values. `Jido.Connect.WebhookDelivery.to_public_map/1`
 sanitizes `normalized_signal` like any transport payload: it cuts strings
