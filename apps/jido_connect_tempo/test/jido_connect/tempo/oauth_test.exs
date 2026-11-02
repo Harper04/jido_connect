@@ -133,6 +133,26 @@ defmodule Jido.Connect.Tempo.OAuthTest do
       refute_secrets(error, ["code-under-test"])
     end
 
+    # The recorded rejection with an `errors` list that names no message, so
+    # the echo sits only in the top-level message.
+    test "secrets echoed in a top-level message next to errors are redacted" do
+      Req.Test.expect(__MODULE__, fn conn ->
+        Fixture.respond(conn, "oauth_invalid_code",
+          body:
+            &Map.merge(&1, %{
+              "errors" => [%{"code" => "x"}],
+              "message" => "code code-under-test for #{@client_secret} is invalid"
+            })
+        )
+      end)
+
+      assert {:error, %Error.ProviderError{reason: :forbidden} = error} =
+               OAuth.exchange_code("code-under-test", @opts)
+
+      assert error.details.message == "code [redacted] for [redacted] is invalid"
+      refute_secrets(error, ["code-under-test"])
+    end
+
     # Errors keep 256 bytes of a message. A secret echoed across that cut
     # must be redacted before it, or its first bytes remain.
     test "secrets echoed at the truncation point leave no prefix" do

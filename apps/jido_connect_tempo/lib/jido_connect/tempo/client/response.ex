@@ -18,11 +18,13 @@ defmodule Jido.Connect.Tempo.Client.Response do
   | other | `:http_error` |
 
   `details.message` is Tempo's error text from the recorded body form
-  `{"errors": [{"message": ...}]}`. Tempo answers 401, and 404 for an unknown
-  route, without a JSON body; those keep only the body size. A 2xx response
-  without a JSON object or list is `:invalid_response`; a transport failure,
-  such as a timeout, is `:request_error` with the reason code in
-  `details.reason`. Raw bodies are reduced to a value-free summary.
+  `{"errors": [{"message": ...}]}`, else the top-level `message` of the
+  token endpoint's form `{"message": ..., "status": ...}`; the `:redact`
+  option of `handle/2` applies to both. Tempo answers 401, and 404 for an
+  unknown route, without a JSON body; those keep only the body size. A 2xx
+  response without a JSON object or list is `:invalid_response`; a
+  transport failure, such as a timeout, is `:request_error` with the reason
+  code in `details.reason`. Raw bodies are reduced to a value-free summary.
 
   Every Tempo request decodes JSON in its own response step, attached by
   `attach_json_decoder/1` when the request is built, instead of Req's
@@ -162,15 +164,20 @@ defmodule Jido.Connect.Tempo.Client.Response do
   defp reason(status) when status in 500..599, do: :server_error
   defp reason(_status), do: :http_error
 
-  defp error_message(%{"errors" => [_ | _] = errors}) do
+  # Tempo's `errors` messages, else the top-level `message`. Both are taken
+  # here and redacted, so the core's own fallback to the top-level `message`
+  # can only add its generic text.
+  defp error_message(%{"errors" => [_ | _] = errors} = body) do
     case for(%{"message" => message} when is_binary(message) <- errors, do: message) do
-      [] -> nil
+      [] -> top_level_message(body)
       messages -> Enum.join(messages, "; ")
     end
   end
 
-  defp error_message(%{"message" => message}) when is_binary(message), do: message
-  defp error_message(_body), do: nil
+  defp error_message(body), do: top_level_message(body)
+
+  defp top_level_message(%{"message" => message}) when is_binary(message), do: message
+  defp top_level_message(_body), do: nil
 
   defp redact(message, opts) do
     opts
