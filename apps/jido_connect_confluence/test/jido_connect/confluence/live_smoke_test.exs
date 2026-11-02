@@ -28,9 +28,10 @@ defmodule Jido.Connect.Confluence.LiveSmokeTest do
   end
 
   # The page tests below compare each live read with the committed recording
-  # of the same page: ID, version, a SHA-256 digest of the text instead of the
-  # text, and the unsupported-node outcome. Only the default read is recorded;
-  # the degrade read before it receives the same response.
+  # of the same page: ID, version, a SHA-256 digest of the text and the
+  # unsupported-node outcome. Assertions leave the text out of page maps, so a
+  # failure prints no page content. Only the default read is recorded; the
+  # degrade read before it receives the same response.
 
   @tag env!(["CONFLUENCE_SITE", "CONFLUENCE_EMAIL", "CONFLUENCE_API_TOKEN", "CONFLUENCE_PAGE_ID"])
   test "confluence.page.get reads the plain page alike in both modes", %{env: env} do
@@ -45,13 +46,14 @@ defmodule Jido.Connect.Confluence.LiveSmokeTest do
     expected = recorded_projection(recorded)
     version = recorded["version"]["number"]
 
-    assert %{unsupported_nodes: []} = expected
-    assert %{id: ^page_id, version: ^version, truncated: false} = page
+    assert expected.unsupported_nodes == []
+    assert %{id: ^page_id, version: ^version, truncated: false} = Map.delete(page, :text)
     refute Map.has_key?(page, :unsupported_nodes)
     assert digest(page.text) == digest(expected.text)
     assert page.character_count == String.length(expected.text)
 
-    assert Map.delete(degraded, :unsupported_nodes) == page
+    assert Map.drop(degraded, [:text, :unsupported_nodes]) == Map.delete(page, :text)
+    assert digest(degraded.text) == digest(page.text)
     assert degraded.unsupported_nodes == []
 
     assert_tenant_url(page.url, env, recorded)
@@ -83,7 +85,7 @@ defmodule Jido.Connect.Confluence.LiveSmokeTest do
     expected = recorded_projection(recorded)
     version = recorded["version"]["number"]
 
-    assert %{id: ^page_id, version: ^version, truncated: false} = degraded
+    assert %{id: ^page_id, version: ^version, truncated: false} = Map.delete(degraded, :text)
     assert digest(degraded.text) == digest(expected.text)
     assert degraded.unsupported_nodes == expected.unsupported_nodes
     assert Enum.all?(~w(mediaSingle extension annotation), &(&1 in degraded.unsupported_nodes))
@@ -122,19 +124,19 @@ defmodule Jido.Connect.Confluence.LiveSmokeTest do
     end
   end
 
-  defp request(env), do: env |> runtime(Client) |> Client.request_context()
+  defp request(env), do: env |> runtime() |> Client.request_context()
 
-  defp runtime(env, client) do
+  defp runtime(env) do
     TestRuntime.build(
       site_url: env["CONFLUENCE_SITE"],
       email: env["CONFLUENCE_EMAIL"],
       api_token: env["CONFLUENCE_API_TOKEN"],
-      provider_client: client
+      provider_client: Client
     )
   end
 
   defp get_page(env, input) do
-    opts = env |> runtime(Client) |> TestRuntime.invoke_opts()
+    opts = env |> runtime() |> TestRuntime.invoke_opts()
     Connect.invoke(Confluence, "confluence.page.get", input, opts)
   end
 
