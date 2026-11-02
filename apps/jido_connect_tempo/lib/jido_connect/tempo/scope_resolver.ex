@@ -13,14 +13,14 @@ defmodule Jido.Connect.Tempo.ScopeResolver do
   - OAuth: the host records `granted_labels/1` of the token response's
     `scope`, or keeps the labels recorded before when that `scope` is `nil`.
 
-  `granted_labels/1` maps two forms of Tempo grants. The area grants seen on
-  the test site map one to one: `worklogs:view` to `tempo.worklogs.read`,
+  `granted_labels/1` maps two forms of Tempo grants. Five area grants seen
+  on the test site map one to one: `worklogs:view` to `tempo.worklogs.read`,
   `worklogs:manage` to `tempo.worklogs.write`, and `accounts:view`,
   `periods:view` and `approvals:view` to the read labels of their areas. The
   coarse grants of Tempo's OpenAPI example map by kind: `read` to the four
   read labels and `write` to `tempo.worklogs.write`. A manage or `write`
-  grant implies no read label. Other grants, such as `teams:view`, map to no
-  label.
+  grant implies no read label. Other grants, such as `accounts:manage`,
+  `approvals:manage` or `teams:view`, map to no label.
 
   `required_scopes/3` resolves an operation through `operations/0`, which
   each Tempo action extends with its labels. An operation without an entry

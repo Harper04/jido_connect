@@ -87,13 +87,14 @@ the host has recorded it in `connection.scopes`:
 
 Tempo returns the OAuth `scope` as a space-separated list of grants. On the
 test site these were `<area>:view` and `<area>:manage` grants and
-`activities:produce`; the view and manage grants of the five label areas map
-one to one, so the test user's scope yields all five labels. Tempo's OpenAPI
-example shows the coarse `read write`, where `read` satisfies the four read
-labels and `write` satisfies `tempo.worklogs.write`. A manage or `write`
-grant implies no read label, and other grants, such as `teams:view` or
-`activities:produce`, map to no label. The effective rights stay bounded by
-the user's Tempo permissions.
+`activities:produce`. Five of them map to one label each: `worklogs:view`,
+`worklogs:manage`, `accounts:view`, `periods:view` and `approvals:view`, so
+the test user's scope yields all five labels. Tempo's OpenAPI example shows
+the coarse `read write`, where `read` satisfies the four read labels and
+`write` satisfies `tempo.worklogs.write`. A manage or `write` grant implies
+no read label. All other grants map to no label, among them
+`accounts:manage`, `approvals:manage`, `teams:view` and `activities:produce`.
+The effective rights stay bounded by the user's Tempo permissions.
 
 `ScopeResolver.required_scopes/3` resolves each operation through an
 operation map that each Tempo action extends. An operation without an entry
