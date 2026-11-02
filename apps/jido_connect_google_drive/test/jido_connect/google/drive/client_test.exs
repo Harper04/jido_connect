@@ -559,6 +559,31 @@ defmodule Jido.Connect.Google.Drive.ClientTest do
     refute Map.has_key?(content, :content_base64)
   end
 
+  test "downloads binary files" do
+    Req.Test.stub(__MODULE__, fn conn ->
+      assert conn.method == "GET"
+      assert conn.request_path == "/v3/files/file123"
+      assert conn.query_params["alt"] == "media"
+      assert conn.query_params["supportsAllDrives"] == "true"
+      assert Plug.Conn.get_req_header(conn, "accept") == ["*/*"]
+
+      # Plug appends `; charset=utf-8`, which the MIME type drops.
+      conn
+      |> Plug.Conn.put_resp_content_type("application/pdf")
+      |> Plug.Conn.resp(200, <<0, 1, 2>>)
+    end)
+
+    assert {:ok, content} =
+             Client.download_file(%{file_id: "file123", supports_all_drives: true}, "token")
+
+    assert content.file_id == "file123"
+    assert content.mime_type == "application/pdf"
+    assert content.content_base64 == "AAEC"
+    assert content.size == 3
+    assert content.encoding == "base64"
+    assert content.binary == true
+  end
+
   test "downloads a recording's MP4 bytes as base64 with their byte count" do
     # The recorded download of the test meeting's MP4 keeps its headers and
     # byte count but not its bytes. The body here is the head of an MP4 file,
