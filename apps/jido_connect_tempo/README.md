@@ -86,12 +86,14 @@ the host has recorded it in `connection.scopes`:
   the labels recorded before when `token.scope` is `nil`.
 
 Tempo returns the OAuth `scope` as a space-separated list of grants. On the
-test site these were `<area>:view` and `<area>:manage` grants, which map one
-to one; Tempo's OpenAPI example shows the coarse `read write`, where `read`
-satisfies the four read labels and `write` satisfies `tempo.worklogs.write`.
-A manage or `write` grant implies no read label, and other grants, such as
-`teams:view`, map to no label. The effective rights stay bounded by the
-user's Tempo permissions.
+test site these were `<area>:view` and `<area>:manage` grants and
+`activities:produce`; the view and manage grants of the five label areas map
+one to one, so the test user's scope yields all five labels. Tempo's OpenAPI
+example shows the coarse `read write`, where `read` satisfies the four read
+labels and `write` satisfies `tempo.worklogs.write`. A manage or `write`
+grant implies no read label, and other grants, such as `teams:view` or
+`activities:produce`, map to no label. The effective rights stay bounded by
+the user's Tempo permissions.
 
 `ScopeResolver.required_scopes/3` resolves each operation through an
 operation map that each Tempo action extends. An operation without an entry
@@ -114,8 +116,10 @@ refresh scheduling.
 
    This builds `https://api.tempo.io/oauth/authorize/redirect` with
    URL-encoded `client_id`, `redirect_uri` and `jira_url`. Tempo's
-   documentation lists no `state` parameter, so the helper sends none; bind
-   the callback to the user's session in the host.
+   documentation lists no `state` parameter, so the helper sends none. On
+   the test site, an extra `state` query parameter on this URL reached the
+   redirect URI unchanged. Bind the callback to the user's session in the
+   host.
 
 2. Exchange the `code` from the callback:
 
@@ -130,7 +134,8 @@ refresh scheduling.
 
    The form post goes to `https://api.tempo.io/oauth/token/`. `token` holds
    `access_token`, `refresh_token`, `expires_in` (seconds) and `scope` (a
-   list of Tempo grants). A successful response that is not a JSON object,
+   list of Tempo grants); Tempo also sends `token_type` `"Bearer"`, which
+   the helper does not read. A successful response that is not a JSON object,
    or lacks either token, is an `:invalid_response` error.
    `expires_in` is `nil` when Tempo sends no positive integer; the expiry is
    then unknown. `scope` is `nil` when Tempo sends no `scope` string; an
@@ -143,15 +148,16 @@ refresh scheduling.
 ### Token Rotation
 
 Every refresh replaces both tokens. Tempo invalidates the old access token
-and the old refresh token, so the host must store both new tokens, and
-update `connection.scopes` from the new `scope`, before it uses either. When
-`scope` is `nil`, Tempo did not report the grant and the host keeps the
-labels it recorded before. A refresh response without a new refresh token
-is an error; a missing or malformed `expires_in` or `scope` does not discard
-the new tokens, since Tempo has already rotated them. A failed or lost
-refresh can leave the connection without a valid refresh token; the user
-must then authorize again. Treat the old refresh token as lost after any
-response from Tempo and after an error with
+and the old refresh token at once; on the test site the old access token got
+a 401 right after the refresh. The host must therefore store both new
+tokens, and update `connection.scopes` from the new `scope`, before it uses
+either. When `scope` is `nil`, Tempo did not report the grant and the host
+keeps the labels it recorded before. A refresh response without a new
+refresh token is an error; a missing or malformed `expires_in` or `scope`
+does not discard the new tokens, since Tempo has already rotated them. A
+failed or lost refresh can leave the connection without a valid refresh
+token; the user must then authorize again. Treat the old refresh token as
+lost after any response from Tempo and after an error with
 `delivery: :sent_outcome_unknown`, such as a timeout, whatever the error's
 retry guidance says. Only an error with `delivery: :not_sent`, such as a
 refused connection, leaves it valid.
@@ -241,7 +247,7 @@ set -a; source ~/.config/jido_connect/live/atlassian.env; set +a
 MIX_ENV=test mix do --app jido_connect_tempo test --only live_smoke
 ```
 
-`test/fixtures/tempo/observed/oauth_token.json` holds the shape of a
-successful token response as observed on the test site. It is not a
-recording; its `source` field explains why. See `docs/live_smoke_tests.md`
-for the variables and the recording mode.
+The successful code exchange and refresh are recorded in
+`oauth_exchange.json` and `oauth_refresh.json`, the rejections in
+`oauth_invalid_code.json` and `oauth_invalid_refresh_token.json`. See
+`docs/live_smoke_tests.md` for the variables and the recording mode.

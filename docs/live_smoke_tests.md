@@ -216,7 +216,10 @@ refreshes that pair once and writes each pair at once to
 `TEMPO_OAUTH_REFRESH_TOKEN` and `TEMPO_OAUTH_ACCESS_TOKEN_EXPIRES_AT` lines.
 The file then holds the only valid refresh token of that authorization; copy
 its lines to `atlassian.env` and the password manager. The test does not use
-the stored `TEMPO_OAUTH_REFRESH_TOKEN`.
+the stored `TEMPO_OAUTH_REFRESH_TOKEN`. With recording on, it writes the two
+token responses to `oauth_exchange.json` and `oauth_refresh.json`, with the
+token fields redacted, and deletes a file that still holds a token or the
+code.
 
 ### Confluence
 
