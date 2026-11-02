@@ -1630,23 +1630,32 @@ defmodule Jido.Connect.Google.CalendarTest do
   all_day = %{calendar_id: "primary", all_day: true, start: "2026-05-06", end: "2026-05-07"}
 
   # The input schema rejects missing times and unknown send_updates values
-  # (reason :input); the event validation rejects the rest.
-  for {label, input, reason} <- [
-        {"a missing start", Map.delete(timed, :start), :input},
-        {"a missing end", Map.delete(timed, :end), :input},
-        {"hour 25", Map.put(timed, :start, "2026-05-06T25:00:00-05:00"), :invalid_event_time},
+  # (reason :input); the event validation rejects the rest and names the
+  # field. Hour 25 and February 30 fail as start times: a parser that rolled
+  # them over to the next day would reach the end-after-start check and
+  # report the end instead.
+  for {label, input, reason, details} <- [
+        {"a missing start", Map.delete(timed, :start), :input, %{}},
+        {"a missing end", Map.delete(timed, :end), :input, %{}},
+        {"hour 25", Map.put(timed, :start, "2026-05-06T25:00:00-05:00"), :invalid_event_time,
+         %{field: :start}},
         {"the all-day date February 30", %{all_day | start: "2026-02-30", end: "2026-03-02"},
-         :invalid_event_time},
-        {"an all-day end equal to the start", %{all_day | end: "2026-05-06"},
-         :invalid_event_time},
-        {"an all-day end before the start", %{all_day | end: "2026-05-05"}, :invalid_event_time},
-        {"send_updates \"sometimes\"", Map.put(timed, :send_updates, "sometimes"), :input}
+         :invalid_event_time, %{field: :start}},
+        {"an all-day end equal to the start", %{all_day | end: "2026-05-06"}, :invalid_event_time,
+         %{field: :end}},
+        {"an all-day end before the start", %{all_day | end: "2026-05-05"}, :invalid_event_time,
+         %{field: :end}},
+        {"send_updates \"sometimes\"", Map.put(timed, :send_updates, "sometimes"), :input, %{}}
       ] do
     test "create event rejects #{label} without calling the client" do
       {context, lease} =
         context_and_lease(scopes: event_write_scopes(), client: RecordingCalendarClient)
 
-      assert {:error, %Connect.Error.ValidationError{reason: unquote(reason)}} =
+      assert {:error,
+              %Connect.Error.ValidationError{
+                reason: unquote(reason),
+                details: unquote(Macro.escape(details))
+              }} =
                Connect.invoke(
                  Calendar.integration(),
                  "google.calendar.event.create",
