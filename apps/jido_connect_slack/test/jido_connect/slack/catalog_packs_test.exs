@@ -23,6 +23,21 @@ defmodule Jido.Connect.Slack.CatalogPacksTest do
        }}
     end
 
+    # Returns plain maps, as an injected client may, not Message structs.
+    def get_conversation_history(
+          %{channel: "C123", conversation_type: "public_channel", limit: 100},
+          "token"
+        ) do
+      record(:get_conversation_history)
+
+      {:ok,
+       %{
+         messages: [%{channel: "C123", ts: "1700000001.000100", text: "History"}],
+         next_cursor: "",
+         has_more: false
+       }}
+    end
+
     def get_presence("token") do
       record(:get_presence)
 
@@ -118,7 +133,20 @@ defmodule Jido.Connect.Slack.CatalogPacksTest do
     assert {:ok, %{count: 1, emoji: [%{name: "shipit"}]}} =
              Connect.invoke(Jido.Connect.Slack, "slack.emoji.list", %{}, opts)
 
-    assert FakeClient.calls() == [:list_unread_messages, :get_presence, :list_emoji]
+    assert {:ok, %{messages: [%{ts: "1700000001.000100", text: "History"}], has_more: false}} =
+             Connect.invoke(
+               Jido.Connect.Slack,
+               "slack.conversation.history",
+               %{channel: "C123", conversation_type: "public_channel"},
+               opts
+             )
+
+    assert FakeClient.calls() == [
+             :list_unread_messages,
+             :get_presence,
+             :list_emoji,
+             :get_conversation_history
+           ]
   end
 
   test "auth test accepts the imported user profile and the injected provider client" do
