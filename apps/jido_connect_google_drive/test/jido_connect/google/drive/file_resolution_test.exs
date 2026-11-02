@@ -62,6 +62,20 @@ defmodule Jido.Connect.Google.Drive.FileResolutionTest do
       assert {:ok, _result} = apply(Client, client, [input, "token"])
     end
 
+    # A host's empty optional form field arrives as "".
+    test "#{operation} treats an empty resource key as absent" do
+      %{client: client, input: input, path: path, fixture: fixture} =
+        operation(unquote(operation))
+
+      Req.Test.expect(__MODULE__, fn conn ->
+        assert conn.request_path == path
+        assert Plug.Conn.get_req_header(conn, @header) == []
+        replay(conn, fixture)
+      end)
+
+      assert {:ok, _result} = apply(Client, client, [Map.put(input, :resource_key, ""), "token"])
+    end
+
     test "#{operation} action carries resource_key from its input to the wire" do
       %{action: action, input: input, fixture: fixture} = operation(unquote(operation))
 
