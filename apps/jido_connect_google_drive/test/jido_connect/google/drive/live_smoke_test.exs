@@ -28,6 +28,11 @@ defmodule Jido.Connect.Google.Drive.LiveSmokeTest do
   # A caller-supplied projection without `incompleteSearch`.
   @caller_list_fields "nextPageToken,files(id,name,mimeType,parents)"
 
+  # Prepared data of the test account: GOOGLE_DRIVE_FOLDER_ID holds this many
+  # direct children outside the trash and one trashed child. The seed script
+  # restores them, possibly under new IDs.
+  @folder_children 5
+
   @tag env!(["GOOGLE_ACCESS_TOKEN"])
   test "reads the Drive about resource", %{env: env} do
     LiveSmoke.record(@req_options, :google_drive, "about")
@@ -48,8 +53,13 @@ defmodule Jido.Connect.Google.Drive.LiveSmokeTest do
              invoke("google.drive.files.list", %{query: in_folder, page_size: 100}, token)
 
     refute Map.has_key?(unfiltered, :next_page_token)
+
+    assert Enum.any?(children, & &1.trashed?),
+           "the prepared folder has no trashed child; Drive deletes trashed files " <>
+             "after 30 days, run `seed.py drive` to restore it"
+
     known_ids = for file <- children, not file.trashed?, do: file.file_id
-    assert length(known_ids) >= 2
+    assert length(known_ids) == @folder_children
 
     LiveSmoke.record(@req_options, :google_drive, "files_list_caller_fields", @masked)
 
