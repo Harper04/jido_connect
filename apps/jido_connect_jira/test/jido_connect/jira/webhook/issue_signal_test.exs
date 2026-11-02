@@ -127,6 +127,48 @@ defmodule Jido.Connect.Jira.Webhook.IssueSignalTest do
     end
   end
 
+  describe "absent parts" do
+    # Every captured issue delivery carries `changelog`, `user`,
+    # `issue.fields` and `timestamp`, as Jira documents them. The normalizer
+    # reads a missing part as absent rather than malformed, so each derived
+    # payload leaves out exactly one part of the captured status change and
+    # loses only the signal fields read from that part.
+    @fields_keys ~w(project_key project_name summary issue_type_name status_name priority_name
+                    reporter_id reporter_name created_at updated_at assigned assignee_id
+                    assignee_name)a
+
+    test "a delivery without changelog, user, fields or timestamp keeps every other field" do
+      assert {:ok, baseline} = normalize("status_changed")
+
+      rows = [
+        {"changelog", &Map.delete(&1, "changelog"), [:changelog]},
+        {"user", &Map.delete(&1, "user"), [:actor_id, :actor_name]},
+        {"issue.fields", &update_in(&1, ["issue"], fn i -> Map.delete(i, "fields") end),
+         @fields_keys},
+        {"timestamp", &Map.delete(&1, "timestamp"), [:timestamp]}
+      ]
+
+      for {part, leave_out, dropped} <- rows do
+        assert Enum.all?(dropped, &Map.has_key?(baseline, &1)), part
+
+        assert {:ok, signal} =
+                 payload!("status_changed") |> leave_out.() |> Webhook.normalize_event()
+
+        assert signal == Map.drop(baseline, dropped), part
+      end
+    end
+
+    test "a changelog without items keeps its id" do
+      assert {:ok, baseline} = normalize("status_changed")
+
+      # Derived: the captured status change without `changelog.items`.
+      payload = update_in(payload!("status_changed"), ["changelog"], &Map.delete(&1, "items"))
+
+      assert {:ok, signal} = Webhook.normalize_event(payload)
+      assert signal == %{baseline | changelog: %{id: baseline.changelog.id}}
+    end
+  end
+
   describe "status and due date" do
     test "a status change keeps status IDs and names under Jira's generic event name" do
       assert {:ok, signal} = normalize("status_changed")

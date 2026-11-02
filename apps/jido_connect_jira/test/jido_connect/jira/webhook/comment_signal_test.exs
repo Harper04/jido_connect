@@ -77,6 +77,25 @@ defmodule Jido.Connect.Jira.Webhook.CommentSignalTest do
       assert signal.comment_author_id == "account-1"
     end
 
+    test "a creation without author has neither actor nor author" do
+      assert {:ok, baseline} = normalize("comment_created")
+
+      # Derived: the captured creation without `comment.author`. Jira
+      # documents the author on every comment; the normalizer reads a missing
+      # author as absent rather than malformed.
+      payload = update_in(payload!("comment_created"), ["comment"], &Map.delete(&1, "author"))
+
+      assert {:ok, signal} = Webhook.normalize_event(payload)
+
+      assert signal ==
+               Map.drop(baseline, [
+                 :actor_id,
+                 :actor_name,
+                 :comment_author_id,
+                 :comment_author_name
+               ])
+    end
+
     test "administrator deliveries name no matched webhooks" do
       for name <- ~w(comment_created comment_updated) do
         assert {:ok, signal} = normalize(name)
