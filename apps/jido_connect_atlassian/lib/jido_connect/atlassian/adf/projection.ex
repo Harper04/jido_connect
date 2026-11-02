@@ -156,8 +156,14 @@ defmodule Jido.Connect.Atlassian.ADF.Projection do
   defp text_value(text) when is_binary(text), do: :ok
   defp text_value(_text), do: malformed(:text)
 
-  # A missing or null `marks` means no marks, as in the strict rendering.
-  defp text_marks_of(node), do: Map.get(node, "marks") || []
+  # A missing or null `marks` means no marks, as in the strict rendering. Any
+  # other value must pass `marks_shape/1`.
+  defp text_marks_of(node) do
+    case Map.get(node, "marks") do
+      nil -> []
+      marks -> marks
+    end
+  end
 
   defp marks_shape(marks) when is_list(marks) do
     if Enum.all?(marks, &mark_shape?/1), do: :ok, else: malformed(:marks)

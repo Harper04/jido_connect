@@ -50,7 +50,8 @@ defmodule Jido.Connect.Atlassian.ADF do
   `version` 1), `:content` (content that is not a list), `:node` (a node that
   is not a map), `:node_type` (a node without a type name), `:text` (a text
   node without string text) or `:marks` (text marks that are not a list of
-  typed maps). A type name has at most 64 letters and digits.
+  typed maps). Missing or `null` marks count as no marks. A type name has at
+  most 64 letters and digits.
 
   Two limits bound the work per document, in both modes and including the
   nodes inside skipped content:

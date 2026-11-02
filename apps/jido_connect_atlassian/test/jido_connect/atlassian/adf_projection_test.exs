@@ -500,6 +500,7 @@ defmodule Jido.Connect.Atlassian.ADFProjectionTest do
             {doc([%{"content" => []}]), :node_type},
             {doc([%{"type" => "Hello world"}]), :node_type},
             {doc([paragraph([%{@link_text | "marks" => %{"type" => "strong"}}])]), :marks},
+            {doc([paragraph([%{@link_text | "marks" => false}])]), :marks},
             {doc([paragraph([%{@link_text | "marks" => [%{"attrs" => %{}}]}])]), :marks}
           ],
           mode <- @modes do
