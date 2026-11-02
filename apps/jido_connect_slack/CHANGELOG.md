@@ -13,6 +13,12 @@
   responses, such as a 429 `ratelimited`. This changes the error details of
   every Slack action. HTTP failures without an `ok: false` body and failed
   file content uploads still carry no `retry_after`.
+- Add `Jido.Connect.Slack.Interactivity.verify_delivery/4`, which verifies a
+  signed interactivity form body and returns a `WebhookDelivery`. Bodies above
+  `:max_body_bytes` (default 256 KiB) fail before the signature check. The
+  delivery ID is the lowercase hex SHA-256 of the raw body, and the payload
+  drops `token`, `response_url` and `trigger_id`. No payload type is
+  normalized yet.
 
 ## 0.1.0
 
