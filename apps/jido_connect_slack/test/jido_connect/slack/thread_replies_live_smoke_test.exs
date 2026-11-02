@@ -112,7 +112,7 @@ defmodule Jido.Connect.Slack.ThreadRepliesLiveSmokeTest do
     parent = env["SLACK_THREAD_TS"]
     thread = reference_thread!(token, channel, parent)
     root = root!(thread, parent)
-    lone_ts = lone_message_ts!(token, channel)
+    lone_ts = lone_message_ts!(token, channel, parent)
 
     # The four oldest replies: two full pages, and the first page ends before
     # the newest reply, so the parent's reply_count and latest_reply differ
@@ -157,6 +157,7 @@ defmodule Jido.Connect.Slack.ThreadRepliesLiveSmokeTest do
                conversation_type: "public_channel"
              })
 
+    IO.puts("live_smoke slack: parent without replies: #{lone_ts}")
     record("thread_replies_thread_not_found")
 
     assert {:error,
@@ -255,17 +256,19 @@ defmodule Jido.Connect.Slack.ThreadRepliesLiveSmokeTest do
     messages
   end
 
-  # The newest plain message of the channel that starts no thread.
-  defp lone_message_ts!(token, channel) do
+  # The newest message before the prepared thread without subtype, thread,
+  # files or edit. Posts after the thread do not change the choice, so a new
+  # recording keeps the same parent without replies.
+  defp lone_message_ts!(token, channel, parent) do
     assert %{status: 200, body: %{"ok" => true, "messages" => messages}} =
              LiveSlack.reference_request(token, :get, "conversations.history",
-               params: [channel: channel, limit: 100]
+               params: [channel: channel, latest: parent, limit: 100]
              )
 
     assert %{"ts" => ts} =
              Enum.find(messages, fn message ->
                not Enum.any?(
-                 ["subtype", "thread_ts", "reply_count", "files"],
+                 ["subtype", "thread_ts", "reply_count", "files", "edited"],
                  &Map.has_key?(message, &1)
                )
              end)
