@@ -120,12 +120,28 @@ defmodule Jido.Connect.Tempo.Client.TransportTest do
     refute_received {:seen, _host}
   end
 
-  test "only paths relative to the origin are sent" do
+  test "a request to any other origin fails before it is sent" do
+    test_pid = self()
+    Req.Test.stub(__MODULE__, fn conn -> send(test_pid, {:seen, conn.host}) end)
     request = request!(:api_token, "https://api.us.tempo.io", "tok")
 
-    for path <- ["https://collector.example.com/4/periods", "//collector.example.com/4", "4/x"] do
-      assert_raise ArgumentError, fn -> Transport.get(request, path) end
+    for url <- [
+          "https://collector.example.com/4/periods",
+          "http://api.us.tempo.io/4/periods",
+          "https://api.us.tempo.io:8443/4/periods",
+          "https://api.tempo.io/4/periods"
+        ] do
+      assert {:error,
+              %Error.ProviderError{
+                provider: :tempo,
+                reason: :request_error,
+                details: %{reason: :foreign_origin}
+              }} = Transport.get(request, url)
+
+      assert {:error, %Transport.OriginError{}} = Req.get(Transport.request(request), url: url)
     end
+
+    refute_received {:seen, _host}
   end
 
   defp put_req_options(options) do

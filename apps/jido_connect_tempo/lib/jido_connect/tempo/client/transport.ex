@@ -8,8 +8,10 @@ defmodule Jido.Connect.Tempo.Client.Transport do
 
   The token never leaves that origin:
 
-  - `get/3` accepts only a path relative to the origin and raises for an
-    absolute or scheme-relative URL before any request.
+  - Every request built by `request/2` checks its final URL before it is
+    sent. Scheme, host and port must equal the connection's origin;
+    otherwise Req returns `{:error, %OriginError{}}`, which `get/3`
+    normalizes to a `:request_error` with `details.reason: :foreign_origin`.
   - Redirects are not followed. A 3xx response becomes a
     `Jido.Connect.Error.ProviderError`, so a `Location` on another origin
     never receives the `authorization` header.
@@ -25,6 +27,12 @@ defmodule Jido.Connect.Tempo.Client.Transport do
   alias Jido.Connect.Provider.Transport
   alias Jido.Connect.Tempo.Client.{Request, Response}
 
+  defmodule OriginError do
+    @moduledoc "Returned by Req when a Tempo request targets another origin."
+    defexception reason: :foreign_origin,
+                 message: "Tempo requests must stay at the connection's API origin"
+  end
+
   @locked_options [:base_url, :url, :auth, :redirect, :redirect_trusted]
 
   @doc "Builds the Bearer request for one Tempo connection."
@@ -37,41 +45,38 @@ defmodule Jido.Connect.Tempo.Client.Transport do
       |> Keyword.drop(@locked_options)
       |> Keyword.put(:redirect, false)
 
-    Transport.bearer_request(request.api_origin, Request.token(request),
+    request.api_origin
+    |> Transport.bearer_request(Request.token(request),
       headers: [{"accept", "application/json"}],
       req_options: req_options
     )
+    |> Req.Request.append_request_steps(tempo_origin_guard: origin_guard(request.api_origin))
   end
 
   @doc """
   Sends a GET request for `path` and returns the decoded JSON body.
 
-  `path` must start with a single `/`. Options: `:params` (query parameters)
-  and `:req_options`.
+  `path` is relative to the connection's origin. Options: `:params` (query
+  parameters) and `:req_options`.
   """
   @spec get(Request.t(), String.t(), keyword()) ::
           {:ok, map() | list()} | {:error, Jido.Connect.Error.ProviderError.t()}
   def get(%Request{} = request, path, opts \\ []) when is_binary(path) do
-    validate_path!(path)
-
     request
     |> request(opts)
     |> Transport.request(:get, url: path, params: Keyword.get(opts, :params, []))
     |> Response.handle()
   end
 
-  defp validate_path!("//" <> _rest), do: raise_path!()
+  defp origin_guard(api_origin) do
+    %URI{scheme: scheme, host: host, port: port} = URI.parse(api_origin)
 
-  defp validate_path!("/" <> _rest = path) do
-    case URI.parse(path) do
-      %URI{scheme: nil, host: nil} -> :ok
-      _uri -> raise_path!()
+    fn %Req.Request{url: url} = req ->
+      if {url.scheme, url.host, url.port} == {scheme, host, port} do
+        req
+      else
+        Req.Request.halt(req, %OriginError{})
+      end
     end
-  end
-
-  defp validate_path!(_path), do: raise_path!()
-
-  defp raise_path! do
-    raise ArgumentError, "Tempo request paths must be relative to the connection origin"
   end
 end
