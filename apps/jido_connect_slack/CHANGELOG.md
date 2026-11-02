@@ -29,7 +29,8 @@
 - Add `shared_messages` to DM and group DM signals for messages shared
   natively into the conversation (`attachments[].is_share`), with source
   channel, `ts`, author as `user`, `text` and `from_url`. A malformed share
-  fails with `:invalid_shared_message`.
+  fails with `:invalid_shared_message`. Group DMs take the DM path; no share
+  into a group DM was captured.
 - Pin message, DM, group DM, thread reply and app mention normalization with
   Events API deliveries captured from the test workspace.
 
