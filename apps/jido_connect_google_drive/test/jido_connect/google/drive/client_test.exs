@@ -586,10 +586,16 @@ defmodule Jido.Connect.Google.Drive.ClientTest do
 
   test "downloads a recording's MP4 bytes as base64 with their byte count" do
     # The recorded download of the test meeting's MP4 keeps its headers and
-    # byte count but not its bytes. The body here is the head of an MP4 file,
-    # an `ftyp` box whose size field begins with NUL bytes.
+    # byte count but not its bytes. The body here is the head of an MP4 file:
+    # an `ftyp` box whose size field begins with NUL bytes, then a `free` box
+    # that holds "ä", two bytes but one character.
     recorded = recorded_download!("file_download_recording")
-    body = <<0, 0, 0, 24, "ftyp", "isom", 0, 0, 2, 0, "isom", "mp41">>
+    ftyp = <<0, 0, 0, 24, "ftyp", "isom", 0, 0, 2, 0, "isom", "mp41">>
+    body = ftyp <> <<0, 0, 0, 10, "free", 0xC3, 0xA4>>
+
+    # Valid UTF-8, so only the NUL bytes keep it out of `content`.
+    assert String.valid?(body)
+    assert String.length(body) < byte_size(body)
 
     Req.Test.stub(__MODULE__, fn conn ->
       assert conn.method == "GET"
