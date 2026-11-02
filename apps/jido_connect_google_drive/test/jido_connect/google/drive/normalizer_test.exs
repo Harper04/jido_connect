@@ -21,7 +21,6 @@ defmodule Jido.Connect.Google.Drive.NormalizerTest do
   @shared_file_id "1IDOut2ayPl-ubqUf9LlQRbmQV76nve9x"
   @starred_file_id "1JphxvbpUOuOhN326OEz9UnJqtAy99n4l"
   @unstarred_file_id "1cihn1Qw5ruqogYtAdjOkPWeA3f2KhwK-"
-  @edited_file_id "1uN0Z0Pf8rvP1ewCITuP9mS9fLdlyweoJ1zihNsneFLk"
 
   test "normalizes file payloads" do
     assert {:ok, %File{} = file} =
@@ -441,39 +440,37 @@ defmodule Jido.Connect.Google.Drive.NormalizerTest do
                Normalizer.file(starred_without_flag)
     end
 
+    # The link-shared file's `modifiedTime` differs from its `createdTime`. Only
+    # read-only live tests record it, so its times stay put across recordings,
+    # unlike those of the Google Doc that the edit test changes on every run.
     test "returns modifiedTime unchanged and keeps it apart from createdTime" do
       assert {:ok,
               %File{
-                file_id: @edited_file_id,
-                created_time: "2026-10-30T15:29:56.250Z",
-                modified_time: "2026-11-02T13:48:54.632Z"
-              }} = Normalizer.file(edited_file())
+                file_id: @shared_file_id,
+                created_time: "2026-10-30T15:29:29.413Z",
+                modified_time: "2026-10-30T15:29:30.508Z"
+              }} = Normalizer.file(recorded("file_get_shared_link"))
     end
 
     # The recorded `files_list_caller_fields` lacks both timestamps. The second
-    # case removes `modifiedTime` from the file of the recorded edit change and
-    # keeps its `createdTime`.
+    # case removes `modifiedTime` from the recorded link-shared file and keeps
+    # its `createdTime`.
     test "leaves modified_time nil when Drive omits modifiedTime" do
       %{"files" => [unprojected | _]} = recorded("files_list_caller_fields")
       refute Map.has_key?(unprojected, "modifiedTime")
 
       assert {:ok, %File{modified_time: nil}} = Normalizer.file(unprojected)
 
+      without_modified_time = Map.delete(recorded("file_get_shared_link"), "modifiedTime")
+
       assert {:ok,
               %File{
-                file_id: @edited_file_id,
-                created_time: "2026-10-30T15:29:56.250Z",
+                file_id: @shared_file_id,
+                created_time: "2026-10-30T15:29:29.413Z",
                 modified_time: nil
-              }} = Normalizer.file(Map.delete(edited_file(), "modifiedTime"))
+              }} = Normalizer.file(without_modified_time)
     end
   end
 
   defp recorded(name), do: LiveSmoke.fixture!(:google_drive, name)
-
-  # The Google Doc of the recorded external edit: the only recorded file whose
-  # `modifiedTime` differs from its `createdTime`.
-  defp edited_file do
-    %{"changes" => [%{"file" => file}]} = recorded("file_changed_edited")
-    file
-  end
 end
