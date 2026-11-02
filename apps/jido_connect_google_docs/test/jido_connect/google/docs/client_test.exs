@@ -7,6 +7,23 @@ defmodule Jido.Connect.Google.Docs.ClientTest do
   @tabbed_document_id "1Ej83l690dmUeDhX90Suxdef_SR97A-Kleilmdg5G9_E"
   @scratch_document_id "1t47PcdwCWroHLmzucoB5YxoFZRyUD9a8dymU8ju-pwE"
 
+  # The two-request batch of the insert recording, in Google's camelCase
+  # spelling. The recorded response holds one empty reply per request.
+  @insert_batch [
+    %{
+      "insertText" => %{
+        "location" => %{"index" => 1, "tabId" => "t.0"},
+        "text" => "jcl-live-second\n"
+      }
+    },
+    %{
+      "insertText" => %{
+        "location" => %{"index" => 1, "tabId" => "t.0"},
+        "text" => "jcl-live-first\n"
+      }
+    }
+  ]
+
   setup {Req.Test, :verify_on_exit!}
 
   setup do
@@ -141,7 +158,7 @@ defmodule Jido.Connect.Google.Docs.ClientTest do
       {:ok, body, conn} = Plug.Conn.read_body(conn)
 
       decoded = Jason.decode!(body)
-      assert decoded["requests"] == [%{"insertText" => %{"text" => "Hello"}}]
+      assert decoded["requests"] == @insert_batch
       assert decoded["writeControl"] == %{"requiredRevisionId" => "rev001"}
 
       Req.Test.json(conn, recorded)
@@ -151,8 +168,8 @@ defmodule Jido.Connect.Google.Docs.ClientTest do
              Client.batch_update(
                %{
                  document_id: @scratch_document_id,
-                 requests: [%{insertText: %{text: "Hello"}}],
-                 write_control: %{requiredRevisionId: "rev001"}
+                 requests: @insert_batch,
+                 write_control: %{"requiredRevisionId" => "rev001"}
                },
                "token"
              )
@@ -172,22 +189,23 @@ defmodule Jido.Connect.Google.Docs.ClientTest do
       {:ok, body, conn} = Plug.Conn.read_body(conn)
 
       decoded = Jason.decode!(body)
-      assert decoded["requests"] == [%{"insertText" => %{"text" => "Hello"}}]
+      assert decoded["requests"] == @insert_batch
       refute Map.has_key?(decoded, "writeControl")
 
       Req.Test.json(conn, LiveSmoke.fixture!(:google_docs, "batch_update_insert"))
     end)
 
-    assert {:ok, %{document_id: @scratch_document_id, replies: [%{}, %{}]}} =
+    assert {:ok, %{document_id: @scratch_document_id, replies: replies}} =
              Client.batch_update(
-               %{
-                 document_id: @scratch_document_id,
-                 requests: [%{insertText: %{text: "Hello"}}]
-               },
+               %{document_id: @scratch_document_id, requests: @insert_batch},
                "token"
              )
+
+    assert replies == [%{}, %{}]
   end
 
+  # The recorded rejection answers one insert whose required revision is no
+  # longer the latest.
   test "handles batch update API error response" do
     recorded = LiveSmoke.fixture!(:google_docs, "batch_update_stale_revision")
 
@@ -199,7 +217,11 @@ defmodule Jido.Connect.Google.Docs.ClientTest do
 
     assert {:error, %Jido.Connect.Error.ProviderError{reason: :http_error, status: 400} = error} =
              Client.batch_update(
-               %{document_id: @scratch_document_id, requests: [%{insertText: %{}}]},
+               %{
+                 document_id: @scratch_document_id,
+                 requests: Enum.take(@insert_batch, 1),
+                 write_control: %{"requiredRevisionId" => "stale-revision"}
+               },
                "token"
              )
 
