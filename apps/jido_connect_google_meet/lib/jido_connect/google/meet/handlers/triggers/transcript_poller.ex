@@ -38,6 +38,7 @@ defmodule Jido.Connect.Google.Meet.Handlers.Triggers.TranscriptPoller do
 
     with {:ok, client} <- ResourceHelpers.fetch_client(credentials),
          {:ok, checkpoint} <- TranscriptCheckpoint.decode(checkpoint),
+         checkpoint = TranscriptCheckpoint.expire(checkpoint, now),
          {:ok, records} <- list_records(client, checkpoint, access_token),
          {:ok, candidates} <- candidates(checkpoint, records),
          {:ok, checked} <- check_records(client, candidates, access_token) do

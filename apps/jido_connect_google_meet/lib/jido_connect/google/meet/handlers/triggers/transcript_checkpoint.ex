@@ -45,6 +45,15 @@ defmodule Jido.Connect.Google.Meet.Handlers.Triggers.TranscriptCheckpoint do
   end
 
   @doc """
+  Moves the pending records past the age bound under `settled` before a
+  poll, so it lists neither their transcripts nor them as new records.
+  """
+  def expire(%__MODULE__{} = checkpoint, %DateTime{} = now) do
+    {pending, aged} = Enum.split_with(checkpoint.pending, &recent?(&1, now))
+    %{checkpoint | pending: pending, settled: checkpoint.settled ++ Enum.map(aged, &done/1)}
+  end
+
+  @doc """
   Advances the checkpoint over the records checked in one poll.
 
   Each checked record carries `name`, `end_time`, `emitted` and `settled?`.

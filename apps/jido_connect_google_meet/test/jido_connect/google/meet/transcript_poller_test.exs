@@ -475,7 +475,7 @@ defmodule Jido.Connect.Google.Meet.TranscriptPollerTest do
 
       serve(
         records: {:window, [settled, fresh]},
-        transcripts: %{fresh["name"] => pages([not_ready]), aged["name"] => pages([not_ready])}
+        transcripts: %{fresh["name"] => pages([not_ready])}
       )
 
       # The aged record held the watermark at its end time.
@@ -495,15 +495,14 @@ defmodule Jido.Connect.Google.Meet.TranscriptPollerTest do
                )
     end
 
-    test "a record leaving by age at the watermark is not checked again" do
+    test "a pending record past the age bound is not checked again, even when generated" do
       [prepared, _earlier] = recorded_records()
       aged = record_at(prepared, "aged", DateTime.add(DateTime.utc_now(), -25, :hour))
       watermark = time!(aged["endTime"])
-      not_ready = with_state(fixture("transcripts"), "ENDED")
 
       serve(
         records: {:window, [aged]},
-        transcripts: %{aged["name"] => pages([not_ready])}
+        transcripts: %{aged["name"] => pages([transcripts_for(aged)])}
       )
 
       assert {:ok, %{signals: [], checkpoint: checkpoint}} =
@@ -515,6 +514,34 @@ defmodule Jido.Connect.Google.Meet.TranscriptPollerTest do
       serve(records: {:window, [aged]})
 
       assert {:ok, %{signals: [], checkpoint: ^checkpoint}} = poll(checkpoint)
+    end
+
+    test "a pending record whose conference record was deleted does not block the poll" do
+      [prepared, _earlier] = recorded_records()
+      now = DateTime.utc_now()
+      # Google deletes a conference record 30 days after the conference ended.
+      deleted = record_at(prepared, "deleted", DateTime.add(now, -31, :day))
+      fresh = record_at(prepared, "fresh", DateTime.add(now, -1, :hour))
+      [fresh_transcript] = transcripts_for(fresh)["transcripts"]
+
+      serve(
+        records: {:window, [fresh]},
+        transcripts: %{
+          deleted["name"] => %{nil => {404, fixture("transcript_entries_not_found")}},
+          fresh["name"] => pages([transcripts_for(fresh)])
+        }
+      )
+
+      checkpoint =
+        checkpoint(time!(deleted["endTime"]), [], [
+          pending_entry(deleted["name"], deleted["endTime"])
+        ])
+
+      assert {:ok, %{signals: [signal], checkpoint: checkpoint}} = poll(checkpoint)
+      assert signal == expected_signal(fresh, fresh_transcript)
+
+      assert JSON.decode!(checkpoint) ==
+               JSON.decode!(checkpoint(time!(fresh["endTime"]), [settled_entry(fresh)]))
     end
 
     test "a newly listed record older than 24 hours is checked once and not kept" do
