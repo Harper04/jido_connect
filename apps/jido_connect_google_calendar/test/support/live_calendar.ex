@@ -22,6 +22,9 @@ defmodule Jido.Connect.Google.Calendar.TestSupport.LiveCalendar do
   @record_fields ["htmlLink", "pin", "uri"]
   @req_options {:jido_connect_google, :google_req_options}
 
+  @poll_attempts 10
+  @poll_pause_ms 2_000
+
   def events_readonly_scope, do: @events_readonly_scope
   def events_scope, do: @events_scope
 
@@ -75,6 +78,32 @@ defmodule Jido.Connect.Google.Calendar.TestSupport.LiveCalendar do
       credential_lease: lease,
       checkpoint: checkpoint
     )
+  end
+
+  @doc """
+  Polls `config` from `checkpoint` until `done?` accepts the signals, at most
+  #{@poll_attempts} times, recording each attempt under `name`.
+
+  Every attempt starts from the same checkpoint, so the last one, which is the
+  one left in the fixtures, holds every change since that checkpoint. Google's
+  incremental sync can trail a write by a few seconds. Returns the last poll
+  result.
+  """
+  def poll_since(name, config, checkpoint, access_token, done?, attempt \\ 1) do
+    record(name)
+
+    case poll(config, checkpoint, access_token) do
+      {:ok, %{signals: signals}} = result ->
+        if done?.(signals) || attempt >= @poll_attempts do
+          result
+        else
+          Process.sleep(@poll_pause_ms)
+          poll_since(name, config, checkpoint, access_token, done?, attempt + 1)
+        end
+
+      error ->
+        error
+    end
   end
 
   defp context_and_lease(access_token, scopes) do
