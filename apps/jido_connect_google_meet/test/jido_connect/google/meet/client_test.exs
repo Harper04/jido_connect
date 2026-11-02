@@ -313,6 +313,21 @@ defmodule Jido.Connect.Google.Meet.ClientTest do
     refute Map.has_key?(result, :next_page_token)
   end
 
+  test "percent-encodes reserved characters in the transcript name segments" do
+    Req.Test.stub(__MODULE__, fn conn ->
+      assert conn.request_path == "/v2/conferenceRecords/abc/transcripts/d%3Fe%23f/entries"
+      assert conn.query_params == %{"pageSize" => "1"}
+
+      Req.Test.json(conn, LiveSmoke.fixture!(:google_meet, "transcript_entries.2"))
+    end)
+
+    assert {:ok, %{transcript_entries: [%TranscriptEntry{}]}} =
+             Client.list_transcript_entries(
+               %{transcript_name: "conferenceRecords/abc/transcripts/d?e#f", page_size: 1},
+               "token"
+             )
+  end
+
   test "returns provider errors for malformed transcript entry list responses" do
     recorded = LiveSmoke.fixture!(:google_meet, "transcript_entries")
     [recorded_entry] = recorded["transcriptEntries"]
