@@ -13,6 +13,13 @@ defmodule Jido.Connect.Google.Docs.BatchUpdateTest do
   @write_scope "https://www.googleapis.com/auth/documents"
   @revision_before_insert "revision-read-before-the-insert"
 
+  @stale_insert %{
+    "insert_text" => %{
+      "location" => %{"index" => 1, "tab_id" => "t.0"},
+      "text" => "jcl-live-258-stale\n"
+    }
+  }
+
   setup {Req.Test, :verify_on_exit!}
 
   setup do
@@ -88,6 +95,138 @@ defmodule Jido.Connect.Google.Docs.BatchUpdateTest do
            }
   end
 
+  test "sends a range replacement batch in request order with the revision the insert returned" do
+    inserted = LiveSmoke.fixture!(:google_docs, "batch_update_insert")
+    recorded = LiveSmoke.fixture!(:google_docs, "batch_update_range_replacement")
+    %{"writeControl" => %{"requiredRevisionId" => inserted_revision}} = inserted
+
+    Req.Test.expect(__MODULE__, fn conn ->
+      assert conn.method == "POST"
+      assert conn.request_path == "/v1/documents/#{@document_id}:batchUpdate"
+
+      assert wire_body(conn) == %{
+               "requests" => [
+                 %{
+                   "delete_content_range" => %{
+                     "range" => %{"start_index" => 20, "end_index" => 39, "tab_id" => "t.0"}
+                   }
+                 },
+                 %{
+                   "insert_text" => %{
+                     "location" => %{"index" => 20, "tab_id" => "t.0"},
+                     "text" => "jcl-live-258-replaced"
+                   }
+                 }
+               ],
+               "writeControl" => %{"required_revision_id" => inserted_revision}
+             }
+
+      Req.Test.json(conn, recorded)
+    end)
+
+    assert {:ok, result} =
+             batch_update(%{
+               document_id: @document_id,
+               requests: [
+                 %{
+                   "delete_content_range" => %{
+                     "range" => %{"start_index" => 20, "end_index" => 39, "tab_id" => "t.0"}
+                   }
+                 },
+                 %{
+                   "insert_text" => %{
+                     "location" => %{"index" => 20, "tab_id" => "t.0"},
+                     "text" => "jcl-live-258-replaced"
+                   }
+                 }
+               ],
+               write_control: %{"required_revision_id" => inserted_revision}
+             })
+
+    assert result == %{
+             document_id: @document_id,
+             replies: [%{}, %{}],
+             write_control: %{
+               "requiredRevisionId" => recorded["writeControl"]["requiredRevisionId"]
+             }
+           }
+
+    refute result.write_control == inserted["writeControl"]
+  end
+
+  test "a stale required revision stays a provider error with Google's message" do
+    recorded = LiveSmoke.fixture!(:google_docs, "batch_update_stale_revision")
+
+    Req.Test.expect(__MODULE__, fn conn ->
+      assert %{"writeControl" => %{"required_revision_id" => @revision_before_insert}} =
+               wire_body(conn)
+
+      conn
+      |> Plug.Conn.put_status(400)
+      |> Req.Test.json(recorded)
+    end)
+
+    assert {:error,
+            %Connect.Error.ProviderError{
+              reason: :http_error,
+              status: 400,
+              details: %{message: message}
+            }} =
+             batch_update(%{
+               document_id: @document_id,
+               requests: [@stale_insert],
+               write_control: %{"required_revision_id" => @revision_before_insert}
+             })
+
+    assert message == recorded["error"]["message"]
+    assert message =~ "does not match the latest revision"
+  end
+
+  test "sends a batch of exactly 100 requests" do
+    Req.Test.expect(__MODULE__, fn conn ->
+      assert %{"requests" => requests} = wire_body(conn)
+      assert length(requests) == 100
+      Req.Test.json(conn, LiveSmoke.fixture!(:google_docs, "batch_update_insert"))
+    end)
+
+    assert {:ok, %{document_id: @document_id}} =
+             batch_update(%{document_id: @document_id, requests: stale_inserts(100)})
+  end
+
+  # Each input breaks the envelope or names an operation outside the
+  # allowlist, so none of them may reach Google.
+  for {edit, description, reason} <- [
+        {:document_id_missing, "document_id is missing", :input},
+        {:requests_missing, "requests is missing", :input},
+        {:requests_not_a_list, "requests is not a list", :input},
+        {:requests_empty, "requests is empty", :invalid_batch_update_requests},
+        {:too_many_requests, "requests holds 101 operations", :invalid_batch_update_requests},
+        {:request_not_a_map, "a request is not a map", :input},
+        {:request_without_operation, "a request names no operation",
+         :invalid_batch_update_request},
+        {:request_with_two_operations, "a request names two operations",
+         :invalid_batch_update_request},
+        {:delete_table, "a request is delete_table, which Docs does not have",
+         :unsupported_batch_update_operation},
+        {:camel_case_operation, "a request names the camelCase insertText",
+         :unsupported_batch_update_operation},
+        {:write_control_not_a_map, "write_control is not a map", :input}
+      ] do
+    test "rejects the batch before any HTTP request when #{description}" do
+      test_pid = self()
+
+      Req.Test.stub(__MODULE__, fn conn ->
+        send(test_pid, {:http_request, conn.request_path})
+        Req.Test.json(conn, %{})
+      end)
+
+      assert {:error, %Connect.Error.ValidationError{reason: unquote(reason)}} =
+               batch_update(envelope(unquote(edit)))
+
+      refute_received {:http_request, _path}
+    end
+  end
+
   test "the action metadata lists the write acknowledgement fields" do
     action =
       Enum.find(Docs.integration().actions, &(&1.id == "google.docs.document.batch_update"))
@@ -103,6 +242,48 @@ defmodule Jido.Connect.Google.Docs.BatchUpdateTest do
     assert action.confirmation == :always
     assert action.scopes == [@write_scope]
   end
+
+  defp envelope(:document_id_missing), do: %{requests: [@stale_insert]}
+  defp envelope(:requests_missing), do: %{document_id: @document_id}
+
+  defp envelope(:requests_not_a_list),
+    do: %{document_id: @document_id, requests: @stale_insert}
+
+  defp envelope(:requests_empty), do: %{document_id: @document_id, requests: []}
+
+  defp envelope(:too_many_requests),
+    do: %{document_id: @document_id, requests: stale_inserts(101)}
+
+  defp envelope(:request_not_a_map),
+    do: %{document_id: @document_id, requests: ["insert_text"]}
+
+  defp envelope(:request_without_operation),
+    do: %{document_id: @document_id, requests: [%{}]}
+
+  defp envelope(:request_with_two_operations) do
+    two = Map.put(@stale_insert, "delete_content_range", %{"range" => %{"start_index" => 1}})
+    %{document_id: @document_id, requests: [two]}
+  end
+
+  # The request #229 sent live, which Google rejected as an unknown field.
+  defp envelope(:delete_table) do
+    %{
+      document_id: @document_id,
+      requests: [%{"delete_table" => %{"table_start_location" => %{"index" => 1}}}]
+    }
+  end
+
+  defp envelope(:camel_case_operation) do
+    %{
+      document_id: @document_id,
+      requests: [%{"insertText" => %{"location" => %{"index" => 1}, "text" => "jcl-live-258"}}]
+    }
+  end
+
+  defp envelope(:write_control_not_a_map),
+    do: %{document_id: @document_id, requests: [@stale_insert], write_control: "revision"}
+
+  defp stale_inserts(count), do: List.duplicate(@stale_insert, count)
 
   defp wire_body(conn) do
     {:ok, body, _conn} = Plug.Conn.read_body(conn)
