@@ -132,7 +132,7 @@ defmodule Jido.Connect.Slack.ConversationHistoryLiveSmokeTest do
         ]
       })
 
-    on_exit(fn -> delete_reference(token, channel, ts) end)
+    on_exit(fn -> delete_reference!(token, channel, ts) end)
 
     record("conversation_history_attachments")
 
@@ -291,9 +291,24 @@ defmodule Jido.Connect.Slack.ConversationHistoryLiveSmokeTest do
     ts
   end
 
-  defp delete_reference(token, channel, ts) do
-    reference_request(token, :post, "chat.delete", json: %{channel: channel, ts: ts})
+  # A message left behind moves the page boundary of the next recording and
+  # breaks the offline tests that expect its pages, so a failed delete fails
+  # the test. The message names only the HTTP status and Slack's error code.
+  defp delete_reference!(token, channel, ts) do
+    case reference_request(token, :post, "chat.delete", json: %{channel: channel, ts: ts}) do
+      %{status: 200, body: %{"ok" => true}} ->
+        :ok
+
+      %{status: status, body: body} ->
+        flunk(
+          "chat.delete left the attachment message #{ts} in #{channel}: " <>
+            "HTTP #{status}, #{slack_error(body)}; delete it before the next recording"
+        )
+    end
   end
+
+  defp slack_error(%{"error" => error}) when is_binary(error), do: error
+  defp slack_error(_body), do: "no Slack error code"
 
   # Calls Slack directly, without the package's client and Req options.
   defp reference_request(token, method, path, options) do
