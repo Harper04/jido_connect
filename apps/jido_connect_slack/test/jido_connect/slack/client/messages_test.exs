@@ -83,11 +83,10 @@ defmodule Jido.Connect.Slack.Client.MessagesTest do
   end
 
   # Recorded: Slack answers an unknown parent ts with HTTP 200 and ok: false.
+  # The client and the action both return it as an error.
   test "get thread replies returns an unknown thread as a provider error, not as an empty page" do
-    Req.Test.expect(
-      __MODULE__,
-      &Req.Test.json(&1, LiveSmoke.fixture!(:slack, "thread_replies_thread_not_found"))
-    )
+    not_found = LiveSmoke.fixture!(:slack, "thread_replies_thread_not_found")
+    expect_pages([not_found, not_found])
 
     assert {:error,
             %Jido.Connect.Error.ProviderError{
@@ -95,6 +94,14 @@ defmodule Jido.Connect.Slack.Client.MessagesTest do
               status: 200,
               reason: "thread_not_found"
             }} = Client.get_thread_replies(%{channel: @channel, ts: @unknown_ts}, "token")
+
+    assert {:error,
+            %Jido.Connect.Error.ProviderError{
+              provider: :slack,
+              status: 200,
+              reason: "thread_not_found"
+            }} =
+             invoke(%{channel: @channel, ts: @unknown_ts, conversation_type: "public_channel"})
   end
 
   describe "slack.thread.replies through Jido.Connect.invoke" do
