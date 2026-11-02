@@ -239,7 +239,8 @@ keeps its original creation time.
   `record.parents` with the folder IDs it knows.
 - `"unknown"` when Drive sends no file metadata, as for a removal. The one
   exception is a change to the folder itself that is not a removal, which is
-  `"yes"`.
+  `"yes"`. Once the folder itself is gone, polls fail instead, as described
+  under [Removed Files](#removed-files).
 
 The two triggers take a folder or shared drive differently.
 `google.drive.collection.changes` takes the folder ID as `collection_id`; its
@@ -273,6 +274,19 @@ returns `file_id`, `removed: true`, `time` and `change_type` without a `file`
 key. `google.drive.collection.changes` returns `provider_record_id` with
 `collection_match: "unknown"` and no `record`, so a host removes the file from
 every folder view that holds it.
+
+`google.drive.collection.changes` reads the folder in `collection_id` before
+it reads the change log. Once that folder is deleted for good or the user can
+no longer see it, Drive answers the folder read with 404, and the poll returns
+a `Jido.Connect.Error.ProviderError` with `reason: :http_error` and
+`status: 404` instead of signals. The error carries no `checkpoint_reset`, and
+a poll without a checkpoint fails the same way. The removals of the folder and
+of its files therefore do not arrive through this trigger; a removal of the
+folder itself arrives as `"unknown"` only when Drive records it between the
+folder read and the change read of one poll. A host that receives this error
+treats the folder and its view as gone. If the user regains access, the host
+follows the folder again with a first poll and a new listing, as described
+under [Listing Folder Contents](#listing-folder-contents).
 
 Moving a file to the trash is not a removal. Drive reports it as an update with
 `removed: false` and the file's metadata, in which `trashed?` is `true`:
