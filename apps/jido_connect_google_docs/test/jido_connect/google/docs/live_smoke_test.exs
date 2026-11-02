@@ -15,7 +15,9 @@ defmodule Jido.Connect.Google.Docs.LiveSmokeTest do
   alias Jido.Connect.Google.Docs.Client
 
   @req_options {:jido_connect_google, :google_req_options}
-  @readonly_scope "https://www.googleapis.com/auth/documents.readonly"
+  # The test account's refresh token holds documents, not documents.readonly,
+  # so the connection and the lease declare the scope the token carries.
+  @documents_scope "https://www.googleapis.com/auth/documents"
 
   # The prepared document has the top-level tabs First and Second and the
   # child tab Nested under Second, each holding one seed marker.
@@ -100,7 +102,7 @@ defmodule Jido.Connect.Google.Docs.LiveSmokeTest do
         owner_type: :app_user,
         owner_id: "live_smoke",
         status: :connected,
-        scopes: [@readonly_scope]
+        scopes: [@documents_scope]
       })
 
     context =
@@ -117,7 +119,7 @@ defmodule Jido.Connect.Google.Docs.LiveSmokeTest do
         profile: :user,
         expires_at: DateTime.add(DateTime.utc_now(), 300, :second),
         fields: %{access_token: access_token},
-        scopes: [@readonly_scope]
+        scopes: [@documents_scope]
       })
 
     Connect.invoke(Docs.integration(), "google.docs.document.get", input,
