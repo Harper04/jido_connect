@@ -49,7 +49,9 @@ config :jido_connect_atlassian, Jido.Connect.Atlassian.ADF,
   max_nodes: 20_000
 ```
 
-The module documentation of `Jido.Connect.Atlassian.ADF` describes the rendering, the error reasons and
+The Jira package uses `:degrade` for issue descriptions, comment bodies and
+webhook comment bodies. The module documentation of
+`Jido.Connect.Atlassian.ADF` describes the rendering, the error reasons and
 the limits in full.
 
 ## Strict ADF to text
