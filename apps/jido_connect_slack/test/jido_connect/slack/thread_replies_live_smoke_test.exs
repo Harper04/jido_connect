@@ -10,12 +10,14 @@ defmodule Jido.Connect.Slack.ThreadRepliesLiveSmokeTest do
   the newest replies on the first page, so the check drops the parent from
   each page and compares the replies as a sorted `ts` list. Both tokens must
   return the same pages, and each token's replies must equal one unpaged
-  `conversations.replies` call made with Req outside the package. The
+  `conversations.replies` call made with Req outside the package. Every
+  reply Slack returns must carry the parent's `ts` as `thread_ts`. The
   authorizing user, whom `auth.test` of the user token names, must have at
   least one reply among them, and the bot token must return each of these
-  replies too. Every page must echo the channel and the parent, and a
-  page that carries the parent reports the parent's `reply_count` and
-  `latest_reply`, although it holds only some of the replies.
+  replies too. A page that carries the parent reports the parent's
+  `reply_count` and `latest_reply`, although it holds only some of the
+  replies. The package copies a page's `channel` and `thread_ts` from the
+  request, so the check does not compare them.
 
   Each read prints the page count, the reply count and the SHA-256 prefix of
   the thread's `ts` list, parent first, then the replies in ascending order,
@@ -192,10 +194,7 @@ defmodule Jido.Connect.Slack.ThreadRepliesLiveSmokeTest do
     assert length(pages) < @max_pages, "#{profile} token: more than #{@max_pages} pages"
     input = if cursor, do: Map.put(params, :cursor, cursor), else: params
 
-    assert {:ok, %{channel: channel, thread_ts: parent} = page} =
-             thread_replies(profile, token, input)
-
-    assert {channel, parent} == {params.channel, params.ts}
+    assert {:ok, page} = thread_replies(profile, token, input)
 
     case page do
       %{has_more: true, next_cursor: next} when next != "" ->
