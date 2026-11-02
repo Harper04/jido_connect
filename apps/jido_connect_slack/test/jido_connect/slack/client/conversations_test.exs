@@ -598,8 +598,15 @@ defmodule Jido.Connect.Slack.Client.ConversationsTest do
       for broken <- [
             Map.delete(first, "ts"),
             Map.put(first, "ts", 1_793_373_462.345279),
+            Map.put(first, "thread_ts", 1_793_373_462.345279),
+            Map.put(first, "user", %{"id" => @bot_user}),
+            Map.put(first, "bot_id", 42),
+            Map.put(first, "app_id", 42),
             Map.put(first, "text", 42),
             Map.put(first, "blocks", "not a list"),
+            Map.put(first, "attachments", %{"title" => "not a list"}),
+            Map.put(first, "files", ["not a map"]),
+            Map.put(first, "subtype", 42),
             Map.put(first, "edited", %{"user" => @bot_user}),
             "not a message"
           ] do
