@@ -29,8 +29,6 @@ defmodule Jido.Connect.Slack.DeliveryTest do
   @thread_ts "1793371034.447499"
   @link "https://example.com/jido-connect/delivery-check"
 
-  setup {Req.Test, :verify_on_exit!}
-
   setup do
     Application.put_env(:jido_connect_slack, :slack_req_options, plug: {Req.Test, __MODULE__})
     on_exit(fn -> Application.delete_env(:jido_connect_slack, :slack_req_options) end)
@@ -38,7 +36,7 @@ defmodule Jido.Connect.Slack.DeliveryTest do
 
   describe "slack.conversation.open" do
     test "a lease without slack_client reaches conversations.open with the supplied user" do
-      expect_fixture("conversations_open_im")
+      stub_fixture("conversations_open_im")
 
       assert {:ok, %{channel: @dm, conversation: %{id: @dm}}} =
                Connect.invoke(
@@ -60,7 +58,7 @@ defmodule Jido.Connect.Slack.DeliveryTest do
     test "a context provider_client goes before the lease's slack_client" do
       input = %{users: [@authorizing_user]}
 
-      expect_fixture("conversations_open_im")
+      stub_fixture("conversations_open_im")
 
       assert {:ok, %{channel: @dm}} =
                Connect.invoke(
@@ -74,7 +72,7 @@ defmodule Jido.Connect.Slack.DeliveryTest do
       assert_received {:client, ContextClient}
       refute_received {:client, LeaseClient}
 
-      expect_fixture("conversations_open_im")
+      stub_fixture("conversations_open_im")
 
       assert {:ok, %{channel: @dm}} =
                Connect.invoke(
@@ -102,7 +100,7 @@ defmodule Jido.Connect.Slack.DeliveryTest do
 
       refute_received {:slack_request, _method, _path, _body}
 
-      expect_fixture("conversations_open_im")
+      stub_fixture("conversations_open_im")
 
       assert {:ok, %{channel: @dm}} =
                Connect.invoke(
@@ -130,7 +128,7 @@ defmodule Jido.Connect.Slack.DeliveryTest do
 
       refute_received {:slack_request, _method, _path, _body}
 
-      expect_fixture("conversations_open_mpim")
+      stub_fixture("conversations_open_mpim")
 
       assert {:ok, %{channel: @mpim, conversation: %{id: @mpim, is_mpim: true, is_im: false}}} =
                Connect.invoke(
@@ -158,7 +156,7 @@ defmodule Jido.Connect.Slack.DeliveryTest do
       assert byte_size(text) > 512
       assert text =~ "<#{@link}|open the delivery check>"
 
-      expect_fixture("chat_post_message_thread_reply")
+      stub_fixture("chat_post_message_thread_reply")
 
       assert {:ok, output} =
                Connect.invoke(
@@ -186,7 +184,7 @@ defmodule Jido.Connect.Slack.DeliveryTest do
       %{"ts" => ts, "message" => %{"text" => text} = message} =
         LiveSmoke.fixture!(:slack, "chat_post_message_channel")
 
-      expect_fixture("chat_post_message_channel")
+      stub_fixture("chat_post_message_channel")
 
       assert {:ok, output} =
                Connect.invoke(
@@ -278,7 +276,7 @@ defmodule Jido.Connect.Slack.DeliveryTest do
   defp assert_failures(action_id, input, scopes, {fixture, slack_error}) do
     invoke = fn -> Connect.invoke(Jido.Connect.Slack, action_id, input, runtime(scopes)) end
 
-    expect_fixture(fixture)
+    stub_fixture(fixture)
 
     assert {:error,
             %Connect.Error.ProviderError{
@@ -325,7 +323,7 @@ defmodule Jido.Connect.Slack.DeliveryTest do
     refute_received {:slack_request, _method, _path, _body}
   end
 
-  defp expect_fixture(name),
+  defp stub_fixture(name),
     do: stub_response(&Req.Test.json(&1, LiveSmoke.fixture!(:slack, name)))
 
   # Reports every request to the test process, so a second request, such as
