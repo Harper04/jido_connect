@@ -31,11 +31,13 @@ defmodule Jido.Connect.Google.Docs.Normalizer do
   @spec tab(map()) :: {:ok, Tab.t()} | {:error, term()}
   def tab(payload) when is_map(payload) do
     tab_properties = Data.get(payload, "tabProperties", %{}) || %{}
+    document_tab = Data.get(payload, "documentTab", %{}) || %{}
 
     %{
-      tab_id: Data.get(tab_properties, "id"),
+      tab_id: Data.get(tab_properties, "tabId"),
       title: Data.get(tab_properties, "title"),
-      body: Data.get(payload, "body")
+      body: Data.get(document_tab, "body"),
+      child_tabs: payload |> Data.get("childTabs", []) |> Enum.map(&tab!/1)
     }
     |> Data.compact()
     |> Tab.new()
