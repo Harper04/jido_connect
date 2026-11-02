@@ -107,8 +107,18 @@ defmodule Jido.Connect.Google.Docs.Actions.Documents do
       end
 
       output do
+        field(:document_id, :string, description: "ID of the updated document.")
+
+        field(:write_control, :map,
+          description:
+            "Google's write control after the update, with the new revision in requiredRevisionId."
+        )
+
+        field(:replies, {:array, :map},
+          description: "One reply per request, in request order; empty for most requests."
+        )
+
         field(:document, :map)
-        field(:replies, {:array, :map})
       end
     end
   end

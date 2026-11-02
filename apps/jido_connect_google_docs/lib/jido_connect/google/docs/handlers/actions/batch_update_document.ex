@@ -65,12 +65,11 @@ defmodule Jido.Connect.Google.Docs.Handlers.Actions.BatchUpdateDocument do
   defp fetch_client(%{google_docs_client: client}) when is_atom(client), do: {:ok, client}
   defp fetch_client(_credentials), do: {:ok, Client}
 
+  # Google's response carries the document ID, one reply per request and the
+  # write control with the document's new revision; it has no document.
   defp normalize_result(result) do
-    document = Map.get(result, :document)
-    replies = Map.get(result, :replies, [])
-
-    output = %{replies: replies}
-    output = if document, do: Map.put(output, :document, document), else: output
-    output
+    result
+    |> Map.take([:document_id, :write_control, :document])
+    |> Map.put(:replies, Map.get(result, :replies, []))
   end
 end
