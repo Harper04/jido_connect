@@ -699,8 +699,8 @@ defmodule Jido.Connect.Slack.WebhookTest do
       unknown = put_in(public, ["event", "subtype"], "jc_unknown_subtype")
 
       rows = [
-        {"message_changed", payload!("message_changed")},
-        {"message_deleted", payload!("message_deleted")},
+        {"message_changed", payload!("message_changed_public")},
+        {"message_deleted", payload!("message_deleted_public")},
         {"bot_message", bot_message},
         {"jc_unknown_subtype", unknown}
       ]
@@ -716,8 +716,8 @@ defmodule Jido.Connect.Slack.WebhookTest do
       end
 
       for {name, delivery_id} <- [
-            {"message_changed", "Ev0CDZKJCP45"},
-            {"message_deleted", "Ev0CE6TBSZU1"}
+            {"message_changed_public", "Ev0CDZKJCP45"},
+            {"message_deleted_public", "Ev0CE6TBSZU1"}
           ] do
         assert {:ok,
                 %WebhookDelivery{
