@@ -169,9 +169,11 @@ Each worklog has these keys; the last six appear only when Tempo sent them:
 on the test site, a worklog booked at 00:30 Europe/Berlin on 2026-10-31 has
 `start_date_time_utc` `2026-10-30T23:30:00Z` and belongs to the range
 2026-10-31 to 2026-10-31. An empty description stays `""`, apart from an
-absent one. On the test site, though, Tempo answered worklogs created
+absent one. On the test site, Tempo answered worklogs created through Tempo
 without a description and with an empty one with its default text
-`Working on work item <issue key>`.
+`Working on work item <issue key>`, and worklogs created through Jira's
+worklog API without a comment and with an empty comment with `""`. No
+answer left `description` out.
 
 `issue_id` is the only booking target. The Tempo package does not call Jira;
 to read the issue, call `jira.issue.get` of `jido_connect_jira` with
@@ -332,8 +334,8 @@ the OAuth access token and record the fixtures under
 `test/fixtures/tempo/recorded`. The own worklog checks read the test user's
 prepared worklogs from August to October 2026 through the action and compare
 IDs, dates and seconds with a direct Tempo read; `worklogs_own.json`,
-`worklogs_own_small_page.json` and `worklogs_own_day.json` and their
-numbered pages are their recordings. They never use the stored refresh token. One
+`worklogs_own_small_page.json`, `worklogs_own_day.json` and
+`worklogs_own_jira.json` and their numbered pages are their recordings. They never use the stored refresh token. One
 test exchanges an authorization code and refreshes the new pair once; it
 runs only with `TEMPO_OAUTH_CODE` and writes each new pair to
 `TEMPO_OAUTH_TOKEN_FILE`. Run them from the umbrella root:
