@@ -11,6 +11,16 @@ defmodule Jido.Connect.Tempo.OAuthTest do
     redirect_uri: "https://host.example.com/integrations/tempo/oauth/callback"
   ]
 
+  # The recorder redacts both token fields, so the recorded token responses
+  # are replayed with these values in their place.
+  @access_token "access-token-under-test"
+  @refresh_token "refresh-token-under-test"
+  @recorded_scope ~w(accounts:manage accounts:view activities:produce activities:view
+                     approvals:manage approvals:view audit:view papertrail:view periods:view
+                     plans:manage plans:view projects:manage projects:view rates:manage
+                     rates:view schemes:manage schemes:view teams:manage teams:view
+                     worklogs:manage worklogs:view)
+
   setup {Req.Test, :verify_on_exit!}
 
   setup do
@@ -76,24 +86,24 @@ defmodule Jido.Connect.Tempo.OAuthTest do
                  "code" => "code-1"
                }
 
-        Req.Test.json(conn, observed_token())
+        Fixture.respond(conn, "oauth_exchange", body: &with_tokens/1)
       end)
 
       assert {:ok, token} = OAuth.exchange_code("code-1", @opts)
 
       assert token == %{
-               access_token: "observed-access-token-placeholder",
-               refresh_token: "observed-refresh-token-placeholder",
+               access_token: @access_token,
+               refresh_token: @refresh_token,
                expires_in: 2_591_999,
-               scope: String.split(observed_token()["scope"])
+               scope: @recorded_scope
              }
-
-      assert "worklogs:manage" in token.scope
     end
 
     test "rejects a token response without its tokens and does not echo the body" do
       Req.Test.expect(__MODULE__, fn conn ->
-        Req.Test.json(conn, Map.delete(observed_token(), "access_token"))
+        Fixture.respond(conn, "oauth_exchange",
+          body: &(&1 |> with_tokens() |> Map.delete("access_token"))
+        )
       end)
 
       assert {:error,
@@ -103,7 +113,7 @@ defmodule Jido.Connect.Tempo.OAuthTest do
                 details: %{missing_fields: [:access_token]}
               } = error} = OAuth.exchange_code("code-1", @opts)
 
-      refute inspect(error) =~ "observed-refresh-token-placeholder"
+      refute inspect(error) =~ @refresh_token
     end
 
     test "an invalid code is a normalized error without client secret or code" do
@@ -246,11 +256,6 @@ defmodule Jido.Connect.Tempo.OAuthTest do
     end
   end
 
-  # No refresh response was recorded or observed: a live refresh would replace
-  # the stored tokens. These tests assume the observed exchange shape, as
-  # Tempo's OpenAPI says only that a refresh response "will contain a new
-  # access token and a new refresh token". Its example field `token_type`
-  # ("Bearer") is not read.
   describe "refresh/2" do
     test "posts the refresh form and returns both replacement tokens" do
       Req.Test.expect(__MODULE__, fn conn ->
@@ -265,22 +270,26 @@ defmodule Jido.Connect.Tempo.OAuthTest do
                  "refresh_token" => "stored-refresh-token"
                }
 
-        Req.Test.json(conn, observed_token())
+        Fixture.respond(conn, "oauth_refresh", body: &with_tokens/1)
       end)
 
-      assert {:ok,
-              %{
-                access_token: "observed-access-token-placeholder",
-                refresh_token: "observed-refresh-token-placeholder",
-                expires_in: 2_591_999
-              }} = OAuth.refresh("stored-refresh-token", @opts)
+      assert {:ok, token} = OAuth.refresh("stored-refresh-token", @opts)
+
+      assert token == %{
+               access_token: @access_token,
+               refresh_token: @refresh_token,
+               expires_in: 2_591_999,
+               scope: @recorded_scope
+             }
     end
 
     # Tempo invalidates the old refresh token on every refresh, so a response
     # without a new one leaves the connection without a usable refresh token.
     test "a refresh response without a new refresh token is an error" do
       Req.Test.expect(__MODULE__, fn conn ->
-        Req.Test.json(conn, Map.delete(observed_token(), "refresh_token"))
+        Fixture.respond(conn, "oauth_refresh",
+          body: &(&1 |> with_tokens() |> Map.delete("refresh_token"))
+        )
       end)
 
       assert {:error,
@@ -289,7 +298,7 @@ defmodule Jido.Connect.Tempo.OAuthTest do
                 details: %{missing_fields: [:refresh_token]}
               } = error} = OAuth.refresh("stored-refresh-token", @opts)
 
-      refute inspect(error) =~ "observed-access-token-placeholder"
+      refute inspect(error) =~ @access_token
     end
 
     # Once Tempo answers with both tokens it has rotated the pair, so an
@@ -297,15 +306,14 @@ defmodule Jido.Connect.Tempo.OAuthTest do
     test "a refresh response without a usable expires_in keeps both tokens" do
       for expires_in <- [:absent, "2591999", 0] do
         Req.Test.expect(__MODULE__, fn conn ->
-          Req.Test.json(conn, put_field(observed_token(), "expires_in", expires_in))
+          Fixture.respond(conn, "oauth_refresh",
+            body: &(&1 |> with_tokens() |> put_field("expires_in", expires_in))
+          )
         end)
 
         assert {:ok,
-                %{
-                  access_token: "observed-access-token-placeholder",
-                  refresh_token: "observed-refresh-token-placeholder",
-                  expires_in: nil
-                }} = OAuth.refresh("stored-refresh-token", @opts)
+                %{access_token: @access_token, refresh_token: @refresh_token, expires_in: nil}} =
+                 OAuth.refresh("stored-refresh-token", @opts)
       end
     end
 
@@ -313,29 +321,35 @@ defmodule Jido.Connect.Tempo.OAuthTest do
     test "a refresh response without a scope string has scope nil, an empty one an empty list" do
       for scope <- [:absent, nil, 42] do
         Req.Test.expect(__MODULE__, fn conn ->
-          Req.Test.json(conn, put_field(observed_token(), "scope", scope))
+          Fixture.respond(conn, "oauth_refresh",
+            body: &(&1 |> with_tokens() |> put_field("scope", scope))
+          )
         end)
 
-        assert {:ok, %{refresh_token: "observed-refresh-token-placeholder", scope: nil}} =
+        assert {:ok, %{refresh_token: @refresh_token, scope: nil}} =
                  OAuth.refresh("stored-refresh-token", @opts)
       end
 
       Req.Test.expect(__MODULE__, fn conn ->
-        Req.Test.json(conn, Map.put(observed_token(), "scope", ""))
+        Fixture.respond(conn, "oauth_refresh",
+          body: &(&1 |> with_tokens() |> Map.put("scope", ""))
+        )
       end)
 
       assert {:ok, %{scope: []}} = OAuth.refresh("stored-refresh-token", @opts)
     end
 
-    # The observed token wrapped in a JSON array.
+    # The recorded refresh response wrapped in a JSON array.
     test "a refresh response that is not a JSON object is an invalid response" do
-      Req.Test.expect(__MODULE__, fn conn -> Req.Test.json(conn, [observed_token()]) end)
+      Req.Test.expect(__MODULE__, fn conn ->
+        Fixture.respond(conn, "oauth_refresh", body: &[with_tokens(&1)])
+      end)
 
       assert {:error,
               %Error.ProviderError{provider: :tempo, reason: :invalid_response, status: 200} =
                 error} = OAuth.refresh("stored-refresh-token", @opts)
 
-      refute inspect(error) =~ "observed-refresh-token-placeholder"
+      refute inspect(error) =~ @refresh_token
       refute_secrets(error, ["stored-refresh-token"])
     end
 
@@ -364,7 +378,8 @@ defmodule Jido.Connect.Tempo.OAuthTest do
     assert_received {:late_step_body, %{"access_token" => _, "refresh_token" => _}}
   end
 
-  defp observed_token, do: Fixture.observed!("oauth_token")["body"]
+  defp with_tokens(body),
+    do: Map.merge(body, %{"access_token" => @access_token, "refresh_token" => @refresh_token})
 
   defp put_field(body, key, :absent), do: Map.delete(body, key)
   defp put_field(body, key, value), do: Map.put(body, key, value)

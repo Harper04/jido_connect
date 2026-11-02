@@ -22,10 +22,12 @@ defmodule Jido.Connect.Tempo.ScopeResolverTest do
   end
 
   describe "granted_labels/1" do
-    test "maps the observed OAuth scope to all five labels" do
-      scope = Fixture.observed!("oauth_token")["body"]["scope"]
+    test "maps the recorded OAuth scope to all five labels" do
+      for name <- ["oauth_exchange", "oauth_refresh"] do
+        scope = Fixture.recorded!(name)["body"]["scope"]
 
-      assert ScopeResolver.granted_labels(scope) == @labels
+        assert ScopeResolver.granted_labels(scope) == @labels
+      end
     end
 
     test "maps each grant to one label and implies no other" do
@@ -56,7 +58,7 @@ defmodule Jido.Connect.Tempo.ScopeResolverTest do
     end
 
     test "ignores grants without a label" do
-      assert ScopeResolver.granted_labels("teams:view accounts:manage") == []
+      assert ScopeResolver.granted_labels("teams:view accounts:manage activities:produce") == []
       assert ScopeResolver.granted_labels(nil) == []
     end
   end
@@ -89,7 +91,7 @@ defmodule Jido.Connect.Tempo.ScopeResolverTest do
   # only when the host recorded it, for OAuth through granted_labels/1.
   test "only labels recorded in connection.scopes satisfy a requirement" do
     operation = %{action_id: "tempo.example", auth_profiles: [:oauth2_user], scopes: @labels}
-    scope = Fixture.observed!("oauth_token")["body"]["scope"]
+    scope = Fixture.recorded!("oauth_exchange")["body"]["scope"]
 
     assert {:available, @labels} =
              Authorization.connection_availability(

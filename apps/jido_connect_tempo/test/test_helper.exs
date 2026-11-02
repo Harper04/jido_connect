@@ -7,21 +7,22 @@ end
 defmodule Jido.Connect.Tempo.Fixture do
   @moduledoc false
 
-  # Replays fixtures under test/fixtures/tempo. `recorded/` holds live
-  # recordings made with LiveSmoke.record/4; `observed/` holds response shapes
-  # seen live but not recordable, each with a `source` note.
+  # Replays the live recordings under test/fixtures/tempo/recorded, made with
+  # LiveSmoke.record/4.
 
-  @root Path.join([__DIR__, "fixtures", "tempo"])
+  @root Path.join([__DIR__, "fixtures", "tempo", "recorded"])
 
-  def recorded!(name), do: read!("recorded", name)
-  def observed!(name), do: read!("observed", name)
+  def recorded!(name) do
+    [@root, name <> ".json"] |> Path.join() |> File.read!() |> Jason.decode!()
+  end
 
   @doc """
   Sends a recorded response with its status, content type and body.
 
   `:status` and `:headers` replace the recorded status or add headers, for
   responses that cannot be triggered safely, such as 429 and 5xx. `:body` is
-  a function that changes the recorded body, for malformed or hostile pages.
+  a function that changes the recorded body, for malformed or hostile pages
+  and for token fields the recorder redacted.
   """
   def respond(conn, name, opts \\ []) do
     fixture = recorded!(name)
@@ -32,10 +33,6 @@ defmodule Jido.Connect.Tempo.Fixture do
     headers
     |> Enum.reduce(conn, fn {key, value}, conn -> Plug.Conn.put_resp_header(conn, key, value) end)
     |> Plug.Conn.send_resp(status, body(body))
-  end
-
-  defp read!(kind, name) do
-    [@root, kind, name <> ".json"] |> Path.join() |> File.read!() |> Jason.decode!()
   end
 
   defp content_type(%{"headers" => %{"content-type" => [value | _rest]}}),
@@ -55,8 +52,8 @@ defmodule Jido.Connect.Tempo.LateStepAdapter do
   # appends a response step behind every step attached when the request was
   # built, and that step sends the body it sees to the calling process as
   # `{:late_step_body, body}`. Instead of calling Tempo it answers with a JSON
-  # response under the recorded content type: the observed token for the
-  # token endpoint, the recorded periods for any other path.
+  # response under the recorded content type: the recorded code exchange for
+  # the token endpoint, the recorded periods for any other path.
 
   alias Jido.Connect.Tempo.Fixture
 
@@ -70,7 +67,7 @@ defmodule Jido.Connect.Tempo.LateStepAdapter do
     {request, response}
   end
 
-  defp response("/oauth/token/"), do: json(Fixture.observed!("oauth_token")["body"])
+  defp response("/oauth/token/"), do: json(Fixture.recorded!("oauth_exchange")["body"])
   defp response(_path), do: json(Fixture.recorded!("periods")["body"])
 
   defp json(body) do
