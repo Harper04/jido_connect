@@ -319,6 +319,66 @@ defmodule Jido.Connect.Slack.WebhookTest do
                Webhook.normalize_signal("message.thread_reply", parent)
     end
 
+    test "a file share yields subtype file_share and the IDs of its files" do
+      payload = payload!("message_file_share")
+
+      assert {:ok, %WebhookDelivery{event: "message", normalized_signal: delivered}} =
+               replay("message_file_share")
+
+      signal = Map.delete(delivered, :delivery)
+
+      assert signal == %{
+               team_id: "T0CEE692400",
+               event_id: "Ev0CE4MN8W9G",
+               channel: "C0CEEB41FU0",
+               channel_type: "channel",
+               user: "U0CDPFT1RDJ",
+               text: "file-share",
+               ts: "1793628005.878859",
+               event_ts: "1793628005.878859",
+               subtype: "file_share",
+               file_ids: ["F0CE8HZ718U"]
+             }
+
+      assert {:ok, ^signal} = Webhook.normalize_signal("message.channels", payload)
+
+      assert {:error, %Error.ProviderError{reason: :not_thread_reply}} =
+               Webhook.normalize_signal("message.thread_reply", payload)
+
+      # Derived: the captured file share without its `files` list.
+      without_files = update_in(payload, ["event"], &Map.delete(&1, "files"))
+
+      assert {:ok, Map.delete(signal, :file_ids)} ==
+               Webhook.normalize_signal("message.channels", without_files)
+    end
+
+    test "a broadcast reply normalizes as channel message and as thread reply" do
+      payload = payload!("message_thread_broadcast")
+
+      assert {:ok, %WebhookDelivery{event: "message", normalized_signal: delivered}} =
+               replay("message_thread_broadcast")
+
+      signal = Map.delete(delivered, :delivery)
+      assert_capture_text(signal.text, "broadcast-reply", 708)
+
+      assert signal == %{
+               team_id: "T0CEE692400",
+               event_id: "Ev0CDYKGNNBV",
+               channel: "C0CEEB41FU0",
+               channel_type: "channel",
+               user: "U0CDPFT1RDJ",
+               text: signal.text,
+               ts: "1793627849.603099",
+               thread_ts: "1793627736.679599",
+               event_ts: "1793627849.603099",
+               subtype: "thread_broadcast"
+             }
+
+      for event <- ["message.channels", "message.thread_reply"] do
+        assert {:ok, ^signal} = Webhook.normalize_signal(event, payload)
+      end
+    end
+
     test "an app mention and a message with the same mention text stay distinct" do
       assert {:ok, %WebhookDelivery{event: "app_mention", normalized_signal: mention}} =
                replay("app_mention")
@@ -412,11 +472,18 @@ defmodule Jido.Connect.Slack.WebhookTest do
       rows = [
         {"slack.event.app_mention", "app_mention", ["app_mention"]},
         {"slack.event.message.channels", "message.channels",
-         ["message_public", "message_mention", "message_thread_reply"]},
+         [
+           "message_public",
+           "message_mention",
+           "message_thread_reply",
+           "message_thread_broadcast",
+           "message_file_share"
+         ]},
         {"slack.event.message.groups", "message.groups", ["message_private"]},
         {"slack.event.message.im", "message.im", ["message_im"]},
         {"slack.event.message.mpim", "message.mpim", ["message_mpim"]},
-        {"slack.event.message.thread_reply", "message.thread_reply", ["message_thread_reply"]}
+        {"slack.event.message.thread_reply", "message.thread_reply",
+         ["message_thread_reply", "message_thread_broadcast"]}
       ]
 
       for {trigger_id, event, names} <- rows, name <- names do
