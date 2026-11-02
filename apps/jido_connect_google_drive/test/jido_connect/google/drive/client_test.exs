@@ -748,6 +748,26 @@ defmodule Jido.Connect.Google.Drive.ClientTest do
     assert error.details.message == message
   end
 
+  # The recorded error body cut off after half its bytes, as a dropped
+  # connection leaves it: the content type still says JSON, the body no
+  # longer decodes.
+  test "a failed download with a truncated JSON error body keeps the raw body" do
+    recorded = recorded_download!("file_download_not_found")
+    encoded = Jason.encode!(recorded["body"])
+    truncated = binary_part(encoded, 0, div(byte_size(encoded), 2))
+
+    assert {:error, %Jason.DecodeError{}} = Jason.decode(truncated)
+
+    Req.Test.stub(__MODULE__, fn conn ->
+      replay_download(conn, recorded, truncated)
+    end)
+
+    assert {:error, %Jido.Connect.Error.ProviderError{provider: :google, status: 404} = error} =
+             Client.download_file(%{file_id: "file123"}, "token")
+
+    assert error.details.body_summary == %{type: :binary, bytes: byte_size(truncated)}
+  end
+
   # The replay needs the recorded status and headers, which
   # `LiveSmoke.fixture!/2` leaves out, so this loads the whole recording.
   defp recorded_download!(name) do
