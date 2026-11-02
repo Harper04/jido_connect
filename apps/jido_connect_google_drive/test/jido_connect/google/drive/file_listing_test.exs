@@ -114,16 +114,38 @@ defmodule Jido.Connect.Google.Drive.FileListingTest do
       Req.Test.json(conn, body)
     end)
 
-    assert {:ok, result} =
-             invoke(%{
-               query: @query,
-               corpora: "allDrives",
-               include_items_from_all_drives: true,
-               supports_all_drives: true
-             })
+    assert {:ok, result} = invoke(all_drives_query())
 
     assert result.incomplete_search == true
     refute Map.has_key?(result, :next_page_token)
+  end
+
+  # Drive may answer a page with no files and a nextPageToken, so an empty page
+  # does not end the listing. This test sends the recorded first page without
+  # its file and then the recorded final page.
+  test "files.list keeps the continuation token of an empty page across all drives" do
+    empty_page = %{LiveSmoke.fixture!(:google_drive, "files_list_folder_page") | "files" => []}
+    final_page = LiveSmoke.fixture!(:google_drive, "files_list_folder_page.5")
+    input = all_drives_query()
+
+    for {body, page_token} <- [{empty_page, nil}, {final_page, empty_page["nextPageToken"]}] do
+      Req.Test.expect(__MODULE__, fn conn ->
+        assert conn.query_params["q"] == @query
+        assert conn.query_params["pageToken"] == page_token
+        assert conn.query_params["corpora"] == "allDrives"
+        assert conn.query_params["includeItemsFromAllDrives"] == "true"
+        assert conn.query_params["supportsAllDrives"] == "true"
+        Req.Test.json(conn, body)
+      end)
+    end
+
+    assert {:ok, first} = invoke(input)
+    assert first.files == []
+    assert first.next_page_token == empty_page["nextPageToken"]
+
+    assert {:ok, last} = invoke(Map.put(input, :page_token, first.next_page_token))
+    assert Enum.map(last.files, & &1.file_id) == [List.last(@children)]
+    refute Map.has_key?(last, :next_page_token)
   end
 
   test "files.list returns no incomplete_search key when the response omits incompleteSearch" do
@@ -157,6 +179,15 @@ defmodule Jido.Connect.Google.Drive.FileListingTest do
 
       Req.Test.json(conn, LiveSmoke.fixture!(:google_drive, "files_list_folder_page.5"))
     end)
+  end
+
+  defp all_drives_query do
+    %{
+      query: @query,
+      corpora: "allDrives",
+      include_items_from_all_drives: true,
+      supports_all_drives: true
+    }
   end
 
   defp list_pages(input, results \\ []) do
