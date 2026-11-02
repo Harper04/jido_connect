@@ -47,9 +47,11 @@ defmodule Jido.Connect.Slack.ThreadRepliesLiveSmokeTest do
   from that reply through the authorizing user's reply to the two new ones.
   The test recognizes its replies by their texts and the file name. It does
   not write while the thread still holds such a reply from an earlier run,
-  and names its `ts`. When the test exits, it removes the reaction, deletes both replies and the
-  file, and checks that the thread holds the prepared replies again with the
-  parent's `reply_count` and `latest_reply` from before the run.
+  and names its `ts`. When the test exits, it deletes both replies, which
+  removes the reaction, then the file, and checks that the thread holds the
+  prepared replies again with the parent's `reply_count` and `latest_reply`
+  from before the run. One exit callback runs these steps and reports all
+  their failures together.
   """
 
   use ExUnit.Case, async: false
@@ -235,11 +237,7 @@ defmodule Jido.Connect.Slack.ThreadRepliesLiveSmokeTest do
     authorizing_user = LiveSlack.user_id!(env["SLACK_USER_TOKEN"])
 
     prepared = reference_thread!(token, channel, parent)
-    prepared_root = root!(prepared, parent)
     refute_earlier_run!(prepared, parent)
-
-    # Registered first, so it runs after every cleanup below.
-    on_exit(fn -> assert_thread_restored!(token, channel, parent, prepared, prepared_root) end)
 
     assert long_ts =
              prepared
@@ -248,7 +246,11 @@ defmodule Jido.Connect.Slack.ThreadRepliesLiveSmokeTest do
              |> sorted_ts()
              |> List.last()
 
-    {file_ts, file_id} = post_file_reply!(token, channel, parent)
+    # Every write of the run follows the upload URL.
+    {upload_url, file_id} = file_upload_url!(token)
+    on_exit(fn -> clean_up!(token, channel, parent, prepared, file_id) end)
+
+    file_ts = post_file_reply!(token, channel, parent, upload_url, file_id)
     reaction_ts = post_reaction_reply!(token, channel, parent)
 
     record("thread_replies_message_kinds")
@@ -298,17 +300,20 @@ defmodule Jido.Connect.Slack.ThreadRepliesLiveSmokeTest do
 
   defp record(name), do: LiveSlack.record(name, fields: @file_fields)
 
-  # Uploads a text file into the thread with the external upload flow and
-  # returns the reply's ts and the file ID. The reply and the file are deleted
-  # when the test exits, the reply first.
-  defp post_file_reply!(token, channel, parent) do
+  # Starts the external upload flow and returns the upload URL and the file
+  # ID.
+  defp file_upload_url!(token) do
     assert %{status: 200, body: %{"ok" => true, "upload_url" => url, "file_id" => file_id}} =
              LiveSlack.reference_request(token, :post, "files.getUploadURLExternal",
                form: [filename: @file_name, length: byte_size(@file_content)]
              )
 
-    on_exit(fn -> LiveSlack.delete_file!(token, file_id) end)
+    {url, file_id}
+  end
 
+  # Uploads the text file, shares it into the thread and returns the reply's
+  # ts.
+  defp post_file_reply!(token, channel, parent, url, file_id) do
     assert %{status: 200} = Req.post!(url, body: @file_content, retry: false)
 
     assert %{status: 200, body: %{"ok" => true}} =
@@ -321,9 +326,7 @@ defmodule Jido.Connect.Slack.ThreadRepliesLiveSmokeTest do
                ]
              )
 
-    ts = await_file_reply!(token, channel, parent, file_id, 10)
-    LiveSlack.delete_on_exit(token, channel, ts)
-    {ts, file_id}
+    await_file_reply!(token, channel, parent, file_id, 10)
   end
 
   # Slack shares an uploaded file asynchronously.
@@ -348,8 +351,7 @@ defmodule Jido.Connect.Slack.ThreadRepliesLiveSmokeTest do
     end
   end
 
-  # Posts a reply with a legacy attachment and adds a reaction to it. The
-  # reaction is removed and the reply deleted when the test exits.
+  # Posts a reply with a legacy attachment and adds a reaction to it.
   defp post_reaction_reply!(token, channel, parent) do
     ts =
       LiveSlack.post_reference!(token, %{
@@ -365,14 +367,11 @@ defmodule Jido.Connect.Slack.ThreadRepliesLiveSmokeTest do
         ]
       })
 
-    LiveSlack.delete_on_exit(token, channel, ts)
-
     assert %{status: 200, body: %{"ok" => true}} =
              LiveSlack.reference_request(token, :post, "reactions.add",
                json: %{channel: channel, timestamp: ts, name: @reaction}
              )
 
-    on_exit(fn -> LiveSlack.remove_reaction!(token, channel, ts, @reaction) end)
     ts
   end
 
@@ -391,11 +390,45 @@ defmodule Jido.Connect.Slack.ThreadRepliesLiveSmokeTest do
       Enum.any?(Map.get(message, "files", []), &(&1["name"] == @file_name))
   end
 
+  # Runs when the write test exits. It deletes the run's replies, which
+  # removes the reaction with its reply, then the file, and checks the thread.
+  # The replies are found by their text or file, so the file reply goes too
+  # when it appeared only after `await_file_reply!/5` gave up. ExUnit reports
+  # only the first failing exit callback, so every step runs and the failures
+  # are raised together. If the first read of the thread fails, nothing is
+  # deleted, and the next run names the replies left.
+  defp clean_up!(token, channel, parent, prepared, file_id) do
+    reply_deletes =
+      for %{"ts" => ts} <- Enum.filter(reference_thread!(token, channel, parent), &run_reply?/1) do
+        fn -> LiveSlack.delete_message!(token, channel, ts) end
+      end
+
+    steps =
+      reply_deletes ++
+        [
+          fn -> LiveSlack.delete_file!(token, file_id) end,
+          fn -> assert_thread_restored!(token, channel, parent, prepared) end
+        ]
+
+    case Enum.flat_map(steps, &failure/1) do
+      [] -> :ok
+      errors -> raise ExUnit.MultiError, errors: errors
+    end
+  end
+
+  defp failure(step) do
+    step.()
+    []
+  rescue
+    error -> [{:error, error, __STACKTRACE__}]
+  end
+
   # The thread must hold the prepared replies again, and the parent must
   # report the reply count and latest reply from before the run.
-  defp assert_thread_restored!(token, channel, parent, prepared, prepared_root) do
+  defp assert_thread_restored!(token, channel, parent, prepared) do
     thread = reference_thread!(token, channel, parent)
     root = root!(thread, parent)
+    prepared_root = root!(prepared, parent)
 
     assert sorted_ts(thread) == sorted_ts(prepared),
            "the thread #{parent} differs from before the run: " <>
