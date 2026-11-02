@@ -85,6 +85,7 @@ defmodule Jido.Connect.Google.Docs.DocumentTabsTest do
         top_level_title_not_a_string: "a top-level tab's title is not a string",
         tabs_not_a_list: "tabs is not a list",
         child_tab_not_a_map: "the nested child tab is not a map",
+        child_document_tab_not_a_map: "the nested child tab's documentTab is not a map",
         child_body_not_a_map: "the nested child tab's documentTab.body is not a map",
         child_properties_not_a_map: "the nested child tab's tabProperties is not a map",
         child_tabs_not_a_list: "the second tab's childTabs is not a list"
@@ -113,6 +114,14 @@ defmodule Jido.Connect.Google.Docs.DocumentTabsTest do
 
   defp malform(body, :child_tab_not_a_map),
     do: put_in(body, ["tabs", Access.at(1), "childTabs", Access.at(0)], "not a tab")
+
+  defp malform(body, :child_document_tab_not_a_map),
+    do:
+      put_in(
+        body,
+        ["tabs", Access.at(1), "childTabs", Access.at(0), "documentTab"],
+        "not a document tab"
+      )
 
   defp malform(body, :child_body_not_a_map),
     do:
