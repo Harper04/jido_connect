@@ -539,7 +539,9 @@ defmodule Jido.Connect.Slack.MessageChangesTest do
                   %Error.ProviderError{
                     reason: :conflicting_message_change,
                     details: %{field: ^field, conflicts_with: "event.previous_message.ts"}
-                  }} = result
+                  } = error} = result
+
+          refute_text(error, payload["event"]["previous_message"]["text"])
         end
 
         assert {:ok, %WebhookDelivery{normalized_signal: nil}} = replay(capture)
@@ -697,9 +699,25 @@ defmodule Jido.Connect.Slack.MessageChangesTest do
           payload = payload!(fixture),
           {:ok, %{subtype: "message_deleted"} = signal} <- [Webhook.normalize_event(payload)] do
         refute Map.has_key?(signal, :text)
+        edit_trigger = String.replace_suffix(trigger_event(payload), ".deleted", ".changed")
+
+        # Derived: the deletion with a `previous_message` that names another
+        # message, and with an `event_ts` that is no string.
+        errors = [
+          Webhook.normalize_signal(edit_trigger, payload),
+          Webhook.normalize_event(
+            put_in(payload, ["event", "previous_message", "ts"], "1793627736.679599")
+          ),
+          Webhook.normalize_event(put_in(payload, ["event", "event_ts"], 1_793_628_616))
+        ]
+
+        for result <- errors do
+          assert {:error, %Error.ProviderError{}} = result, fixture
+        end
 
         with %{"text" => text} when text != "" <- payload["event"]["previous_message"] do
           refute_text(signal, text)
+          for {:error, error} <- errors, do: refute_text(error, text)
         end
       end
     end
