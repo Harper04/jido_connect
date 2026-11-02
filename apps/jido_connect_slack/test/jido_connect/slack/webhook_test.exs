@@ -729,6 +729,37 @@ defmodule Jido.Connect.Slack.WebhookTest do
       end
     end
 
+    test "message triggers declare exactly the subtypes the normalizer accepts" do
+      # Message subtypes from Slack's documentation and one it does not define.
+      subtypes = ~w(assistant_app_thread bot_message channel_archive channel_convert_to_private
+                    channel_join channel_leave channel_name channel_posting_permissions
+                    channel_purpose channel_topic channel_unarchive ekm_access_denied file_share
+                    group_archive group_join group_leave group_name group_purpose group_topic
+                    group_unarchive huddle_thread me_message message_changed message_deleted
+                    message_replied pinned_item reminder_add thread_broadcast unpinned_item
+                    jc_unknown_subtype)
+
+      triggers =
+        ~w(channels groups im mpim thread_reply)
+        |> Enum.map(&trigger("slack.event.message.#{&1}"))
+
+      {:ok, plain} = Webhook.normalize_signal("message", payload!("message_public"))
+
+      accepted =
+        for subtype <- subtypes,
+            # Derived: the captured plain message with the subtype.
+            payload = put_in(payload!("message_public"), ["event", "subtype"], subtype),
+            match?({:ok, _signal}, Webhook.normalize_signal("message", payload)),
+            do: subtype
+
+      assert accepted == ["file_share", "thread_broadcast"]
+
+      for subtype <- subtypes, trigger <- triggers do
+        parsed = Zoi.parse(trigger.signal_schema, Map.put(plain, :subtype, subtype))
+        assert match?({:ok, _signal}, parsed) == subtype in accepted, "#{trigger.id} #{subtype}"
+      end
+    end
+
     test "message triggers declare every field the captured deliveries yield" do
       rows = [
         {"slack.event.app_mention", "app_mention", ["app_mention"]},
