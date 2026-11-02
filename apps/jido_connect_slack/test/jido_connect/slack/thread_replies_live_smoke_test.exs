@@ -11,8 +11,9 @@ defmodule Jido.Connect.Slack.ThreadRepliesLiveSmokeTest do
   each page and compares the replies as a sorted `ts` list. Both tokens must
   return the same pages, and each token's replies must equal one unpaged
   `conversations.replies` call made with Req outside the package. The
-  authorizing user, whom `auth.test` of the user token names, must have a
-  reply among them. Every page must echo the channel and the parent, and a
+  authorizing user, whom `auth.test` of the user token names, must have at
+  least one reply among them, and the bot token must return each of these
+  replies too. Every page must echo the channel and the parent, and a
   page that carries the parent reports the parent's `reply_count` and
   `latest_reply`, although it holds only some of the replies.
 
@@ -81,11 +82,18 @@ defmodule Jido.Connect.Slack.ThreadRepliesLiveSmokeTest do
     report("slack.thread.replies with the bot token", bot_pages, bot_replies, parent)
     report("slack.thread.replies with the user token", user_pages, user_replies, parent)
 
-    assert [%{ts: reply_ts}] =
-             Enum.filter(user_replies, &(&1.user == authorizing_user and &1[:bot_id] == nil))
+    authorizing_replies =
+      user_replies
+      |> Enum.filter(&(&1[:user] == authorizing_user and &1[:bot_id] == nil))
+      |> sorted_ts()
 
-    assert reply_ts in sorted_ts(bot_replies)
-    IO.puts("live_smoke slack: reply of the authorizing user #{authorizing_user}: #{reply_ts}")
+    assert authorizing_replies != [], "no reply of the authorizing user #{authorizing_user}"
+    assert authorizing_replies -- sorted_ts(bot_replies) == []
+
+    IO.puts(
+      "live_smoke slack: replies of the authorizing user #{authorizing_user}: " <>
+        Enum.join(authorizing_replies, ", ")
+    )
 
     root = root!(bot_reference, parent)
 
