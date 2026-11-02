@@ -1784,7 +1784,8 @@ defmodule Jido.Connect.SlackTest do
              :channel,
              :text,
              :thread_ts,
-             :reply_broadcast
+             :reply_broadcast,
+             :blocks
            ]
 
     assert projection.risk == :write
