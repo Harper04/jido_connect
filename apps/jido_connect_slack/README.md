@@ -150,8 +150,9 @@ the request headers, the signing secret and options, and returns a verified
 
 Options:
 
-- `:max_body_bytes` bounds the raw body, by default 262,144 bytes (256 KiB). A
-  larger body fails with reason `:body_too_large` before the signature check.
+- `:max_body_bytes` bounds the raw body, by default 262,144 bytes (256 KiB);
+  `nil` also selects the default. A larger body fails with reason
+  `:body_too_large` before the signature check.
 - `:now` sets the current Unix time for the five-minute timestamp window.
 - `:seen_delivery_ids` lists delivery IDs the host has already processed.
 

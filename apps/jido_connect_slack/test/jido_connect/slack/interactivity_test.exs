@@ -515,6 +515,15 @@ defmodule Jido.Connect.Slack.InteractivityTest do
       assert_too_large(over, 262_144, [])
     end
 
+    test "applies the 256 KiB default when :max_body_bytes is nil" do
+      exact = pad_to(form_body(@block_actions_payload), 262_144)
+
+      assert {:ok, %WebhookDelivery{event: "block_actions"}} =
+               verify(exact, max_body_bytes: nil)
+
+      assert_too_large(exact <> "+", 262_144, max_body_bytes: nil)
+    end
+
     test "applies an overridden :max_body_bytes" do
       body = form_body(@block_actions_payload)
       max = byte_size(body)

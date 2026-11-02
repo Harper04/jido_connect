@@ -69,7 +69,7 @@ defmodule Jido.Connect.Slack.Interactivity do
   Options:
 
     * `:max_body_bytes` - largest accepted raw body in bytes. Defaults to
-      262_144 (256 KiB).
+      262_144 (256 KiB); `nil` also selects the default.
     * `:now` - current Unix time in seconds for the timestamp window.
       Defaults to the system time.
     * `:seen_delivery_ids` - delivery IDs already processed by the host.
@@ -80,7 +80,7 @@ defmodule Jido.Connect.Slack.Interactivity do
   @spec verify_delivery(binary(), map(), String.t() | nil, keyword()) ::
           {:ok, WebhookDelivery.t()} | {:error, Error.error()}
   def verify_delivery(body, headers, signing_secret, opts \\ []) when is_binary(body) do
-    with :ok <- check_body_size(body, Keyword.get(opts, :max_body_bytes, @max_body_bytes)),
+    with :ok <- check_body_size(body, Keyword.get(opts, :max_body_bytes) || @max_body_bytes),
          :ok <- Webhook.verify_signature(body, headers, signing_secret, opts),
          {:ok, payload} <- Form.decode_payload(body),
          payload = drop_temporary_capabilities(payload),
