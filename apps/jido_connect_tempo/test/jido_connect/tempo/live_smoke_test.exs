@@ -360,6 +360,7 @@ defmodule Jido.Connect.Tempo.LiveSmokeTest do
            ]
 
     assert Enum.map(segments, & &1.approval_status) == ["APPROVED", "IN_REVIEW", "OPEN"]
+    assert Enum.map(segments, & &1.approval_error) == [nil, nil, nil]
 
     for segment <- segments do
       raw = raw_approval!(env, token, %{from: segment.period_from, to: segment.period_to})

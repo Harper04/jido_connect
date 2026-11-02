@@ -72,8 +72,9 @@ defmodule Jido.Connect.Tempo.Actions.Periods do
               "of the range in the period), period_from and period_to (the full period), " <>
               "approval_status (OPEN, IN_REVIEW, APPROVED, another raw key, or null when no " <>
               "status was read), approval_updated_at (null when Tempo sent none), " <>
-              "closure_evidence (always unknown) and state (blocked for IN_REVIEW or " <>
-              "APPROVED, else unknown)."
+              "approval_error (null when the approval read returned an approval, else the " <>
+              "reason, status and retry_after of the failed read), closure_evidence (always " <>
+              "unknown) and state (blocked for IN_REVIEW or APPROVED, else unknown)."
         )
       end
     end

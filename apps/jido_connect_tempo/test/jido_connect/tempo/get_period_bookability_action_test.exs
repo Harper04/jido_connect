@@ -65,6 +65,29 @@ defmodule Jido.Connect.Tempo.GetPeriodBookabilityActionTest do
     end
   end
 
+  defmodule FailingApprovalClient do
+    @moduledoc false
+
+    # Answers the recorded periods like RecordingClient, but every approval
+    # read fails with an error that is not a Tempo provider error with an
+    # atom reason, as a host's own client might return.
+
+    alias Jido.Connect.Error
+    alias Jido.Connect.Tempo.GetPeriodBookabilityActionTest.RecordingClient
+
+    defdelegate list_periods(request, opts), to: RecordingClient
+
+    def get_timesheet_approval(_request, "2026-08-01", _to), do: {:error, :econnrefused}
+
+    def get_timesheet_approval(_request, "2026-09-01", _to),
+      do: {:error, Error.validation("Host check failed: secret detail", reason: :host_check)}
+
+    def get_timesheet_approval(_request, "2026-10-01", _to),
+      do:
+        {:error,
+         Error.provider("Host text", provider: :tempo, reason: "host reason", status: 502)}
+  end
+
   defmodule NextSecondClient do
     @moduledoc false
 
@@ -137,6 +160,7 @@ defmodule Jido.Connect.Tempo.GetPeriodBookabilityActionTest do
                  period_to: "2026-08-31",
                  approval_status: "APPROVED",
                  approval_updated_at: "2026-10-30T19:19:42Z",
+                 approval_error: nil,
                  closure_evidence: :unknown,
                  state: :blocked
                },
@@ -147,6 +171,7 @@ defmodule Jido.Connect.Tempo.GetPeriodBookabilityActionTest do
                  period_to: "2026-09-30",
                  approval_status: "IN_REVIEW",
                  approval_updated_at: "2026-10-30T19:19:43Z",
+                 approval_error: nil,
                  closure_evidence: :unknown,
                  state: :blocked
                },
@@ -157,6 +182,7 @@ defmodule Jido.Connect.Tempo.GetPeriodBookabilityActionTest do
                  period_to: "2026-10-31",
                  approval_status: "OPEN",
                  approval_updated_at: nil,
+                 approval_error: nil,
                  closure_evidence: :unknown,
                  state: :unknown
                }
@@ -316,7 +342,13 @@ defmodule Jido.Connect.Tempo.GetPeriodBookabilityActionTest do
         assert {:ok, %{complete: false, state: :blocked, segments: [august, september, _october]}} =
                  invoke(:api_token, @range)
 
-        assert %{approval_status: nil, approval_updated_at: nil, state: :unknown} = august
+        assert %{
+                 approval_status: nil,
+                 approval_updated_at: nil,
+                 approval_error: nil,
+                 state: :unknown
+               } = august
+
         assert %{approval_status: "IN_REVIEW", state: :blocked} = september
       end
     end
@@ -374,24 +406,98 @@ defmodule Jido.Connect.Tempo.GetPeriodBookabilityActionTest do
                invoke(:api_token, @range)
 
       assert %{approval_status: "APPROVED", state: :blocked} = august
-      assert %{approval_status: nil, approval_updated_at: nil, state: :unknown} = september
+
+      assert %{
+               approval_status: nil,
+               approval_updated_at: nil,
+               approval_error: %{reason: :foreign_approval_user, status: nil, retry_after: nil},
+               state: :unknown
+             } = september
+
       refute inspect(result) =~ "account-1"
     end
 
-    # The recorded September approval answered with 503, then not at all.
-    test "a failed subrequest sets complete false and keeps blocked segments" do
-      for failure <- [
-            fn conn -> Fixture.respond(conn, "period_bookability.3", status: 503) end,
-            fn conn -> Req.Test.transport_error(conn, :timeout) end
+    # The recorded September approval answered with 503, not at all, and
+    # with 429 and a Retry-After header.
+    test "a failed subrequest sets complete false, keeps blocked segments and names the failure" do
+      for {failure, approval_error} <- [
+            {fn conn -> Fixture.respond(conn, "period_bookability.3", status: 503) end,
+             %{reason: :server_error, status: 503, retry_after: nil}},
+            {fn conn -> Req.Test.transport_error(conn, :timeout) end,
+             %{reason: :request_error, status: nil, retry_after: nil}},
+            {fn conn ->
+               Fixture.respond(conn, "period_bookability.3",
+                 status: 429,
+                 headers: [{"retry-after", "30"}]
+               )
+             end, %{reason: :rate_limited, status: 429, retry_after: 30}}
           ] do
         serve(approvals: %{"2026-09-01" => failure})
 
         assert {:ok, %{complete: false, state: :blocked, segments: [august, september, october]}} =
                  invoke(:oauth2_user, @range)
 
-        assert %{approval_status: "APPROVED", state: :blocked} = august
-        assert %{approval_status: nil, state: :unknown} = september
-        assert %{approval_status: "OPEN", state: :unknown} = october
+        assert %{approval_status: "APPROVED", approval_error: nil, state: :blocked} = august
+
+        assert %{approval_status: nil, approval_error: ^approval_error, state: :unknown} =
+                 september
+
+        assert %{approval_status: "OPEN", approval_error: nil, state: :unknown} = october
+      end
+    end
+
+    # Tempo's recorded 400 for a range across periods, answered with 403 for
+    # every approval: a token that may read periods but not approvals.
+    test "a forbidden approval read leaves every segment without evidence and names the 403" do
+      forbidden = fn conn -> Fixture.respond(conn, "timesheet_approval.2", status: 403) end
+
+      serve(
+        approvals: %{
+          "2026-08-01" => forbidden,
+          "2026-09-01" => forbidden,
+          "2026-10-01" => forbidden
+        }
+      )
+
+      assert {:ok, %{complete: false, state: :unknown, segments: segments} = result} =
+               invoke(:api_token, @range)
+
+      assert Enum.map(segments, &{&1.period_from, &1.approval_status, &1.state}) == [
+               {"2026-08-01", nil, :unknown},
+               {"2026-09-01", nil, :unknown},
+               {"2026-10-01", nil, :unknown}
+             ]
+
+      for segment <- segments do
+        assert segment.approval_error == %{reason: :forbidden, status: 403, retry_after: nil}
+      end
+
+      refute inspect(result) =~ "not a valid period"
+      assert approval_requests() == ["2026-08-01", "2026-09-01", "2026-10-01"]
+    end
+
+    test "any other approval error is a read failure without its content" do
+      context = context(:api_token)
+
+      assert {:ok, %{complete: false, state: :unknown, segments: [_, _, _] = segments} = result} =
+               GetPeriodBookability.run(@range, %{
+                 integration_context: context,
+                 credential_lease: lease(context),
+                 provider_client: FailingApprovalClient
+               })
+
+      for segment <- segments do
+        assert %{approval_status: nil, state: :unknown} = segment
+
+        assert segment.approval_error == %{
+                 reason: :approval_read_failed,
+                 status: nil,
+                 retry_after: nil
+               }
+      end
+
+      for text <- ["econnrefused", "secret detail", "host_check", "Host text", "host reason"] do
+        refute inspect(result) =~ text
       end
     end
 

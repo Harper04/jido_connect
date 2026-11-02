@@ -16,16 +16,27 @@ defmodule Jido.Connect.Tempo.PeriodBookability do
   | `segments` | one `Jido.Connect.Tempo.PeriodBookability.Segment` per intersecting period, ordered by date |
 
   Each segment holds the part of the range in its period, the full period,
-  Tempo's `approval_status` and `approval_updated_at` as sent, and
-  `closure_evidence: :unknown`. No public Tempo Cloud API reads manual
-  period closures, Scheduler freezes or grace periods, so closure evidence
-  is always unknown.
+  Tempo's `approval_status` and `approval_updated_at` as sent,
+  `approval_error` and `closure_evidence: :unknown`. No public Tempo Cloud
+  API reads manual period closures, Scheduler freezes or grace periods, so
+  closure evidence is always unknown.
 
   A segment's `approval_status` is `nil` when no status was read: Tempo sent
   none, its approval read failed, or the answer named another user or
   another period. A missing status is never read as `OPEN`. Such a segment,
   and a range that Tempo's periods leave uncovered or cover twice, set
   `complete: false`; the other segments keep their evidence.
+
+  `approval_error` tells these cases apart. It is `nil` when the approval
+  read returned an approval, also one without a status. Otherwise it holds
+  the `reason`, `status` and `retry_after` of the failed read's
+  `Jido.Connect.Error.ProviderError`, such as `%{reason: :forbidden, status:
+  403, retry_after: nil}`, `%{reason: :rate_limited, status: 429,
+  retry_after: 30}` or `%{reason: :foreign_approval_user, status: nil,
+  retry_after: nil}`. Any other error, such as one of an injected client or
+  a provider error without an atom reason, is `%{reason:
+  :approval_read_failed, status: nil, retry_after: nil}`. The error's
+  message, details and Tempo's body are never kept.
 
   ## Derived State
 
@@ -43,6 +54,7 @@ defmodule Jido.Connect.Tempo.PeriodBookability do
   only when it is made.
   """
 
+  alias Jido.Connect.Error
   alias Jido.Connect.Tempo.Input.DateRange
   alias Jido.Connect.Tempo.PeriodBookability.Segment
   alias Jido.Connect.Tempo.TimesheetApproval
@@ -79,7 +91,7 @@ defmodule Jido.Connect.Tempo.PeriodBookability do
   outside the range is dropped. `read_approval` is called once for each
   remaining period, in date order, with that period and returns its
   approval as `Jido.Connect.Tempo.Client.get_timesheet_approval/3` does; an
-  error leaves the segment without evidence.
+  error leaves the segment without evidence and sets its `approval_error`.
   """
   @spec build(map(), [period()], (period() -> approval_result())) :: t()
   def build(%{from: from, to: to} = attrs, periods, read_approval) do
@@ -128,7 +140,7 @@ defmodule Jido.Connect.Tempo.PeriodBookability do
   end
 
   defp segment(first, last, period, approval) do
-    {status, updated_at} = evidence(approval)
+    {status, updated_at, approval_error} = evidence(approval)
 
     Segment.new!(%{
       from: Date.to_iso8601(first),
@@ -137,16 +149,30 @@ defmodule Jido.Connect.Tempo.PeriodBookability do
       period_to: period.to,
       approval_status: status,
       approval_updated_at: updated_at,
+      approval_error: approval_error,
       closure_evidence: :unknown,
       state: if(status in @blocking, do: :blocked, else: :unknown)
     })
   end
 
-  # A failed or rejected read is no evidence, not a status.
+  # A failed or rejected read is no evidence, not a status. Of the error
+  # only its reason, status and retry_after are kept: never its message,
+  # its details or a Tempo body.
   defp evidence({:ok, %TimesheetApproval{status: status, updated_at: updated_at}}),
-    do: {status, updated_at}
+    do: {status, updated_at, nil}
 
-  defp evidence({:error, _error}), do: {nil, nil}
+  defp evidence({:error, error}), do: {nil, nil, approval_error(error)}
+
+  defp approval_error(%Error.ProviderError{reason: reason, status: status, details: details})
+       when is_atom(reason) and not is_nil(reason) do
+    %{reason: reason, status: status, retry_after: retry_after(details)}
+  end
+
+  defp approval_error(_error),
+    do: %{reason: :approval_read_failed, status: nil, retry_after: nil}
+
+  defp retry_after(%{retry_after: seconds}) when is_integer(seconds), do: seconds
+  defp retry_after(_details), do: nil
 
   # The intersections, in order, must cover every day of the range once.
   defp covered?([], _range), do: false

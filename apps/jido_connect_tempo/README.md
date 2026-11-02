@@ -244,6 +244,7 @@ you mean from '2026-08-01' to '2026-08-31'?`. All requests are GETs; the
 | `period_from`, `period_to` | the full period as Tempo reports it |
 | `approval_status` | Tempo's `status.key` as sent: `OPEN`, `IN_REVIEW`, `APPROVED` or another raw string; `nil` when no status was read |
 | `approval_updated_at` | Tempo's `status.updatedAt` as sent, `nil` when absent; an `OPEN` status carries none |
+| `approval_error` | `nil` when the approval read returned an approval; else `reason`, `status` and `retry_after` of the failed read |
 | `closure_evidence` | always `:unknown` |
 | `state` | `:blocked` or `:unknown`, derived as below |
 
@@ -260,6 +261,18 @@ The output never holds the approval comment, the actor or the reviewer, the
 failed, and when Tempo answered for another user or another period. A
 missing status is never read as `OPEN`. An unfamiliar key stays the raw
 string; no atom is created for it.
+
+`approval_error` separates these cases. It is `nil` when Tempo answered
+with an approval, also one without a status. A failed read keeps only the
+`reason`, `status` and `retry_after` of its normalized error: a token that
+may read periods but not approvals gives `%{reason: :forbidden, status:
+403, retry_after: nil}` on every segment, a 429 with `Retry-After: 30`
+gives `%{reason: :rate_limited, status: 429, retry_after: 30}`, and an
+approval of another user gives `%{reason: :foreign_approval_user, status:
+nil, retry_after: nil}`. Any other error, such as one of an injected
+provider client, is `:approval_read_failed` with `status` and
+`retry_after` `nil`. Tempo's error text and the error details are not
+kept.
 
 `complete` is `false` when Tempo's periods leave a day of the range
 uncovered or cover it twice, and when a segment has no `approval_status`.
