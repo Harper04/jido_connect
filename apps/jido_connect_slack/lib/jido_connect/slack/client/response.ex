@@ -1,7 +1,7 @@
 defmodule Jido.Connect.Slack.Client.Response do
   @moduledoc "Slack Web API success and error response handling."
 
-  alias Jido.Connect.{Data, Error}
+  alias Jido.Connect.{Data, Error, ProviderResponse}
   alias Jido.Connect.Slack.Client.{Normalizer, Transport}
 
   import Normalizer
@@ -669,12 +669,15 @@ defmodule Jido.Connect.Slack.Client.Response do
 
   def handle_team_info_response(response), do: handle_error_response(response)
 
-  def handle_error_response({:ok, %{status: status, body: %{"ok" => false} = body}}) do
+  # Slack reports most failures, rate limits included, as `ok: false`. The
+  # `Retry-After` header stays in `details.retry_after`, as it does for the
+  # other HTTP errors in `Jido.Connect.Http.provider_error/2`.
+  def handle_error_response({:ok, %{status: status, body: %{"ok" => false} = body} = response}) do
     Error.provider("Slack API request failed",
       provider: :slack,
       status: status,
       reason: Data.get(body, "error"),
-      details: %{body: body}
+      details: %{body: body, retry_after: retry_after(response)}
     )
     |> then(&{:error, &1})
   end
@@ -688,4 +691,7 @@ defmodule Jido.Connect.Slack.Client.Response do
 
   def handle_error_response({:error, _reason} = response),
     do: Transport.provider_error(response, provider: :slack, message: "Slack request failed")
+
+  defp retry_after(response),
+    do: ProviderResponse.from_result!(:slack, {:ok, response}).retry_after
 end
