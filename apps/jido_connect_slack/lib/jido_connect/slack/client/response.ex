@@ -697,9 +697,10 @@ defmodule Jido.Connect.Slack.Client.Response do
 
   def handle_team_info_response(response), do: handle_error_response(response)
 
-  # Slack reports most failures, rate limits included, as `ok: false`. The
-  # `Retry-After` header stays in `details.retry_after`, as it does for the
-  # other HTTP errors in `Jido.Connect.Http.provider_error/2`.
+  # Slack reports most failures, rate limits included, as `ok: false`. This
+  # clause keeps the `Retry-After` header in `details.retry_after`. The next
+  # clause and `handle_file_content_response/1` pass only status and body on,
+  # so their errors carry no `retry_after`.
   def handle_error_response({:ok, %{status: status, body: %{"ok" => false} = body} = response}) do
     Error.provider("Slack API request failed",
       provider: :slack,

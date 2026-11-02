@@ -10,8 +10,9 @@
   attachments and files, exact timestamps, author IDs, subtype and edit
   metadata. The reader and editor catalog packs include the action.
 - Keep Slack's `Retry-After` header as `details.retry_after` on `ok: false`
-  responses, such as a 429 `ratelimited`, as other HTTP errors already do. This
-  changes the error details of every Slack action.
+  responses, such as a 429 `ratelimited`. This changes the error details of
+  every Slack action. HTTP failures without an `ok: false` body and failed
+  file content uploads still carry no `retry_after`.
 
 ## 0.1.0
 

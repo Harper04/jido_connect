@@ -108,10 +108,12 @@ field. The `is_private`, `is_im` and `is_mpim` flags of
 
 ## Rate limits
 
-Slack answers a rate-limited call with HTTP 429 and `ok: false`. Every Slack
-action returns it as a `Jido.Connect.Error.ProviderError` that keeps the
-`Retry-After` delay in seconds as `details.retry_after`. The package does not
-retry.
+Slack answers a rate-limited call with HTTP 429 and an `ok: false` body. Every
+Slack action returns an `ok: false` response as a
+`Jido.Connect.Error.ProviderError` that keeps the `Retry-After` delay in
+seconds as `details.retry_after`. An HTTP failure without an `ok: false` body,
+such as a 503 with a text body, and a failed upload of file content carry no
+`retry_after`. The package does not retry.
 
 ## Message deletion
 
