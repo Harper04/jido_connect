@@ -328,8 +328,10 @@ For one byte more, the action returns a `Jido.Connect.Error.ValidationError`
 with reason `:upload_too_large` before any request. Its message names the
 limit and contains no file content. Larger files are not supported, because
 the package has no resumable upload. The action also does not convert uploads
-into native Google formats such as Google Docs or Sheets; it takes no target
-format.
+into native Google formats such as Google Docs or Sheets. `mime_type` takes the
+media type of the bytes; Google Workspace types
+(`application/vnd.google-apps.*`) are not supported values. The action does
+not reject them before the request, and how Drive handles them is untested.
 
 The scope resolver requires `drive.file` unless the connection holds `drive`.
 According to Google, `drive.file` reaches only files and folders that the app
@@ -338,11 +340,15 @@ created or that the user opened with the app. Under `drive.file` the folder in
 `google.drive.folder.create` through the same OAuth client. Uploading into any
 other folder needs `drive`.
 
-Drive gives no idempotency guarantee for uploads, and the action declares
-`provider_idempotency?: false`. Every successful request creates a new file,
-and Drive allows several files of the same name in one folder. When the
-outcome of an upload is unknown, for example after a timeout, the host checks
-the folder before it uploads again, as described under "Replay And Retry
+A repeated upload is not idempotent. The action sends no file ID
+pre-generated with `files.generateIds`, which Drive would need to recognize a
+repeat, and its action spec has `provider_idempotency?: false`. Every
+successful request creates a new file, and Drive allows several files of the
+same name in one folder. After a timeout the error carries
+`delivery: :sent_outcome_unknown`, the file may exist, and
+`Jido.Connect.Error.retry_guidance/1` returns `:do_not_retry`. The host keeps
+its execution claim and looks for the file in the folder before it prepares a
+new upload. Claims and replay rules are described under "Replay And Retry
 Safety" in the `jido_connect` README.
 
 ## Permission-Aware Field Projections
