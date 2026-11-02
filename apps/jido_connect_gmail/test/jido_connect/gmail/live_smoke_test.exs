@@ -17,6 +17,12 @@ defmodule Jido.Connect.Gmail.LiveSmokeTest do
   @readonly_scope "https://www.googleapis.com/auth/gmail.readonly"
   @max_pages 20
 
+  # Prepared data of the test account: GOOGLE_GMAIL_QUERY matches exactly these
+  # messages. The seed script restores them, possibly under new IDs.
+  @query_matches 5
+  @query_inbox_matches 3
+  @query_archived_matches 2
+
   @tag env!(["GOOGLE_ACCESS_TOKEN"])
   test "reads the mailbox profile", %{env: env} do
     LiveSmoke.record({:jido_connect_google, :google_req_options}, :gmail, "profile")
@@ -36,7 +42,7 @@ defmodule Jido.Connect.Gmail.LiveSmokeTest do
     assert Enum.all?(pages, &(length(&1.messages) <= 1))
 
     match_ids = pages |> Enum.flat_map(& &1.messages) |> Enum.map(& &1.message_id)
-    assert length(match_ids) > 1
+    assert length(match_ids) == @query_matches
     assert length(match_ids) == length(Enum.uniq(match_ids))
 
     LiveSmoke.record(
@@ -54,8 +60,8 @@ defmodule Jido.Connect.Gmail.LiveSmokeTest do
     inbox = MapSet.new(inbox_messages, & &1.message_id)
     archived = MapSet.difference(matched, inbox)
 
-    assert MapSet.size(inbox) > 0
-    assert MapSet.size(archived) > 0
+    assert MapSet.size(inbox) == @query_inbox_matches
+    assert MapSet.size(archived) == @query_archived_matches
     assert MapSet.subset?(inbox, matched)
   end
 
