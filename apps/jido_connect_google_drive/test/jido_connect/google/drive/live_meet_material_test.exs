@@ -7,9 +7,13 @@ defmodule Jido.Connect.Google.Drive.LiveMeetMaterialTest do
 
   `GOOGLE_MEET_RECORDING_FILE_ID` is the Drive file of the prepared Meet
   recording, an MP4 of about 7.7 MB, and `GOOGLE_MEET_NOTES_DOCUMENT_ID` the
-  Google Doc of its transcript and notes. The Meet live tests tie both IDs to
-  the conference record, the Calendar live tests to the event; see
-  `docs/live_smoke_tests.md`.
+  meeting's Gemini notes document, the supplied summary. In the test tenant
+  Meet writes the transcript as a tab of that document, titled "Notizen von
+  Gemini" in the organizer's locale, so the variable names one shared
+  document. If Meet created the transcript and the notes as separate
+  documents, the export test would need the notes document. The Meet live
+  tests tie both IDs to the conference record, the Calendar live tests to the
+  event; see `docs/live_smoke_tests.md`.
 
   The download is compared with the file's Drive metadata from
   `google.drive.file.get`: the byte count with `size` and the MD5 digest with

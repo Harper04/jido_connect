@@ -22,8 +22,13 @@ defmodule Jido.Connect.Google.Meet.LiveMeetingLookupTest do
 
   The Drive live tests download `GOOGLE_MEET_RECORDING_FILE_ID` and export
   `GOOGLE_MEET_NOTES_DOCUMENT_ID`; the checks here tie both IDs to the
-  prepared record. See `docs/live_smoke_tests.md` for the variables and the
-  recording mode.
+  prepared record. In the test tenant Meet writes the transcript as a tab of
+  the meeting's Gemini notes document, titled "Notizen von Gemini" in the
+  organizer's locale, so `GOOGLE_MEET_NOTES_DOCUMENT_ID` names that one shared
+  document. If Meet created the transcript and the notes as separate
+  documents, the Drive export test would need the notes document and the
+  transcript check here would no longer hold. See `docs/live_smoke_tests.md`
+  for the variables and the recording mode.
 
   The space and recording responses are recorded. The conference record
   lists and the transcript have the shapes of `conference_records_window.json`
