@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- `confluence.page.get` returns `url`, the tenant endpoint joined with the
+  page's `_links.webui`. A missing or invalid link, or a `_links.base` other
+  than the tenant endpoint, fails the read with the invalid-response error.
+- `confluence.page.get` renders text with `Jido.Connect.Atlassian.ADF.project/2`.
+  Links keep their target, for any scheme, and ordered list items their
+  number.
+- Add the optional `confluence.page.get` input `on_unsupported`. `"fail"`, the
+  default, keeps the invalid-response error for unsupported ADF content;
+  `"degrade"` returns the supported text and adds `unsupported_nodes`.
 - Move ADF conversion into the shared `jido_connect_atlassian` package.
   `Jido.Connect.Confluence.ADF` stays as a delegating alias; `to_text/1` and
   `from_markdown/1` keep their names, return shapes and results.

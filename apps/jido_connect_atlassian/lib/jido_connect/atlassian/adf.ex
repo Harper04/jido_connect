@@ -78,10 +78,11 @@ defmodule Jido.Connect.Atlassian.ADF do
 
   ## Strict text and Markdown
 
-  `to_text/1` is the strict rendering that Confluence page reads use through
-  `Jido.Connect.Confluence.ADF`. It fails the whole document on any node or
-  text mark outside its supported subset and on links that are not HTTPS. It
-  renders links without their target and flattens nested lists.
+  `to_text/1` is the strict rendering, to which `Jido.Connect.Confluence.ADF`
+  delegates; Confluence page reads use `project/2`. The strict rendering fails
+  the whole document on any node or text mark outside its supported subset and
+  on links that are not HTTPS. It renders links without their target and
+  flattens nested lists.
 
   `from_markdown/2` converts bounded Markdown into a fixed ADF v1 subset for
   paragraphs, headings, lists, block quotes, fenced code, hard line breaks,
