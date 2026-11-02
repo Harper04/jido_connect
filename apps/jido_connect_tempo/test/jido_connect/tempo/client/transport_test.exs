@@ -206,15 +206,19 @@ defmodule Jido.Connect.Tempo.Client.TransportTest do
       end
     end
 
+    # Tempo sent no redirect to a POST. This is the recorded 401 of a
+    # worklog create, which has no body, with only the status changed and a
+    # Location added.
     test "a redirect answer to a POST is not followed and its outcome is unknown" do
       test_pid = self()
 
       Req.Test.expect(__MODULE__, fn conn ->
         send(test_pid, {:seen, conn.host})
 
-        conn
-        |> Plug.Conn.put_resp_header("location", "https://collector.example.com/4/worklogs")
-        |> Plug.Conn.send_resp(303, "")
+        Fixture.respond(conn, "worklog_create_unauthorized",
+          status: 303,
+          headers: [{"location", "https://collector.example.com/4/worklogs"}]
+        )
       end)
 
       request = request!(:api_token, "https://api.us.tempo.io", "tok")
