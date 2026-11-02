@@ -21,7 +21,7 @@ defmodule Jido.Connect.Google.Drive.LiveSmokeTest do
   # Account identifiers and the content thumbnail URL that no offline test needs.
   @masked [fields: ["permissionId", "photoLink", "thumbnailLink"]]
 
-  # Upper bound for the paging loop, so a provider that keeps returning
+  # Upper bound for the paging loops, so a provider that keeps returning
   # `nextPageToken` fails the test instead of looping.
   @max_pages 20
 
@@ -46,6 +46,7 @@ defmodule Jido.Connect.Google.Drive.LiveSmokeTest do
 
   # Drive's change log can lag behind a write; reads wait this often, 2 s apart.
   @change_log_reads 15
+  @change_log_fields "nextPageToken,changes(fileId,removed,changeType,driveId,file(id,trashed))"
 
   @tag env!(["GOOGLE_ACCESS_TOKEN"])
   test "reads the Drive about resource", %{env: env} do
@@ -359,19 +360,8 @@ defmodule Jido.Connect.Google.Drive.LiveSmokeTest do
   end
 
   defp await_change_log(access_token, page_token, params, done?, read \\ 1) do
-    assert %{status: 200, body: body} =
-             external(:get, "/changes", access_token,
-               params:
-                 [
-                   pageToken: page_token,
-                   pageSize: 1000,
-                   includeRemoved: true,
-                   fields: "changes(fileId,removed,changeType,driveId,file(id,trashed))"
-                 ] ++ params
-             )
-
     cond do
-      done?.(Map.get(body, "changes", [])) ->
+      done?.(read_change_log(access_token, page_token, params)) ->
         :ok
 
       read < @change_log_reads ->
@@ -380,6 +370,33 @@ defmodule Jido.Connect.Google.Drive.LiveSmokeTest do
 
       true ->
         flunk("Drive's change log lacked the expected changes after #{read} reads")
+    end
+  end
+
+  # Drive can end a page with `nextPageToken` before `pageSize` is reached, so
+  # a read follows the token through the last page.
+  defp read_change_log(access_token, page_token, params, changes \\ [], pages \\ 0) do
+    assert pages < @max_pages
+
+    assert %{status: 200, body: body} =
+             external(:get, "/changes", access_token,
+               params:
+                 [
+                   pageToken: page_token,
+                   pageSize: 1000,
+                   includeRemoved: true,
+                   fields: @change_log_fields
+                 ] ++ params
+             )
+
+    changes = changes ++ Map.get(body, "changes", [])
+
+    case body do
+      %{"nextPageToken" => next_page_token} ->
+        read_change_log(access_token, next_page_token, params, changes, pages + 1)
+
+      _last_page ->
+        changes
     end
   end
 
