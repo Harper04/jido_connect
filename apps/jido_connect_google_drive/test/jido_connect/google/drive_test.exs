@@ -8,6 +8,7 @@ defmodule Jido.Connect.Google.DriveTest do
 
   @starred_file_id "1JphxvbpUOuOhN326OEz9UnJqtAy99n4l"
   @unstarred_file_id "1cihn1Qw5ruqogYtAdjOkPWeA3f2KhwK-"
+  @selection_folder_id "18wQ5cSzJVV4Hpxmx_okyZi1-Oo1T10wy"
 
   @drive_action_modules [
     Jido.Connect.Google.Drive.Actions.GetAbout,
@@ -1449,6 +1450,8 @@ defmodule Jido.Connect.Google.DriveTest do
     assert %{
              file_id: @unstarred_file_id,
              name: "jcl-live unstarred.txt",
+             mime_type: "text/plain",
+             parents: [@selection_folder_id],
              starred?: false,
              modified_time: "2026-10-30T15:29:47.460Z"
            } = unstarred
@@ -1456,6 +1459,8 @@ defmodule Jido.Connect.Google.DriveTest do
     assert %{
              file_id: @starred_file_id,
              name: "jcl-live starred.txt",
+             mime_type: "text/plain",
+             parents: [@selection_folder_id],
              starred?: true,
              modified_time: "2026-10-30T15:29:45.332Z"
            } = starred
