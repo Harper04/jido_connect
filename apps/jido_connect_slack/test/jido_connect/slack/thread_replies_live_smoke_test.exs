@@ -45,7 +45,9 @@ defmodule Jido.Connect.Slack.ThreadRepliesLiveSmokeTest do
   a legacy attachment and a reaction. The page is read with `oldest` set to
   the newest prepared reply over 512 bytes and `inclusive: true`, so it runs
   from that reply through the authorizing user's reply to the two new ones.
-  When the test exits, it removes the reaction, deletes both replies and the
+  The test recognizes its replies by their texts and the file name. It does
+  not write while the thread still holds such a reply from an earlier run,
+  and names its `ts`. When the test exits, it removes the reaction, deletes both replies and the
   file, and checks that the thread holds the prepared replies again with the
   parent's `reply_count` and `latest_reply` from before the run.
   """
@@ -74,6 +76,7 @@ defmodule Jido.Connect.Slack.ThreadRepliesLiveSmokeTest do
   @file_title "Thread replies live test file"
   @file_content "Text file uploaded by the thread replies live test.\n"
   @file_comment "Thread replies live test: a bot reply with a file."
+  @reaction_text "Thread replies live test: a bot reply with an attachment and a reaction."
   @reaction "white_check_mark"
 
   @tag env!(["SLACK_BOT_TOKEN", "SLACK_USER_TOKEN", "SLACK_PUBLIC_CHANNEL_ID", "SLACK_THREAD_TS"])
@@ -233,6 +236,7 @@ defmodule Jido.Connect.Slack.ThreadRepliesLiveSmokeTest do
 
     prepared = reference_thread!(token, channel, parent)
     prepared_root = root!(prepared, parent)
+    refute_earlier_run!(prepared, parent)
 
     # Registered first, so it runs after every cleanup below.
     on_exit(fn -> assert_thread_restored!(token, channel, parent, prepared, prepared_root) end)
@@ -351,7 +355,7 @@ defmodule Jido.Connect.Slack.ThreadRepliesLiveSmokeTest do
       LiveSlack.post_reference!(token, %{
         channel: channel,
         thread_ts: parent,
-        text: "Thread replies live test: a bot reply with an attachment and a reaction.",
+        text: @reaction_text,
         attachments: [
           %{
             fallback: "Thread replies live test attachment",
@@ -370,6 +374,21 @@ defmodule Jido.Connect.Slack.ThreadRepliesLiveSmokeTest do
 
     on_exit(fn -> LiveSlack.remove_reaction!(token, channel, ts, @reaction) end)
     ts
+  end
+
+  # A reply that an earlier run left would count as prepared, and the check
+  # after cleanup would accept it.
+  defp refute_earlier_run!(prepared, parent) do
+    left = prepared |> Enum.filter(&run_reply?/1) |> sorted_ts()
+
+    assert left == [],
+           "the thread #{parent} holds replies of an earlier write run: " <>
+             "#{Enum.join(left, ", ")}; delete them before the next live run"
+  end
+
+  defp run_reply?(message) do
+    message["text"] in [@file_comment, @reaction_text] or
+      Enum.any?(Map.get(message, "files", []), &(&1["name"] == @file_name))
   end
 
   # The thread must hold the prepared replies again, and the parent must
