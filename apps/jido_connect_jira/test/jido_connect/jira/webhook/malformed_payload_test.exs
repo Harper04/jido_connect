@@ -116,17 +116,23 @@ defmodule Jido.Connect.Jira.Webhook.MalformedPayloadTest do
   end
 
   test "malformed values that the signal only reads are left out without raising" do
-    # Derived: the captured status change with a project, status and reporter
-    # that are not objects.
-    payload =
-      update_in(CapturedDelivery.payload!("status_changed"), ["issue", "fields"], fn fields ->
-        %{fields | "project" => "JCL", "status" => 3, "reporter" => ["account-1"]}
-      end)
+    assert {:ok, baseline} = Webhook.normalize_event(CapturedDelivery.payload!("status_changed"))
 
-    assert {:ok, signal} = Webhook.normalize_event(payload)
+    # Derived: the captured status change with one of project, status or
+    # reporter replaced by a value that is not an object.
+    rows = [
+      {"project", "JCL", [:project_key, :project_name]},
+      {"status", 3, [:status_name]},
+      {"reporter", ["account-1"], [:reporter_id, :reporter_name]}
+    ]
 
-    for key <- ~w(project_key project_name status_name reporter_id reporter_name)a do
-      refute Map.has_key?(signal, key), "#{key}"
+    for {field, value, dropped} <- rows do
+      payload =
+        put_in(CapturedDelivery.payload!("status_changed"), ["issue", "fields", field], value)
+
+      assert Enum.all?(dropped, &Map.has_key?(baseline, &1)), field
+      assert {:ok, signal} = Webhook.normalize_event(payload), field
+      assert signal == Map.drop(baseline, dropped), field
     end
   end
 
