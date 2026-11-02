@@ -22,9 +22,9 @@ defmodule Jido.Connect.Tempo.Client.Transport do
     `:follow_redirects` and `:location_trusted`, which Req 0.7 still reads
     before the current names.
 
-  Automatic retries are off by default; a caller may enable them through
-  `:req_options`. Failures carry `retry_after` for the host's own retry
-  policy. JSON bodies are decoded by the step of
+  Automatic retries are off by default; a caller may enable them for a GET
+  through `:req_options`. A POST, sent by `post/3`, is never retried.
+  Failures carry `retry_after` for the host's own retry policy. JSON bodies are decoded by the step of
   `Response.attach_json_decoder/1`, not by Req, so a malformed error body
   keeps its status and a response step added by an adapter, such as the
   live smoke recorder's, sees the decoded body.
