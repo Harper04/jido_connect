@@ -19,6 +19,9 @@ defmodule Jido.Connect.Google.Drive.NormalizerTest do
   alias Jido.Connect.TestSupport.LiveSmoke
 
   @shared_file_id "1IDOut2ayPl-ubqUf9LlQRbmQV76nve9x"
+  @starred_file_id "1JphxvbpUOuOhN326OEz9UnJqtAy99n4l"
+  @unstarred_file_id "1cihn1Qw5ruqogYtAdjOkPWeA3f2KhwK-"
+  @edited_file_id "1uN0Z0Pf8rvP1ewCITuP9mS9fLdlyweoJ1zihNsneFLk"
 
   test "normalizes file payloads" do
     assert {:ok, %File{} = file} =
@@ -414,5 +417,63 @@ defmodule Jido.Connect.Google.Drive.NormalizerTest do
     end
   end
 
+  describe "selection metadata" do
+    test "keeps Drive's starred flag for a starred and an unstarred file" do
+      assert {:ok, %File{file_id: @starred_file_id, starred?: true}} =
+               Normalizer.file(recorded("file_get_starred"))
+
+      assert {:ok, %File{file_id: @unstarred_file_id, starred?: false}} =
+               Normalizer.file(recorded("file_get_unstarred"))
+    end
+
+    # Drive omits `starred` when a caller-supplied projection does not name it,
+    # as in the recorded `files_list_caller_fields`. The second case removes
+    # `starred` from the recorded starred file.
+    test "reads an omitted starred flag as false" do
+      %{"files" => [unprojected | _]} = recorded("files_list_caller_fields")
+      refute Map.has_key?(unprojected, "starred")
+
+      assert {:ok, %File{starred?: false}} = Normalizer.file(unprojected)
+
+      starred_without_flag = Map.delete(recorded("file_get_starred"), "starred")
+
+      assert {:ok, %File{file_id: @starred_file_id, starred?: false}} =
+               Normalizer.file(starred_without_flag)
+    end
+
+    test "returns modifiedTime unchanged and keeps it apart from createdTime" do
+      assert {:ok,
+              %File{
+                file_id: @edited_file_id,
+                created_time: "2026-10-30T15:29:56.250Z",
+                modified_time: "2026-11-02T13:48:54.632Z"
+              }} = Normalizer.file(edited_file())
+    end
+
+    # The recorded `files_list_caller_fields` lacks both timestamps. The second
+    # case removes `modifiedTime` from the file of the recorded edit change and
+    # keeps its `createdTime`.
+    test "leaves modified_time nil when Drive omits modifiedTime" do
+      %{"files" => [unprojected | _]} = recorded("files_list_caller_fields")
+      refute Map.has_key?(unprojected, "modifiedTime")
+
+      assert {:ok, %File{modified_time: nil}} = Normalizer.file(unprojected)
+
+      assert {:ok,
+              %File{
+                file_id: @edited_file_id,
+                created_time: "2026-10-30T15:29:56.250Z",
+                modified_time: nil
+              }} = Normalizer.file(Map.delete(edited_file(), "modifiedTime"))
+    end
+  end
+
   defp recorded(name), do: LiveSmoke.fixture!(:google_drive, name)
+
+  # The Google Doc of the recorded external edit: the only recorded file whose
+  # `modifiedTime` differs from its `createdTime`.
+  defp edited_file do
+    %{"changes" => [%{"file" => file}]} = recorded("file_changed_edited")
+    file
+  end
 end
