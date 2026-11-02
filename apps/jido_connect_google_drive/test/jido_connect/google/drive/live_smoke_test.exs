@@ -384,8 +384,13 @@ defmodule Jido.Connect.Google.Drive.LiveSmokeTest do
     marker = @edit_marker_prefix <> Base.encode16(:crypto.strong_rand_bytes(6), case: :lower)
 
     start = read_document(token, file_id)
-    leftover? = String.contains?(start.text, @edit_marker_prefix)
-    refute leftover?, "the edit document still holds the marker of an earlier run"
+
+    # A run that stopped before its cleanup leaves its marker in the document,
+    # and `seed.py drive` does not reset the text of an existing document.
+    assert edit_markers(start.text) == [],
+           "GOOGLE_DRIVE_EDIT_FILE_ID still holds #{@edit_marker_prefix}… markers of an " <>
+             "earlier run whose cleanup did not finish; delete them in Google Docs, for " <>
+             "example with Find and replace, and run the test again"
 
     # Registered once the starting text is known: cleanup removes this run's
     # marker, also when an assertion below fails, and raises unless the
@@ -649,6 +654,11 @@ defmodule Jido.Connect.Google.Drive.LiveSmokeTest do
         raise "could not read the body of live Docs document #{document_id}: HTTP #{status}"
     end
   end
+
+  # The markers of this test in a document's text, so a failure names only
+  # markers and no other document content.
+  defp edit_markers(text),
+    do: ~r/#{@edit_marker_prefix}[0-9a-f]*/ |> Regex.scan(text) |> List.flatten()
 
   # Deletes every occurrence of the marker and returns how many there were.
   defp remove_marker!(access_token, document_id, marker) do
