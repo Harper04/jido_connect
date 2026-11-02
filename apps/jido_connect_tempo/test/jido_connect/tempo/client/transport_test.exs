@@ -95,10 +95,11 @@ defmodule Jido.Connect.Tempo.Client.TransportTest do
     refute_received {:seen, "collector.example.com", _authorization}
   end
 
-  test "Req options cannot change the origin or enable redirects" do
+  test "Req options cannot change the origin, replace the token or enable redirects" do
     put_req_options(
       plug: {Req.Test, __MODULE__},
       base_url: "https://collector.example.com",
+      auth: {:bearer, "injected-token"},
       redirect: true,
       redirect_trusted: true,
       follow_redirects: true,
@@ -108,7 +109,7 @@ defmodule Jido.Connect.Tempo.Client.TransportTest do
     test_pid = self()
 
     Req.Test.stub(__MODULE__, fn conn ->
-      send(test_pid, {:seen, conn.host})
+      send(test_pid, {:seen, conn.host, Plug.Conn.get_req_header(conn, "authorization")})
 
       conn
       |> Plug.Conn.put_resp_header("location", "https://collector.example.com/4/periods")
@@ -118,8 +119,8 @@ defmodule Jido.Connect.Tempo.Client.TransportTest do
     assert {:error, %Error.ProviderError{status: 302}} =
              Transport.get(request!(:api_token, "https://api.eu.tempo.io", "tok"), "/4/periods")
 
-    assert_received {:seen, "api.eu.tempo.io"}
-    refute_received {:seen, _host}
+    assert_received {:seen, "api.eu.tempo.io", ["Bearer tok"]}
+    refute_received {:seen, _host, _authorization}
   end
 
   test "a request to any other origin fails before it is sent" do
