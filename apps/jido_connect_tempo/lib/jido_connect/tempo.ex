@@ -25,20 +25,8 @@ defmodule Jido.Connect.Tempo do
 
   use Jido.Connect, fragments: []
 
-  @labels [
-    "tempo.worklogs.read",
-    "tempo.worklogs.write",
-    "tempo.accounts.read",
-    "tempo.periods.read",
-    "tempo.approvals.read"
-  ]
-
-  @read_labels [
-    "tempo.worklogs.read",
-    "tempo.accounts.read",
-    "tempo.periods.read",
-    "tempo.approvals.read"
-  ]
+  @labels Jido.Connect.Tempo.ScopeResolver.labels()
+  @read_labels @labels -- ["tempo.worklogs.write"]
 
   integration do
     id(:tempo)
