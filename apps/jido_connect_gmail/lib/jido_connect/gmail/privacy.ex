@@ -5,7 +5,10 @@ defmodule Jido.Connect.Gmail.Privacy do
   Gmail message subjects, snippets, addresses, labels, and headers can contain
   personal or message content. Full RFC822 body content, Gmail `raw` payloads,
   and MIME part `body.data` bytes are intentionally excluded from normalized
-  metadata structs unless a future action explicitly declares body access.
+  metadata structs. Body text reaches callers only through the actions that
+  declare body access, `google.gmail.message.content.get` and
+  `google.gmail.thread.content.get`, in `Jido.Connect.Gmail.MessageContent` and
+  `Jido.Connect.Gmail.ThreadContent`.
   """
 
   @message_content_fields [

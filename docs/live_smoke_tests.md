@@ -120,6 +120,7 @@ as seed input belong to the scripts that create the test data.
 | `GOOGLE_GMAIL_ATTACHMENT_MESSAGE_ID` | setting | Message with attachments and nested parts |
 | `GOOGLE_GMAIL_FORWARD_INLINE_ID` | setting | Inline forward |
 | `GOOGLE_GMAIL_FORWARD_ATTACHED_ID` | setting | Forward as attachment |
+| `GOOGLE_GMAIL_FORWARD_OPAQUE_ID` | setting | Forward with an empty and a header-only `message/rfc822` part, both of which Gmail splits into nested parts |
 | `GOOGLE_GMAIL_CHARSET_MESSAGE_ID` | setting | Message with ISO-8859-15, US-ASCII and invalid UTF-8 text parts and a base64 `message/rfc822` part |
 | `GOOGLE_GMAIL_LABEL_ID` | setting | Test label |
 | `GOOGLE_GMAIL_DISPOSABLE_MESSAGE_ID` | setting | Message that a write test may delete |
