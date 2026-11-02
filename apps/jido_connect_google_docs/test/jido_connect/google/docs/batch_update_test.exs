@@ -227,6 +227,33 @@ defmodule Jido.Connect.Google.Docs.BatchUpdateTest do
     end
   end
 
+  # Google's batchUpdate response carries no document. These cases add a
+  # recorded document read to the recorded insert response.
+  test "returns an inline document as a plain map" do
+    document = LiveSmoke.fixture!(:google_docs, "document_without_tabs_content")
+    Req.Test.expect(__MODULE__, &Req.Test.json(&1, insert_response_with(document)))
+
+    assert {:ok, %{document_id: @document_id, document: inline}} =
+             batch_update(%{document_id: @document_id, requests: [@stale_insert]})
+
+    assert %{tabs: [], body: body} = inline
+    assert inline.document_id == document["documentId"]
+    assert body == document["body"]
+  end
+
+  for {edit, description} <- [
+        document_not_a_map: "the inline document is not a map",
+        tab_not_a_map: "a tab of the inline document is not a map",
+        child_tabs_not_a_list: "a tab's childTabs in the inline document is not a list"
+      ] do
+    test "returns an invalid response error when #{description}" do
+      Req.Test.expect(__MODULE__, &Req.Test.json(&1, insert_response_with(inline(unquote(edit)))))
+
+      assert {:error, %Connect.Error.ProviderError{reason: :invalid_response}} =
+               batch_update(%{document_id: @document_id, requests: [@stale_insert]})
+    end
+  end
+
   test "the action metadata lists the write acknowledgement fields" do
     action =
       Enum.find(Docs.integration().actions, &(&1.id == "google.docs.document.batch_update"))
@@ -284,6 +311,26 @@ defmodule Jido.Connect.Google.Docs.BatchUpdateTest do
     do: %{document_id: @document_id, requests: [@stale_insert], write_control: "revision"}
 
   defp stale_inserts(count), do: List.duplicate(@stale_insert, count)
+
+  defp insert_response_with(document) do
+    :google_docs
+    |> LiveSmoke.fixture!("batch_update_insert")
+    |> Map.put("document", document)
+  end
+
+  defp inline(:document_not_a_map), do: "not a document"
+
+  defp inline(:tab_not_a_map) do
+    :google_docs
+    |> LiveSmoke.fixture!("document_with_tabs_content")
+    |> put_in(["tabs", Access.at(0)], "not a tab")
+  end
+
+  defp inline(:child_tabs_not_a_list) do
+    :google_docs
+    |> LiveSmoke.fixture!("document_with_tabs_content")
+    |> update_in(["tabs", Access.at(1), "childTabs"], &%{"tab" => hd(&1)})
+  end
 
   defp wire_body(conn) do
     {:ok, body, _conn} = Plug.Conn.read_body(conn)
