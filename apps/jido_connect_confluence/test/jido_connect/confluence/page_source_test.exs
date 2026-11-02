@@ -9,7 +9,6 @@ defmodule Jido.Connect.Confluence.PageSourceTest do
   alias Jido.Connect.Confluence
   alias Jido.Connect.Confluence.{Client, TestRuntime}
   alias Jido.Connect.Error
-  alias Jido.Connect.TestSupport.LiveSmoke
 
   setup {Req.Test, :verify_on_exit!}
 
@@ -31,15 +30,16 @@ defmodule Jido.Connect.Confluence.PageSourceTest do
     end)
   end
 
+  @plain_id "3754688664"
   @plain_url "https://example.atlassian.net/wiki/spaces/JCL/pages/3754688664/JCL+plain+page"
 
   test "client and generated action return the tenant URL of the page without a list request" do
-    body = LiveSmoke.fixture!(:confluence, "plain_page_adf")
+    recorded = recording!("plain_page_adf")
 
     expected = %{
       kind: "confluence_page",
       account: "confluence-account-1",
-      id: "3754688664",
+      id: @plain_id,
       title: "JCL plain page",
       revision_id: "1",
       version: 1,
@@ -50,11 +50,11 @@ defmodule Jido.Connect.Confluence.PageSourceTest do
       truncated: false
     }
 
-    expect_page_read(body)
-    assert Client.get_page(%{id: "3754688664"}, request()) == {:ok, expected}
+    expect_page_read(recorded)
+    assert Client.get_page(%{id: @plain_id}, request()) == {:ok, expected}
 
-    expect_page_read(body)
-    assert invoke(%{id: "3754688664"}) == {:ok, expected}
+    expect_page_read(recorded)
+    assert invoke(%{id: @plain_id}) == {:ok, expected}
   end
 
   test "an unusable webui link or a foreign base fails the read and names no other host" do
@@ -70,9 +70,12 @@ defmodule Jido.Connect.Confluence.PageSourceTest do
       &Map.put(&1, "base", "https://attacker.example/wiki")
     ]
 
-    for change <- changes do
-      body = :confluence |> LiveSmoke.fixture!("plain_page_adf") |> Map.update!("_links", change)
-      expect_page_read(body)
+    for change <- changes,
+        input <- [%{id: @plain_id}, %{id: @plain_id, on_unsupported: "degrade"}] do
+      "plain_page_adf"
+      |> recording!()
+      |> update_in(["body", "_links"], change)
+      |> expect_page_read()
 
       assert {:error,
               %Error.ProviderError{
@@ -80,7 +83,7 @@ defmodule Jido.Connect.Confluence.PageSourceTest do
                 reason: :invalid_response,
                 delivery: :response_received,
                 mutation?: false
-              } = error} = Client.get_page(%{id: "3754688664"}, request())
+              } = error} = Client.get_page(input, request())
 
       refute rendered(error) =~ "attacker.example"
     end
@@ -93,20 +96,101 @@ defmodule Jido.Connect.Confluence.PageSourceTest do
               %Error.ValidationError{
                 reason: :invalid_confluence_input,
                 subject: :on_unsupported
-              }} = Client.get_page(%{id: "3754688664", on_unsupported: value}, request())
+              }} = Client.get_page(%{id: @plain_id, on_unsupported: value}, request())
 
-      assert {:error, %Error.ValidationError{}} =
-               invoke(%{id: "3754688664", on_unsupported: value})
+      assert {:error, %Error.ValidationError{}} = invoke(%{id: @plain_id, on_unsupported: value})
     end
   end
 
-  defp expect_page_read(body) do
+  test "a denied page returns a normalized error without content in both modes" do
+    # Confluence answers 404 for a page the user may not read, as the recorded
+    # read of the restricted test page shows, and for a missing page alike.
+    recorded = recording!("restricted_page")
+
+    for input <- [%{id: "3754819634"}, %{id: "3754819634", on_unsupported: "degrade"}] do
+      expect_page_read(recorded)
+
+      assert {:error,
+              %Error.ProviderError{
+                provider: :confluence,
+                reason: :http_error,
+                status: 404,
+                delivery: :rejected,
+                mutation?: false
+              }} = invoke(input)
+    end
+  end
+
+  test "failed page reads disclose neither credentials nor page text in errors and telemetry" do
+    handler = "page-source-telemetry-#{System.unique_integer([:positive])}"
+    events = for phase <- [:start, :stop, :exception], do: [:jido, :connect, :invoke, phase]
+    :ok = :telemetry.attach_many(handler, events, &__MODULE__.forward_event/4, self())
+    on_exit(fn -> :telemetry.detach(handler) end)
+
+    foreign_base =
+      put_in(
+        recording!("plain_page_adf"),
+        ["body", "_links", "base"],
+        "https://attacker.example/wiki"
+      )
+
+    failures = [
+      {recording!("rich_page_adf"), %{id: "3754852456"}},
+      {foreign_base, %{id: @plain_id, on_unsupported: "degrade"}},
+      {recording!("restricted_page"), %{id: "3754819634"}}
+    ]
+
+    # The credentials of `runtime/0`, their Basic header value, and text of
+    # the recorded pages.
+    markers = [
+      "page-source-token",
+      "user@example.com",
+      Base.encode64("user@example.com:page-source-token"),
+      "Plain live-test page",
+      "Umlaute",
+      "An info macro.",
+      "carries an inline comment"
+    ]
+
+    for {recorded, input} <- failures do
+      expect_page_read(recorded)
+      assert {:error, error} = invoke(input)
+
+      telemetry =
+        for phase <- [:start, :stop] do
+          assert_receive {:telemetry, [:jido, :connect, :invoke, ^phase], measurements, metadata}
+          inspect({measurements, metadata})
+        end
+
+      disclosure = rendered(error) <> Enum.join(telemetry)
+      assert Enum.filter(markers, &String.contains?(disclosure, &1)) == []
+    end
+  end
+
+  @doc false
+  def forward_event(event, measurements, metadata, pid),
+    do: send(pid, {:telemetry, event, measurements, metadata})
+
+  # Serves a recorded response with its status for the recorded path.
+  defp expect_page_read(%{"status" => status, "body" => body, "request" => request}) do
     Req.Test.expect(__MODULE__, fn conn ->
       assert conn.method == "GET"
-      assert conn.request_path == "/wiki/api/v2/pages/#{body["id"]}"
+      assert conn.request_path == request["path"]
       assert URI.decode_query(conn.query_string) == %{"body-format" => "atlas_doc_format"}
-      Req.Test.json(conn, body)
+
+      conn
+      |> Plug.Conn.put_status(status)
+      |> Req.Test.json(body)
     end)
+  end
+
+  # The whole recording, with status and request path. `LiveSmoke.fixture!/2`
+  # returns the body only.
+  defp recording!(name) do
+    [__DIR__, "..", "..", "fixtures", "confluence", "recorded", name <> ".json"]
+    |> Path.join()
+    |> File.read!()
+    |> Jason.decode!()
   end
 
   defp runtime, do: TestRuntime.build(provider_client: Client, api_token: "page-source-token")

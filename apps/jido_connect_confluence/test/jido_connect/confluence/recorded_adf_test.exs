@@ -58,7 +58,7 @@ defmodule Jido.Connect.Confluence.RecordedADFTest do
     assert_fails_closed(body)
 
     assert %{text: @rich_text, unsupported_nodes: @rich_skipped, truncated: false} =
-             read(body, "degrade")
+             read(body, %{on_unsupported: "degrade"})
 
     Req.Test.expect(__MODULE__, &Req.Test.json(&1, body))
 
@@ -98,7 +98,8 @@ defmodule Jido.Connect.Confluence.RecordedADFTest do
 
     # The caption sits inside the skipped `mediaSingle`, so its text is
     # missing and only the outer type is listed.
-    assert %{text: @rich_text, unsupported_nodes: @rich_skipped} = read(body, "degrade")
+    assert %{text: @rich_text, unsupported_nodes: @rich_skipped} =
+             read(body, %{on_unsupported: "degrade"})
   end
 
   test "an inline comment alone fails the page by default and keeps its text on request" do
@@ -123,17 +124,19 @@ defmodule Jido.Connect.Confluence.RecordedADFTest do
 
     assert_fails_closed(body)
 
-    plain_text = read(plain, "fail").text
-    assert %{text: ^plain_text, unsupported_nodes: ["annotation"]} = read(body, "degrade")
+    plain_text = read(plain, %{on_unsupported: "fail"}).text
+
+    assert %{text: ^plain_text, unsupported_nodes: ["annotation"]} =
+             read(body, %{on_unsupported: "degrade"})
   end
 
   test "the plain page reads alike in both modes, through the shared projection" do
     body = LiveSmoke.fixture!(:confluence, "plain_page_adf")
-    page = read(body, nil)
+    page = read(body)
 
     refute Map.has_key?(page, :unsupported_nodes)
-    assert read(body, "fail") == page
-    assert read(body, "degrade") == Map.put(page, :unsupported_nodes, [])
+    assert read(body, %{on_unsupported: "fail"}) == page
+    assert read(body, %{on_unsupported: "degrade"}) == Map.put(page, :unsupported_nodes, [])
 
     assert {:ok, %{text: text, unsupported_nodes: []}} = ADF.project(page_adf(body))
     assert page.text == text
@@ -150,6 +153,24 @@ defmodule Jido.Connect.Confluence.RecordedADFTest do
            ] = String.split(text, "\n")
 
     assert length(long_text) == 12
+  end
+
+  test "the plain page truncates by characters, not bytes, in both modes" do
+    body = LiveSmoke.fixture!(:confluence, "plain_page_adf")
+
+    text =
+      "Plain live-test page\n" <>
+        "This page holds only content the ADF projection supports: headings, " <>
+        "paragraphs, bold, italic, code and a link (https://example.com/jcl).\n" <>
+        "- First list item\n" <>
+        "- Second list item with Umlaute ä"
+
+    limit = String.length(text)
+    assert byte_size(text) > limit
+
+    for input <- [%{max_characters: limit}, %{max_characters: limit, on_unsupported: "degrade"}] do
+      assert %{text: ^text, character_count: 1267, truncated: true} = read(body, input)
+    end
   end
 
   # Today's unsupported-content error, without the input and with "fail".
@@ -169,10 +190,9 @@ defmodule Jido.Connect.Confluence.RecordedADFTest do
     end
   end
 
-  defp read(body, mode) do
+  defp read(body, input \\ %{}) do
     Req.Test.expect(__MODULE__, &Req.Test.json(&1, body))
-    input = if mode, do: %{id: body["id"], on_unsupported: mode}, else: %{id: body["id"]}
-    assert {:ok, page} = Client.get_page(input, request())
+    assert {:ok, page} = Client.get_page(Map.put(input, :id, body["id"]), request())
     page
   end
 
