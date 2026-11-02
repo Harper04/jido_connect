@@ -119,7 +119,7 @@ defmodule Jido.Connect.Tempo.OAuth do
     [retry: false]
     |> Keyword.merge(Application.get_env(:jido_connect_tempo, :tempo_oauth_req_options, []))
     |> Keyword.drop(@locked_options)
-    |> Keyword.put(:redirect, false)
+    |> Keyword.merge(redirect: false, decode_body: false)
   end
 
   # The secrets are redacted from Tempo's error text before the error keeps

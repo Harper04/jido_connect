@@ -163,6 +163,20 @@ defmodule Jido.Connect.Tempo.OAuthTest do
                OAuth.exchange_code("code-1", @opts)
     end
 
+    # The recorded rejection, cut short and replayed as 503.
+    test "a malformed JSON error body keeps its status" do
+      body = "oauth_invalid_code" |> Fixture.recorded!() |> Map.fetch!("body") |> Jason.encode!()
+
+      Req.Test.expect(__MODULE__, fn conn ->
+        conn
+        |> Plug.Conn.put_resp_content_type("application/json")
+        |> Plug.Conn.send_resp(503, binary_part(body, 0, byte_size(body) - 3))
+      end)
+
+      assert {:error, %Error.ProviderError{reason: :server_error, status: 503}} =
+               OAuth.exchange_code("code-1", @opts)
+    end
+
     test "a timeout is a request error" do
       Req.Test.expect(__MODULE__, &Req.Test.transport_error(&1, :timeout))
 

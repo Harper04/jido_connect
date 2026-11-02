@@ -23,6 +23,10 @@ defmodule Jido.Connect.Tempo.Client.Response do
   without a JSON object or list is `:invalid_response`; a transport failure,
   such as a timeout, is `:request_error` with the reason code in
   `details.reason`. Raw bodies are reduced to a value-free summary.
+
+  This module decodes JSON bodies itself; the Tempo requests turn Req's
+  decoding off. An error response whose JSON body is malformed therefore
+  keeps its status, reason and `retry_after`, with only the body size.
   """
 
   alias Jido.Connect.Error
@@ -40,37 +44,28 @@ defmodule Jido.Connect.Tempo.Client.Response do
   @spec handle(term(), keyword()) :: {:ok, map() | list()} | {:error, Error.ProviderError.t()}
   def handle(response, opts \\ [])
 
-  def handle({:ok, %{status: status, body: body}}, _opts)
-      when status in 200..299 and (is_map(body) or is_list(body)) do
-    {:ok, body}
-  end
+  def handle({:ok, %{status: status} = response}, opts) when is_integer(status) do
+    case decode(response) do
+      {:ok, %{body: body}} when status in 200..299 and (is_map(body) or is_list(body)) ->
+        {:ok, body}
 
-  def handle({:ok, %{status: status, body: body}}, opts) when status in 200..299 do
-    invalid_response(Keyword.get(opts, :message, "Tempo API response was not JSON"), body,
-      status: status
-    )
-  end
+      {:ok, %{body: body}} when status in 200..299 ->
+        invalid_response(Keyword.get(opts, :message, "Tempo API response was not JSON"), body,
+          status: status
+        )
 
-  def handle({:ok, %{status: status, body: body}} = response, opts) when is_integer(status) do
-    error_opts = [
-      provider: :tempo,
-      message: Keyword.get(opts, :message, @message),
-      reason: reason(status)
-    ]
+      {:error, %{body: body}} when status in 200..299 ->
+        invalid_response(
+          Keyword.get(opts, :message, "Tempo API response was not valid JSON"),
+          body,
+          status: status
+        )
 
-    error_opts =
-      case error_message(body) do
-        nil -> error_opts
-        message -> Keyword.put(error_opts, :detail_message, redact(message, opts))
-      end
-
-    Transport.provider_error(response, error_opts)
-  end
-
-  # Req's JSON decoding failed; the exception's `data` holds the raw body, so
-  # neither it nor the exception is kept.
-  def handle({:error, %Jason.DecodeError{}}, opts) do
-    invalid_response(Keyword.get(opts, :message, "Tempo API response was not valid JSON"), nil)
+      # An error body that is not valid JSON stays raw: the error keeps the
+      # status, Retry-After and the body size.
+      {_decoded, response} ->
+        http_error(response, opts)
+    end
   end
 
   def handle(response, opts) do
@@ -92,6 +87,48 @@ defmodule Jido.Connect.Tempo.Client.Response do
        details: Map.merge(%{body: body}, Keyword.get(opts, :details, %{}))
      )}
   end
+
+  defp http_error(%{status: status, body: body} = response, opts) do
+    error_opts = [
+      provider: :tempo,
+      message: Keyword.get(opts, :message, @message),
+      reason: reason(status)
+    ]
+
+    error_opts =
+      case error_message(body) do
+        nil -> error_opts
+        message -> Keyword.put(error_opts, :detail_message, redact(message, opts))
+      end
+
+    Transport.provider_error({:ok, response}, error_opts)
+  end
+
+  # Req leaves bodies undecoded (`decode_body: false`), since its decode error
+  # would drop the status and the headers.
+  defp decode(%{body: body} = response) when is_binary(body) and body != "" do
+    if json?(response) do
+      case Jason.decode(body) do
+        {:ok, decoded} -> {:ok, %{response | body: decoded}}
+        {:error, _error} -> {:error, response}
+      end
+    else
+      {:ok, response}
+    end
+  end
+
+  defp decode(response), do: {:ok, response}
+
+  defp json?(%Req.Response{} = response) do
+    response
+    |> Req.Response.get_header("content-type")
+    |> Enum.any?(fn value ->
+      media_type = value |> String.split(";") |> hd() |> String.trim() |> String.downcase()
+      media_type == "application/json" or String.ends_with?(media_type, "+json")
+    end)
+  end
+
+  defp json?(_response), do: false
 
   defp reason(status) when status in 300..399, do: :redirect_not_followed
   defp reason(400), do: :bad_request

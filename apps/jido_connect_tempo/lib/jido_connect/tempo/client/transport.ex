@@ -21,7 +21,8 @@ defmodule Jido.Connect.Tempo.Client.Transport do
 
   Automatic retries are off by default; a caller may enable them through
   `:req_options`. Failures carry `retry_after` for the host's own retry
-  policy.
+  policy. Req does not decode response bodies; `Response` decodes JSON
+  itself, so a malformed error body keeps its status.
   """
 
   alias Jido.Connect.Provider.Transport
@@ -43,7 +44,7 @@ defmodule Jido.Connect.Tempo.Client.Transport do
       |> Keyword.merge(Application.get_env(:jido_connect_tempo, :tempo_req_options, []))
       |> Keyword.merge(Keyword.get(opts, :req_options, []))
       |> Keyword.drop(@locked_options)
-      |> Keyword.put(:redirect, false)
+      |> Keyword.merge(redirect: false, decode_body: false)
 
     request.api_origin
     |> Transport.bearer_request(Request.token(request),

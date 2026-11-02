@@ -99,7 +99,7 @@ defmodule Jido.Connect.Tempo.Client.ResponseTest do
     body = "periods" |> Fixture.recorded!() |> Map.fetch!("body") |> Jason.encode!()
     truncated = binary_part(body, 0, byte_size(body) - 3)
 
-    assert {:error, %Error.ProviderError{reason: :invalid_response} = error} =
+    assert {:error, %Error.ProviderError{reason: :invalid_response, status: 200} = error} =
              get_with(fn conn ->
                conn
                |> Plug.Conn.put_resp_content_type("application/json")
@@ -107,6 +107,26 @@ defmodule Jido.Connect.Tempo.Client.ResponseTest do
              end)
 
     refute inspect(error) =~ "2026-10-01"
+  end
+
+  # The recorded 403 error body, cut short and replayed as 429 with a
+  # Retry-After header.
+  test "a malformed JSON error body keeps the status and Retry-After" do
+    body = "forbidden" |> Fixture.recorded!() |> Map.fetch!("body") |> Jason.encode!()
+    truncated = binary_part(body, 0, byte_size(body) - 3)
+
+    assert {:error, %Error.ProviderError{reason: :rate_limited, status: 429} = error} =
+             get_with(fn conn ->
+               conn
+               |> Plug.Conn.put_resp_content_type("application/json")
+               |> Plug.Conn.put_resp_header("retry-after", "30")
+               |> Plug.Conn.send_resp(429, truncated)
+             end)
+
+    assert error.details.retry_after == 30
+    assert error.details.message == "provider returned #{byte_size(truncated)} byte body"
+    assert Error.to_map(error).retry_guidance == :safe_to_retry
+    refute inspect(error) =~ "Holiday Schemes"
   end
 
   test "a timeout is a request error" do
