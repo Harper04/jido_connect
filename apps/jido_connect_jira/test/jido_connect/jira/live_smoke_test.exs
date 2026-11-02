@@ -464,13 +464,16 @@ defmodule Jido.Connect.Jira.LiveSmokeTest do
   defp update_kind(_field_id, _from, _to), do: nil
 
   # Avatar URLs carry e-mail hashes and initials, so they become placeholders.
-  # When an assignee is cleared, the former assignee appears only in the
-  # changelog item's `from`, `tmpFromAccountId` and `fromString`. The
-  # sanitizer learns account IDs and names only under keys such as
-  # `accountId` and `displayName`, so these values get placeholders as well.
+  # When an assignee is changed or cleared, the former assignee can appear
+  # only in the changelog item's `from`, `tmpFromAccountId` and `fromString`,
+  # for example when someone else made the change. The sanitizer learns
+  # account IDs and names only under keys such as `accountId` and
+  # `displayName`, so these values get placeholders as well. A new recording
+  # of `assignee_changed` therefore writes `from-<n>` where the fixture of
+  # 2026-10-30 has the actor's `account-1`.
   @avatar_fields ~w(16x16 24x24 32x32 48x48)
 
-  defp capture_options(:assignee_cleared),
+  defp capture_options(kind) when kind in [:assignee_changed, :assignee_cleared],
     do: [fields: @avatar_fields ++ ~w(from tmpFromAccountId), name_keys: ~w(fromString)]
 
   defp capture_options(_kind), do: [fields: @avatar_fields]
