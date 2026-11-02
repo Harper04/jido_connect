@@ -1,7 +1,7 @@
 defmodule Jido.Connect.Google.Docs.Tab do
   @moduledoc """
-  Normalized Google Docs tab: ID, title and body of the tab's `documentTab`,
-  and its nested child tabs as `Tab` structs.
+  Normalized Google Docs tab: ID and title from the tab's `tabProperties`,
+  body from its `documentTab`, and its nested child tabs as `Tab` structs.
   """
 
   @schema Zoi.struct(
