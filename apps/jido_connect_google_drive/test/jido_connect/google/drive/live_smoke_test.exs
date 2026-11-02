@@ -317,15 +317,14 @@ defmodule Jido.Connect.Google.Drive.LiveSmokeTest do
   defp change_for(changes, file_id), do: Enum.find(changes, &(&1["fileId"] == file_id))
 
   # Every object a test creates is deleted when the test exits. Deleting a
-  # folder also deletes the descendants the test user owns; an object that is
-  # already gone answers 404.
+  # folder also deletes the descendants the test user owns.
   defp create_externally(access_token, name, mime_type, parent_id) do
     assert %{status: 200, body: %{"id" => id}} =
              external(:post, "/files", access_token,
                json: %{name: name, mimeType: mime_type, parents: [parent_id]}
              )
 
-    on_exit(fn -> external(:delete, "/files/#{id}", access_token) end)
+    on_exit(fn -> delete_leftover(access_token, "/files/#{id}") end)
     id
   end
 
@@ -338,12 +337,25 @@ defmodule Jido.Connect.Google.Drive.LiveSmokeTest do
                json: %{name: name}
              )
 
-    on_exit(fn -> external(:delete, "/drives/#{id}", access_token) end)
+    on_exit(fn -> delete_leftover(access_token, "/drives/#{id}") end)
     id
   end
 
   defp delete_externally(access_token, file_id) do
     assert %{status: 204} = external(:delete, "/files/#{file_id}", access_token)
+  end
+
+  # An object that is already gone, 404 or 410, counts as deleted. Any other
+  # answer raises with the object's path and status, without the response
+  # body, so an object left in the shared account fails the test.
+  defp delete_leftover(access_token, path) do
+    case external(:delete, path, access_token) do
+      %{status: status} when status in 200..299 or status in [404, 410] ->
+        :ok
+
+      %{status: status} ->
+        raise "cleanup could not delete live Drive object #{path}: HTTP #{status}"
+    end
   end
 
   defp await_change_log(access_token, page_token, params, done?, read \\ 1) do
