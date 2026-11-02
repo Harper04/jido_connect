@@ -161,6 +161,57 @@ defmodule Jido.Connect.Tempo.GetPeriodBookabilityActionTest do
       assert DateTime.compare(checked_at_time, first_request_at) != :gt
     end
 
+    # The recorded periods reduced to those that Tempo returns for each range.
+    test "a range on a period's last or first day includes that period" do
+      for {range, keep, segments, state} <- [
+            {%{from: "2026-08-31", to: "2026-08-31"}, [0],
+             [{"2026-08-31", "2026-08-31", "2026-08-01", "2026-08-31", "APPROVED", :blocked}],
+             :blocked},
+            {%{from: "2026-10-01", to: "2026-10-01"}, [2],
+             [{"2026-10-01", "2026-10-01", "2026-10-01", "2026-10-31", "OPEN", :unknown}],
+             :unknown},
+            {%{from: "2026-08-31", to: "2026-09-01"}, [0, 1],
+             [
+               {"2026-08-31", "2026-08-31", "2026-08-01", "2026-08-31", "APPROVED", :blocked},
+               {"2026-09-01", "2026-09-01", "2026-09-01", "2026-09-30", "IN_REVIEW", :blocked}
+             ], :blocked}
+          ] do
+        serve(periods: keep_periods(keep))
+
+        assert {:ok, %{complete: true, state: ^state} = result} = invoke(:api_token, range)
+
+        assert Enum.map(
+                 result.segments,
+                 &{&1.from, &1.to, &1.period_from, &1.period_to, &1.approval_status, &1.state}
+               ) == segments
+
+        assert approval_requests() == Enum.map(segments, &elem(&1, 2))
+      end
+    end
+
+    # The recorded periods reduced to October.
+    test "an open period alone derives unknown" do
+      serve(periods: keep_periods([2]))
+
+      assert {:ok,
+              %{
+                complete: true,
+                state: :unknown,
+                segments: [%{approval_status: "OPEN", state: :unknown}]
+              }} = invoke(:api_token, %{from: "2026-10-01", to: "2026-10-15"})
+    end
+
+    # The recorded periods in reverse order.
+    test "segments and approval reads follow the date order, not Tempo's order" do
+      serve(periods: keep_periods([2, 1, 0]))
+
+      assert {:ok, %{complete: true, state: :blocked, segments: segments}} =
+               invoke(:api_token, @range)
+
+      assert Enum.map(segments, & &1.period_from) == ["2026-08-01", "2026-09-01", "2026-10-01"]
+      assert approval_requests() == ["2026-08-01", "2026-09-01", "2026-10-01"]
+    end
+
     # Weekly periods from Wednesday to Tuesday around February 29, 2028: the
     # recorded periods with their dates replaced, the APPROVED and the OPEN
     # approval with `period` and `user.accountId` replaced.
@@ -245,12 +296,7 @@ defmodule Jido.Connect.Tempo.GetPeriodBookabilityActionTest do
             {[0, 0, 1, 2], ["2026-08-01", "2026-08-01", "2026-09-01", "2026-10-01"], :blocked},
             {[], [], :unknown}
           ] do
-        serve(
-          periods:
-            &Map.update!(&1, "periods", fn periods ->
-              Enum.map(keep, fn i -> Enum.at(periods, i) end)
-            end)
-        )
+        serve(periods: keep_periods(keep))
 
         assert {:ok, %{complete: false, state: ^state, segments: segments}} =
                  invoke(:api_token, @range)
@@ -264,12 +310,13 @@ defmodule Jido.Connect.Tempo.GetPeriodBookabilityActionTest do
       end
     end
 
-    # The recorded periods with November 2026 added.
+    # The recorded periods with July 2026 added before and November after.
     test "a period outside the range is neither read nor reported" do
       serve(
         periods:
           &Map.update!(&1, "periods", fn periods ->
-            periods ++ [%{"from" => "2026-11-01", "to" => "2026-11-30"}]
+            [%{"from" => "2026-07-01", "to" => "2026-07-31"}] ++
+              periods ++ [%{"from" => "2026-11-01", "to" => "2026-11-30"}]
           end)
       )
 
@@ -517,6 +564,13 @@ defmodule Jido.Connect.Tempo.GetPeriodBookabilityActionTest do
 
   defp approval_requests do
     for {_method, "/4/timesheet-approvals/user/" <> _, query} <- requests(), do: query["from"]
+  end
+
+  # Keeps the recorded periods at the given indexes, in the given order.
+  defp keep_periods(indexes) do
+    &Map.update!(&1, "periods", fn periods ->
+      Enum.map(indexes, fn i -> Enum.at(periods, i) end)
+    end)
   end
 
   defp approval(body, from, to, account) do
