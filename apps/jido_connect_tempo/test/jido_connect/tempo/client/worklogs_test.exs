@@ -315,8 +315,8 @@ defmodule Jido.Connect.Tempo.Client.WorklogsTest do
              } = List.last(worklogs)
     end
 
-    # The test site has work attributes only around a TEMPO-L2 run, so no
-    # recording holds a value; the pairs follow Tempo's OpenAPI shape.
+    # The test site has work attributes only around a work-attribute run, so
+    # no recording holds a value; the pairs follow Tempo's OpenAPI shape.
     test "work attribute values keep their key and value" do
       values = [%{"key" => "_JclPhase_", "value" => "Build"}, %{"key" => "_JclHours_"}]
       expect_pages(@pages, last: &put_in(&1, ["attributes", "values"], values))
