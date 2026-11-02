@@ -8,6 +8,7 @@ defmodule Jido.Connect.Google.Calendar.TestSupport.LiveCalendar do
   # may carry broader Google scopes.
 
   alias Jido.Connect
+  alias Jido.Connect.Error
   alias Jido.Connect.Google.Calendar
   alias Jido.Connect.Google.Calendar.Client
   alias Jido.Connect.TestSupport.LiveSmoke
@@ -91,14 +92,32 @@ defmodule Jido.Connect.Google.Calendar.TestSupport.LiveCalendar do
     |> Base.hex_encode32(case: :lower, padding: false)
   end
 
-  @doc "Deletes an event without notifications and ignores the result, for cleanup."
-  def delete_quietly(calendar_id, event_id, access_token) do
-    _result =
-      Client.delete_event(
-        %{calendar_id: calendar_id, event_id: event_id, send_updates: "none"},
-        access_token
-      )
+  @doc """
+  Deletes an event a test may have left, without notifications.
 
-    :ok
+  An event that is already gone, 404 or 410, counts as deleted. Any other
+  failure raises with the event ID, so a cleanup that leaves an event behind
+  fails the test.
+  """
+  def delete_leftover(calendar_id, event_id, access_token) do
+    case Client.delete_event(
+           %{calendar_id: calendar_id, event_id: event_id, send_updates: "none"},
+           access_token
+         ) do
+      {:ok, _deleted} ->
+        :ok
+
+      {:error, %Error.ProviderError{status: status}} when status in [404, 410] ->
+        :ok
+
+      {:error, error} ->
+        raise "cleanup could not delete live event #{event_id}: #{failure(error)}"
+    end
   end
+
+  # Names the failure without the error details, which may carry the response body.
+  defp failure(%Error.ProviderError{status: status}) when is_integer(status), do: "HTTP #{status}"
+  defp failure(%Error.ProviderError{reason: reason}), do: inspect(reason)
+  defp failure(%{__struct__: module}), do: inspect(module)
+  defp failure(_error), do: "unexpected error"
 end

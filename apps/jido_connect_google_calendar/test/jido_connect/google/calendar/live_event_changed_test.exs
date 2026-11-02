@@ -38,7 +38,7 @@ defmodule Jido.Connect.Google.Calendar.LiveEventChangedTest do
       %{"GOOGLE_ACCESS_TOKEN" => token, "GOOGLE_CALENDAR_ID" => calendar_id} = env
       run = LiveCalendar.run_id()
       event_id = "jcle1" <> run
-      on_exit(fn -> LiveCalendar.delete_quietly(calendar_id, event_id, token) end)
+      on_exit(fn -> LiveCalendar.delete_leftover(calendar_id, event_id, token) end)
       config = %{calendar_id: calendar_id}
 
       LiveCalendar.record("event_changed_init")
@@ -115,8 +115,8 @@ defmodule Jido.Connect.Google.Calendar.LiveEventChangedTest do
             do: %{id: "#{master_id}_#{suffix}", original_start: original_start}
 
       on_exit(fn ->
-        LiveCalendar.delete_quietly(calendar_id, single_id, token)
-        LiveCalendar.delete_quietly(calendar_id, master_id, token)
+        LiveCalendar.delete_leftover(calendar_id, single_id, token)
+        LiveCalendar.delete_leftover(calendar_id, master_id, token)
       end)
 
       LiveCalendar.record("event_cancelled_insert")

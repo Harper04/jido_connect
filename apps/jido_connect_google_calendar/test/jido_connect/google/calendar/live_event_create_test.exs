@@ -25,8 +25,8 @@ defmodule Jido.Connect.Google.Calendar.LiveEventCreateTest do
       all_day_id = "jcls1a" <> run
 
       on_exit(fn ->
-        LiveCalendar.delete_quietly(calendar_id, timed_id, token)
-        LiveCalendar.delete_quietly(calendar_id, all_day_id, token)
+        LiveCalendar.delete_leftover(calendar_id, timed_id, token)
+        LiveCalendar.delete_leftover(calendar_id, all_day_id, token)
       end)
 
       LiveCalendar.record("event_create")
