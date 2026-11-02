@@ -72,9 +72,9 @@ Inputs:
   required scope (`channels:history`, `groups:history`, `im:history` or
   `mpim:history`) and is not sent to Slack. The package does not infer the
   type from the channel ID, because Slack gives private channels and group
-  DMs IDs that start with `C`. Tool availability, which runs without input,
-  offers the action to a connection with any one of these scopes; each call
-  still needs the scope of its type.
+  DMs IDs that start with `C`. A tool availability check without a
+  `conversation_type` offers the action to a connection with any one of these
+  scopes; each call still needs the scope of its type.
 - `cursor`, `oldest`, `latest` and `inclusive` (default `false`) go to Slack
   unchanged.
 - `limit` defaults to 100 and must be from 1 through 100. The bound is a
@@ -99,7 +99,7 @@ without `ts` or with a wrongly typed field makes the call fail with
 
 `channel` and `conversation_type` repeat the input. Slack returns no
 conversation type, so `conversation_type` is the caller's unchecked
-declaration and only chose the scope check. A group DM declared as
+declaration and only selects the scope check. A group DM declared as
 `public_channel` passes that check with `channels:history`; if the token also
 holds `mpim:history`, which Slack requires, the read succeeds and its messages
 say `public_channel`. Do not base visibility, indexing or policies on this
