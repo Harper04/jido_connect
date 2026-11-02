@@ -99,6 +99,33 @@ defmodule Jido.Connect.Google.Meet.TranscriptPollerTest do
       assert JSON.decode!(repeated) == JSON.decode!(checkpoint)
     end
 
+    test "a pending and a new record generated in one poll signal in end time order" do
+      [prepared, _earlier] = recorded_records()
+      now = DateTime.utc_now()
+      older = record_at(prepared, "older", DateTime.add(now, -3, :hour))
+      newer = record_at(prepared, "newer", DateTime.add(now, -1, :hour))
+      [older_transcript] = transcripts_for(older)["transcripts"]
+      [newer_transcript] = transcripts_for(newer)["transcripts"]
+
+      serve(
+        records: {:window, [older, newer]},
+        transcripts: %{
+          older["name"] => pages([transcripts_for(older)]),
+          newer["name"] => pages([transcripts_for(newer)])
+        }
+      )
+
+      checkpoint =
+        checkpoint(time!(older["endTime"]), [], [pending_entry(older["name"], older["endTime"])])
+
+      assert {:ok, %{signals: signals}} = poll(checkpoint)
+
+      assert signals == [
+               expected_signal(older, older_transcript),
+               expected_signal(newer, newer_transcript)
+             ]
+    end
+
     test "a record ending after the watermark is picked up" do
       [prepared, earlier] = recorded_records()
       [prepared_transcript] = fixture("transcripts")["transcripts"]
@@ -297,6 +324,21 @@ defmodule Jido.Connect.Google.Meet.TranscriptPollerTest do
 
       assert {:ok, %{signals: [_earlier, _prepared]}} = poll(checkpoint(@before_recorded))
     end
+
+    test "a page that repeats a record yields one signal" do
+      [first_page, _second_page] = recorded_record_pages()
+      [prepared] = first_page["conferenceRecords"]
+      [prepared_transcript] = fixture("transcripts")["transcripts"]
+      repeated = %{"conferenceRecords" => [prepared, prepared]}
+
+      serve(
+        records: pages([repeated]),
+        transcripts: %{prepared["name"] => pages([fixture("transcripts")])}
+      )
+
+      assert {:ok, %{signals: [signal]}} = poll(checkpoint(@before_recorded))
+      assert signal == expected_signal(prepared, prepared_transcript)
+    end
   end
 
   describe "no partial success" do
@@ -335,20 +377,40 @@ defmodule Jido.Connect.Google.Meet.TranscriptPollerTest do
     test "more than 10 conference record pages return an error and no checkpoint" do
       [first_page, _second_page] = recorded_record_pages()
 
-      record_pages =
-        for n <- 1..11 do
-          first_page
-          |> Map.update!("conferenceRecords", &Enum.map(&1, fn record -> renamed(record, n) end))
-          |> Map.put("nextPageToken", "records-#{n + 1}")
-        end
-
-      serve(records: pages(record_pages))
+      # The eleventh page ends the listing; the poll must stop before it.
+      serve(records: pages(record_pages(first_page, 11, 1)))
 
       assert {:error, %ProviderError{reason: :poll_bound_exceeded, details: details}} =
                poll(checkpoint(@before_recorded))
 
       assert %{resource: :conference_records, bound: :pages, limit: 10} = details
       assert details.checkpoint_reset == @reset
+    end
+
+    test "10 pages with 100 conference records in total are accepted" do
+      [first_page, _second_page] = recorded_record_pages()
+      record_pages = record_pages(first_page, 10, 10)
+      names = for page <- record_pages, record <- page["conferenceRecords"], do: record["name"]
+
+      serve(
+        records: pages(record_pages),
+        transcripts: Map.new(names, &{&1, pages([empty_page()])})
+      )
+
+      assert {:ok, %{signals: [], checkpoint: checkpoint}} = poll(checkpoint(@before_recorded))
+      assert %{"settled" => settled} = JSON.decode!(checkpoint)
+      assert length(settled) == 100
+    end
+
+    test "more than 100 conference records across pages return an error and no checkpoint" do
+      [first_page, _second_page] = recorded_record_pages()
+
+      serve(records: pages(record_pages(first_page, 2, 51)))
+
+      assert {:error, %ProviderError{reason: :poll_bound_exceeded, details: details}} =
+               poll(checkpoint(@before_recorded))
+
+      assert %{resource: :conference_records, bound: :items, limit: 100} = details
     end
 
     test "more than 100 conference records return an error and no checkpoint" do
@@ -573,6 +635,12 @@ defmodule Jido.Connect.Google.Meet.TranscriptPollerTest do
             JSON.encode!(Map.put(valid, "settled", [settled_entry("abc", "yesterday")])),
             JSON.encode!(Map.put(valid, "pending", [%{"name" => "conferenceRecords/abc"}])),
             JSON.encode!(Map.put(valid, "pending", [pending_entry("abc", "yesterday")])),
+            JSON.encode!(
+              Map.put(valid, "pending", [
+                Map.put(pending_entry("abc", @before_recorded), "emitted", [1])
+              ])
+            ),
+            JSON.encode!(Map.put(valid, "pending", nil)),
             valid
           ] do
         assert {:error,
@@ -679,6 +747,18 @@ defmodule Jido.Connect.Google.Meet.TranscriptPollerTest do
   defp settled_entry(record), do: settled_entry(record["name"], record["endTime"])
 
   defp settled_entry(name, end_time), do: %{"name" => name, "end_time" => end_time}
+
+  # `count` pages of `per_page` renamed copies of the page's record, linked by
+  # page tokens; the last page ends the listing.
+  defp record_pages(page, count, per_page) do
+    [record] = page["conferenceRecords"]
+
+    for n <- 1..count do
+      records = for m <- 1..per_page, do: renamed(record, "#{n}-#{m}")
+      body = %{"conferenceRecords" => records}
+      if n < count, do: Map.put(body, "nextPageToken", "records-#{n + 1}"), else: body
+    end
+  end
 
   defp renamed(resource, n), do: Map.update!(resource, "name", &"#{&1}-#{n}")
 
