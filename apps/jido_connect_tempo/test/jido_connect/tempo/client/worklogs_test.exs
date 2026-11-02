@@ -404,6 +404,19 @@ defmodule Jido.Connect.Tempo.Client.WorklogsTest do
                  max_results: 1
                )
     end
+
+    test "a page bound stops the read before the next page" do
+      Req.Test.expect(__MODULE__, &Fixture.respond(&1, "worklogs_own_small_page"))
+
+      assert {:error,
+              %Error.ProviderError{reason: :page_limit_exceeded, details: %{max_pages: 1}}} =
+               Client.list_own_worklogs(request(),
+                 from: "2026-10-01",
+                 to: "2026-10-01",
+                 limit: 2,
+                 max_pages: 1
+               )
+    end
   end
 
   # Answers each page request with the recorded page for its offset.
