@@ -12,6 +12,9 @@
 - The `include_tabs_content` description and the README state that `false`
   returns only the first tab in the legacy `body`, with `tabs` empty, and
   that the field has no default.
+- `google.docs.document.get` accepts a connection that holds `documents`
+  without `documents.readonly`. Before, such a connection failed with
+  missing scopes, although Google accepts `documents` for reads.
 
 ## 0.1.0
 

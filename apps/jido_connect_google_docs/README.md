@@ -72,12 +72,14 @@ The Docs scope resolver maps operations to least-privilege scopes:
 
 | Operation | Default Scope | Notes |
 |---|---|---|
-| `google.docs.document.get` | `documents.readonly` | Read-only access |
+| `google.docs.document.get` | `documents.readonly` | Read-only access; accepts an existing `documents` grant |
 | `google.docs.document.create` | `documents` | Write required |
 | `google.docs.document.batch_update` | `documents` | Write required |
 
-Write operations always require `documents`. The readonly scope never satisfies
-write operations.
+A read requires `documents` instead of `documents.readonly` only when the
+connection holds `documents` and not `documents.readonly`. Write operations
+always require `documents`. The readonly scope never satisfies write
+operations.
 
 ## API Boundaries
 
