@@ -77,6 +77,14 @@ defmodule Jido.Connect.Tempo.ListOwnWorklogsActionTest do
                self: "https://api.tempo.io/4/worklogs/79093"
              }
 
+      # The output keeps the recorded description of 778 bytes whole and
+      # zero billable seconds as 0.
+      by_id = Map.new(worklogs, &{&1.tempo_worklog_id, &1})
+      long = recorded("worklogs_own.2", 79_166)["description"]
+      assert byte_size(long) == 778
+      assert %{description: ^long} = by_id[79_166]
+      assert %{billable_seconds: 0, time_spent_seconds: 900} = by_id[79_101]
+
       assert {:ok, _json} = Jason.encode(result)
     end
 
@@ -278,6 +286,10 @@ defmodule Jido.Connect.Tempo.ListOwnWorklogsActionTest do
       offset = String.to_integer(URI.decode_query(conn.query_string)["offset"])
       Fixture.respond(conn, Enum.at(names, div(offset, 50)))
     end)
+  end
+
+  defp recorded(name, id) do
+    Enum.find(Fixture.recorded!(name)["body"]["results"], &(&1["tempoWorklogId"] == id))
   end
 
   defp invoke(profile, input, opts \\ []) do
