@@ -535,10 +535,11 @@ dedupes on `team_id`, `channel_id`, `message_ts`, `user_id`, `block_id`,
 
 A click on several actions, on another element such as a select, or outside
 a message, as in a modal or a legacy attachment, keeps
-`normalized_signal: nil`. So does a button in an ephemeral message, such as
-one posted with `slack.message.post_ephemeral`: Slack sends that click with
-`container.is_ephemeral: true` and without the message. So does an org-wide install, which sends no
-workspace; the package takes only apps installed in a workspace. Call
+`normalized_signal: nil`. A button in an ephemeral message, such as one
+posted with `slack.message.post_ephemeral`, gets no signal either: Slack
+sends that click with `container.is_ephemeral: true` and without the
+message. Neither does an org-wide install, which sends no workspace; the
+package takes only apps installed in a workspace. Call
 `Jido.Connect.Slack.Interactivity.normalize_signal/2` on such a delivery,
 with the same options, for a `Jido.Connect.Error.ProviderError` that names
 the reason and the payload path, never a value:
