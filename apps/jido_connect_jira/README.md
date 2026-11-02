@@ -109,12 +109,13 @@ starting with `*` are not resolved. Their absence never shows in
 `nextPageToken`. The default fields are `summary`, `status`, `assignee`,
 `updated`, `description`, `project` and `duedate`. A field list that names
 only `id` is sent with `key` added, because Jira answers it with bare issue
-IDs and each result carries its key. Each call returns one page
-with `issues`, `next_page_token`, `is_last` and the page size sent as
+IDs and each result carries its key. Each call returns one page with
+`issues`, `next_page_token`, `is_last` and the page size sent as
 `max_results`. Pass `next_page_token` to the next call until `is_last` is
-`true`; a page can be empty while `is_last` is `false`. A page without an
-`issues` list or a boolean `isLast`, or a non-final page without a token,
-fails with an `:invalid_response` error instead of ending the search.
+`true`. Jira can return fewer issues than `max_results`, and a page can be
+empty while `is_last` is `false`, so only `is_last` marks the end. A page
+without an `issues` list or a boolean `isLast`, or a non-final page without a
+token, fails with an `:invalid_response` error instead of ending the search.
 
 Atlassian removed `POST /rest/api/3/search`, which now answers `410 Gone`, so
 the action changed in place. Deprecated for one release and removed in the

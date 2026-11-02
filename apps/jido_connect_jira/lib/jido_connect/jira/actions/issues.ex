@@ -92,7 +92,11 @@ defmodule Jido.Connect.Jira.Actions.Issues do
 
       input do
         field(:jql, :string, required?: true, example: "project = PROJ ORDER BY updated DESC")
-        field(:max_results, :integer, default: 50, description: "Page size.")
+
+        field(:max_results, :integer,
+          default: 50,
+          description: "Page size. Jira can return fewer issues; is_last marks the end."
+        )
 
         field(:next_page_token, :string,
           description: "Opaque token from the next_page_token of the previous page."
@@ -133,7 +137,11 @@ defmodule Jido.Connect.Jira.Actions.Issues do
         )
 
         field(:is_last, :boolean, description: "True on the last page.")
-        field(:max_results, :integer, description: "Page size sent to Jira.")
+
+        field(:max_results, :integer,
+          description:
+            "Page size sent to Jira. Jira can return fewer issues; is_last marks the end."
+        )
 
         field(:total, :integer,
           description:
