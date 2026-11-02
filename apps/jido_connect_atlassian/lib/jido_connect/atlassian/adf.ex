@@ -41,7 +41,11 @@ defmodule Jido.Connect.Atlassian.ADF do
       names the types.
     * `:degrade` skips them and returns the remaining text. `unsupported_nodes`
       lists each skipped node or mark type once, in document order. Nodes
-      inside a skipped node are skipped with it and not listed separately.
+      inside a skipped node are skipped with it and not listed separately,
+      so their text is missing as well: the body of a macro with content
+      (`bodiedExtension`, such as an excerpt or page properties macro) and
+      the caption of an image (`caption` inside `mediaSingle`) do not appear
+      in the text.
 
   ## Malformed documents and limits
 
@@ -74,7 +78,7 @@ defmodule Jido.Connect.Atlassian.ADF do
 
   ## Strict text and Markdown
 
-  `to_text/1` is the strict rendering of the former
+  `to_text/1` is the strict rendering that Confluence page reads use through
   `Jido.Connect.Confluence.ADF`. It fails the whole document on any node or
   text mark outside its supported subset and on links that are not HTTPS. It
   renders links without their target and flattens nested lists.

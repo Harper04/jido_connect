@@ -38,7 +38,10 @@ text and returns `{:ok, %{text: text, unsupported_nodes: types}}`.
   for any node or text mark outside the supported subset, such as
   `mediaSingle`, `extension` or `annotation`.
 - `on_unsupported: :degrade` skips such content and lists each skipped type
-  once, in document order, in `unsupported_nodes`.
+  once, in document order, in `unsupported_nodes`. Content inside a skipped
+  node is skipped with it and not listed: the body of a macro with content
+  (`bodiedExtension`, such as an excerpt or page properties macro) and the
+  caption of an image inside `mediaSingle` are missing from the text.
 - Malformed documents (`:invalid_adf`) and documents beyond the nesting depth
   (default 64) or node count (default 50,000) fail in both modes. Change the
   limits per call with `:max_depth` and `:max_nodes`, or for all callers:
@@ -56,11 +59,12 @@ the limits in full.
 
 ## Strict ADF to text
 
-`Jido.Connect.Atlassian.ADF.to_text/1` is the strict rendering that the
-Confluence package used before this package existed. It fails the whole
-document with `:error` on any node or text mark outside its supported subset
-and on links that are not HTTPS. `Jido.Connect.Confluence.ADF` delegates to it
-unchanged.
+`Jido.Connect.Atlassian.ADF.to_text/1` is the strict rendering. The
+Confluence package reads pages with it: `confluence.page.get` renders page ADF
+through `Jido.Connect.Confluence.ADF`, which delegates to `to_text/1`
+unchanged, and does not use `project/2`. `to_text/1` fails the whole document
+with `:error` on any node or text mark outside its supported subset and on
+links that are not HTTPS.
 
 ## Markdown to ADF
 
