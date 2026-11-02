@@ -5,6 +5,30 @@ defmodule Jido.Connect.Gmail.ClientTest do
   alias Jido.Connect.Gmail.Client.Response
   alias Jido.Connect.TestSupport.LiveSmoke
 
+  defmodule RecordedBodyAdapter do
+    # Req adapter that reports the method, path and body of each request to
+    # the calling test process and answers with the recorded single-part
+    # message, or the recorded conversation for a thread path.
+
+    alias Jido.Connect.TestSupport.LiveSmoke
+
+    def run(request) do
+      send(self(), {:gmail_request, request.method, request.url.path, request.body})
+
+      fixture =
+        if String.contains?(request.url.path, "/threads/"),
+          do: "thread_full_conversation",
+          else: "message_full_single_part"
+
+      {request,
+       Req.Response.new(
+         status: 200,
+         headers: %{"content-type" => ["application/json; charset=UTF-8"]},
+         body: Jason.encode!(LiveSmoke.fixture!(:gmail, fixture))
+       )}
+    end
+  end
+
   setup {Req.Test, :verify_on_exit!}
 
   setup do
@@ -508,26 +532,10 @@ defmodule Jido.Connect.Gmail.ClientTest do
     # Mint sends Content-Length only with a request body, and Google answers a
     # POST without one with 411 Length Required, as the live change poll test
     # saw for google.gmail.message.trash. A plug cannot tell a missing body
-    # from an empty one, so this adapter replaces the network and serves the
-    # recorded single-part message and conversation.
-    test_pid = self()
+    # from an empty one, so RecordedBodyAdapter replaces the network.
+    Application.put_env(:jido_connect_google, :google_req_options, adapter: RecordedBodyAdapter)
     message = LiveSmoke.fixture!(:gmail, "message_full_single_part")
     thread = LiveSmoke.fixture!(:gmail, "thread_full_conversation")
-
-    Application.put_env(:jido_connect_google, :google_req_options,
-      adapter: fn request ->
-        send(test_pid, {:gmail_request, request.method, request.url.path, request.body})
-        body = if String.contains?(request.url.path, "/threads/"), do: thread, else: message
-
-        {request,
-         Req.Response.new(
-           status: 200,
-           headers: %{"content-type" => ["application/json; charset=UTF-8"]},
-           body: Jason.encode!(body)
-         )}
-      end
-    )
-
     message_id = message["id"]
     thread_id = thread["id"]
 
