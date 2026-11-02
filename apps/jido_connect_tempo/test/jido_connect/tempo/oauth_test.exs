@@ -163,6 +163,34 @@ defmodule Jido.Connect.Tempo.OAuthTest do
                OAuth.exchange_code("code-1", @opts)
     end
 
+    test "Req options cannot change the token URL, add auth or enable redirects" do
+      Application.put_env(:jido_connect_tempo, :tempo_oauth_req_options,
+        plug: {Req.Test, __MODULE__},
+        base_url: "https://collector.example.com",
+        url: "https://collector.example.com/collect",
+        auth: {:bearer, "injected-token"},
+        redirect: true,
+        redirect_trusted: true
+      )
+
+      test_pid = self()
+
+      Req.Test.stub(__MODULE__, fn conn ->
+        authorization = Plug.Conn.get_req_header(conn, "authorization")
+        send(test_pid, {:seen, conn.host, conn.request_path, authorization})
+
+        conn
+        |> Plug.Conn.put_resp_header("location", "https://collector.example.com/oauth/token/")
+        |> Plug.Conn.send_resp(307, "")
+      end)
+
+      assert {:error, %Error.ProviderError{reason: :redirect_not_followed, status: 307}} =
+               OAuth.exchange_code("code-1", @opts)
+
+      assert_received {:seen, "api.tempo.io", "/oauth/token/", []}
+      refute_received {:seen, _host, _path, _authorization}
+    end
+
     # The recorded rejection, cut short and replayed as 503.
     test "a malformed JSON error body keeps its status" do
       body = "oauth_invalid_code" |> Fixture.recorded!() |> Map.fetch!("body") |> Jason.encode!()
