@@ -19,11 +19,15 @@ surfaces are added.
 request carries Google's `includeTabsContent` only when the input sets it.
 
 - `include_tabs_content: true` returns every tab in `document.tabs`, in
-  Google's order, and no legacy `document.body`. Each tab carries `tab_id`
-  and `title` from `tabProperties`, `body` from `documentTab.body`, and its
-  nested tabs as `Tab` structs in `child_tabs`.
+  Google's order, and no legacy `document.body`. Each tab is a map with
+  `tab_id` and `title` from `tabProperties`, `body` from `documentTab.body`,
+  and its nested tabs, in the same shape, in `child_tabs`.
 - `include_tabs_content: false` returns only the first tab, in the legacy
   `document.body`, and `document.tabs` is empty.
+
+The action result holds plain maps, not structs. `Client.get_document/2`
+returns the same fields as a `Document` struct whose tabs and child tabs are
+`Tab` structs.
 
 Google's reference describes only `true` and `false`; the result for an
 omitted value is not verified here. Other `documentTab` parts, such as
