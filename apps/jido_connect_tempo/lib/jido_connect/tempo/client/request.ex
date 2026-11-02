@@ -14,6 +14,8 @@ defmodule Jido.Connect.Tempo.Client.Request do
 
   @origins ["https://api.tempo.io", "https://api.eu.tempo.io", "https://api.us.tempo.io"]
   @token_fields %{api_token: :api_token, oauth2_user: :access_token}
+  # Map keys of atoms follow the atom table since OTP 26, so the list is sorted.
+  @allowed_profiles @token_fields |> Map.keys() |> Enum.sort()
 
   @enforce_keys [:connection_id, :auth_profile, :api_origin, :account_id, :token]
   defstruct @enforce_keys
@@ -103,7 +105,7 @@ defmodule Jido.Connect.Tempo.Client.Request do
          Error.auth("Unsupported Tempo authentication profile",
            reason: :unsupported_tempo_auth_profile,
            connection_id: connection.id,
-           details: %{profile: profile, allowed_profiles: Map.keys(@token_fields)}
+           details: %{profile: profile, allowed_profiles: @allowed_profiles}
          )}
     end
   end
