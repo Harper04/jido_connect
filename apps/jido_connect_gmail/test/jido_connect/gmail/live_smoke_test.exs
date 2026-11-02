@@ -678,17 +678,21 @@ defmodule Jido.Connect.Gmail.LiveSmokeTest do
   end
 
   # The trash and untrash calls for a message and for a thread, committed
-  # through the write actions. The disposable message is a one-message thread
-  # in the inbox; it is read before the first recording starts, so each
-  # recording holds only the answer to its write. Trash takes the message out
-  # of the inbox and restore does not put it back, so the thread steps run on
-  # an archived message and the message ends restored from Trash but archived.
-  @tag env!(["GOOGLE_ACCESS_TOKEN", "GOOGLE_GMAIL_DISPOSABLE_MESSAGE_ID"])
+  # through the write actions. The test inserts its own one-message thread
+  # into the inbox and deletes it for good when it exits, because the change
+  # poll above deletes the disposable message. The message is read before the
+  # first recording starts, so each recording holds only the answer to its
+  # write. Trash takes the message out of the inbox and restore does not put
+  # it back, so the thread steps run on an archived message.
+  @tag env!(["GOOGLE_ACCESS_TOKEN"])
   @tag write!(:google)
-  test "trash and untrash answer with the disposable message and its one-message thread",
+  test "trash and untrash answer with an inserted message and its one-message thread",
        %{env: env} do
-    grant = write_grant(env["GOOGLE_ACCESS_TOKEN"])
-    message_id = env["GOOGLE_GMAIL_DISPOSABLE_MESSAGE_ID"]
+    access_token = env["GOOGLE_ACCESS_TOKEN"]
+    grant = write_grant(access_token)
+
+    %{"id" => message_id} =
+      insert_message!(access_token, [{"Subject", "jcl-live trash #{run_id()}"}], ["INBOX"])
 
     assert {:ok, %{message: %{thread_id: thread_id, label_ids: labels}}} =
              invoke(grant, "google.gmail.message.get", %{message_id: message_id})
@@ -740,10 +744,300 @@ defmodule Jido.Connect.Gmail.LiveSmokeTest do
     refute "TRASH" in thread_restored
   end
 
+  # google.gmail.message.received. The poll runs on a metadata-only lease from
+  # a checkpoint it initializes from the profile. The history of the prepared
+  # conversation can be older than Gmail keeps, so the test inserts a new
+  # message and a reply to it into the inbox. messages.insert files them like
+  # received mail and sends nothing; both are deleted for good when the test
+  # exits.
+
+  @tag env!(["GOOGLE_ACCESS_TOKEN", "GOOGLE_GMAIL_METADATA_ACCESS_TOKEN"])
+  @tag write!(:google)
+  @tag timeout: :timer.minutes(2)
+  test "the received poll reports an inserted message and its reply with one thread ID",
+       %{env: env} do
+    access_token = env["GOOGLE_ACCESS_TOKEN"]
+    metadata_token = env["GOOGLE_GMAIL_METADATA_ACCESS_TOKEN"]
+
+    assert {:ok, %{signals: [], checkpoint: start}} = poll_received(nil, metadata_token)
+
+    run = run_id()
+    subject = "jcl-live received #{run}"
+    original_header_id = "<jcl-live-received-#{run}-1@example.org>"
+
+    %{"id" => original_id, "threadId" => thread_id} =
+      insert_message!(
+        access_token,
+        [{"Subject", subject}, {"Message-ID", original_header_id}],
+        ["INBOX", "UNREAD"]
+      )
+
+    reply =
+      insert_message!(
+        access_token,
+        [
+          {"Subject", "Re: " <> subject},
+          {"Message-ID", "<jcl-live-received-#{run}-2@example.org>"},
+          {"In-Reply-To", original_header_id},
+          {"References", original_header_id}
+        ],
+        ["INBOX", "UNREAD"],
+        thread_id
+      )
+
+    assert %{"id" => reply_id, "threadId" => ^thread_id} = reply
+    assert reply_id != original_id
+
+    {signals, next} = await_received(metadata_token, start, [original_id, reply_id])
+
+    # One signal per message, the reply after its original, both in one thread.
+    assert [
+             %{message_id: ^original_id, thread_id: ^thread_id} = original_signal,
+             %{message_id: ^reply_id, thread_id: ^thread_id} = reply_signal
+           ] = received(signals, [original_id, reply_id])
+
+    assert "INBOX" in original_signal.label_ids
+    assert "INBOX" in reply_signal.label_ids
+    assert String.to_integer(next) > String.to_integer(start)
+
+    # The run from the initialized checkpoint once more, as one recording.
+    LiveSmoke.record(@req_options, :gmail, "message_received_history")
+
+    assert {:ok, %{signals: recorded, checkpoint: checkpoint}} =
+             poll_received(start, metadata_token)
+
+    assert received(recorded, [original_id, reply_id]) ==
+             received(signals, [original_id, reply_id])
+
+    assert String.to_integer(checkpoint) >= String.to_integer(next)
+  end
+
+  # google.gmail.message.labels.apply on the archive pair: two messages of one
+  # thread, both in the inbox. Each test checks the pair before its first
+  # write and, when it exits, restores the labels it changes, also after a
+  # failed assertion, so the tests leave the pair as they found it.
+
+  @tag env!(["GOOGLE_ACCESS_TOKEN", "GOOGLE_GMAIL_ARCHIVE_MESSAGE_ID", "GOOGLE_GMAIL_LABEL_ID"])
+  @tag write!(:google)
+  test "labels.apply adds and removes the test label and UNREAD on one message of the archive pair",
+       %{env: env} do
+    access_token = env["GOOGLE_ACCESS_TOKEN"]
+    grant = write_grant(access_token)
+    message_id = env["GOOGLE_GMAIL_ARCHIVE_MESSAGE_ID"]
+    label_id = env["GOOGLE_GMAIL_LABEL_ID"]
+
+    {thread_id, pair} = archive_pair!(grant, message_id)
+    refute Enum.any?(Map.values(pair), &(label_id in &1))
+    labels = pair[message_id]
+    restore_labels_on_exit(access_token, message_id, labels, [label_id, "UNREAD"])
+
+    # The first step adds the test label and flips the read state, the second
+    # removes the label and flips the read state back, so UNREAD is added once
+    # and removed once whatever the message's read state was.
+    {first, second} =
+      if "UNREAD" in labels do
+        {%{add_label_ids: [label_id], remove_label_ids: ["UNREAD"]},
+         %{add_label_ids: ["UNREAD"], remove_label_ids: [label_id]}}
+      else
+        {%{add_label_ids: [label_id, "UNREAD"], remove_label_ids: []},
+         %{add_label_ids: [], remove_label_ids: [label_id, "UNREAD"]}}
+      end
+
+    # After each step the thread holds the expected labels on the message and
+    # the labels from before the test on its sibling.
+    final =
+      Enum.reduce([first, second], pair, fn step, before ->
+        expected =
+          Enum.sort((before[message_id] -- step.remove_label_ids) ++ step.add_label_ids)
+
+        assert {:ok, %{message: %{message_id: ^message_id, thread_id: ^thread_id} = changed}} =
+                 commit(
+                   grant,
+                   "google.gmail.message.labels.apply",
+                   Map.put(step, :message_id, message_id)
+                 )
+
+        assert Enum.sort(changed.label_ids) == expected
+        assert thread_labels(grant, thread_id) == %{before | message_id => expected}
+        %{before | message_id => expected}
+      end)
+
+    assert final == pair
+  end
+
+  @tag env!(["GOOGLE_ACCESS_TOKEN", "GOOGLE_GMAIL_ARCHIVE_MESSAGE_ID"])
+  @tag write!(:google)
+  test "labels.apply archives one message of the archive pair and keeps its other labels and its sibling",
+       %{env: env} do
+    access_token = env["GOOGLE_ACCESS_TOKEN"]
+    grant = write_grant(access_token)
+    message_id = env["GOOGLE_GMAIL_ARCHIVE_MESSAGE_ID"]
+
+    {thread_id, pair} = archive_pair!(grant, message_id)
+    labels = pair[message_id]
+    restore_labels_on_exit(access_token, message_id, labels, ["INBOX"])
+    archived = labels -- ["INBOX"]
+
+    assert {:ok, %{message: %{message_id: ^message_id, thread_id: ^thread_id} = changed}} =
+             commit(grant, "google.gmail.message.labels.apply", %{
+               message_id: message_id,
+               add_label_ids: [],
+               remove_label_ids: ["INBOX"]
+             })
+
+    assert Enum.sort(changed.label_ids) == archived
+
+    # The archived message stays retrievable with its other labels and its
+    # read state; its sibling keeps every label, INBOX included.
+    LiveSmoke.record(@req_options, :gmail, "message_metadata_archived")
+
+    assert {:ok, %{message: %{message_id: ^message_id, thread_id: ^thread_id} = read_back}} =
+             invoke(grant, "google.gmail.message.get", %{message_id: message_id})
+
+    assert Enum.sort(read_back.label_ids) == archived
+    assert "UNREAD" in read_back.label_ids == "UNREAD" in labels
+
+    LiveSmoke.record(@req_options, :gmail, "thread_metadata_archive_pair")
+    assert thread_labels(grant, thread_id) == %{pair | message_id => archived}
+  end
+
   defp invoke(%{context: context, lease: lease}, action_id, input) do
     Connect.invoke(Gmail.integration(), action_id, input,
       context: context,
       credential_lease: lease
+    )
+  end
+
+  # Reads the archive pair through the read actions and checks it before a
+  # write: the thread of `message_id` holds two messages, both in the inbox
+  # and neither in Trash. Returns the thread ID and the sorted labels by
+  # message ID.
+  defp archive_pair!(grant, message_id) do
+    assert {:ok, %{message: %{message_id: ^message_id, thread_id: thread_id}}} =
+             invoke(grant, "google.gmail.message.get", %{message_id: message_id})
+
+    pair = thread_labels(grant, thread_id)
+    assert [_sibling_id] = Map.keys(pair) -- [message_id]
+
+    for {_id, labels} <- pair do
+      assert "INBOX" in labels
+      refute "TRASH" in labels
+    end
+
+    {thread_id, pair}
+  end
+
+  defp thread_labels(grant, thread_id) do
+    assert {:ok, %{thread: %{thread_id: ^thread_id, messages: messages}}} =
+             invoke(grant, "google.gmail.thread.get", %{thread_id: thread_id})
+
+    Map.new(messages, &{&1.message_id, Enum.sort(&1.label_ids)})
+  end
+
+  # Setup and cleanup call the Gmail API directly, outside the connector and
+  # the recorder.
+
+  @gmail_api "https://gmail.googleapis.com/gmail/v1/users/me"
+
+  defp gmail_api(method, path, access_token, opts \\ []) do
+    Req.request!(
+      [method: method, url: @gmail_api <> path, auth: {:bearer, access_token}, retry: false] ++
+        opts
+    )
+  end
+
+  # Inserts a plain-text message with synthetic example.org addresses and
+  # `headers` through messages.insert, which files it like received mail
+  # without sending it, and deletes it for good when the test exits.
+  defp insert_message!(access_token, headers, label_ids, thread_id \\ nil) do
+    envelope = [
+      {"From", "jcl-live.sender@example.org"},
+      {"To", "jcl-live.recipient@example.org"},
+      {"Date", Calendar.strftime(DateTime.utc_now(), "%a, %d %b %Y %H:%M:%S +0000")}
+    ]
+
+    mime = [{"MIME-Version", "1.0"}, {"Content-Type", ~s(text/plain; charset="utf-8")}]
+
+    header_block =
+      Enum.map_join(envelope ++ headers ++ mime, &"#{elem(&1, 0)}: #{elem(&1, 1)}\r\n")
+
+    raw = header_block <> "\r\nSynthetic message of a jcl-live check.\r\n"
+
+    body = %{"raw" => Base.url_encode64(raw), "labelIds" => label_ids}
+    body = if thread_id, do: Map.put(body, "threadId", thread_id), else: body
+
+    assert %{status: 200, body: %{"id" => message_id} = message} =
+             gmail_api(:post, "/messages", access_token, json: body)
+
+    on_exit(fn -> delete_message!(access_token, message_id) end)
+    message
+  end
+
+  defp delete_message!(access_token, message_id) do
+    case gmail_api(:delete, "/messages/#{message_id}", access_token) do
+      %{status: status} when status in 200..299 or status == 404 ->
+        :ok
+
+      %{status: status} ->
+        raise "cleanup could not delete live Gmail message #{message_id}: HTTP #{status}"
+    end
+  end
+
+  # When the test exits, puts back the labels of `touched` that `message_id`
+  # had in `label_ids` and removes those it did not have.
+  defp restore_labels_on_exit(access_token, message_id, label_ids, touched) do
+    on_exit(fn ->
+      current =
+        case gmail_api(:get, "/messages/#{message_id}?format=minimal", access_token) do
+          %{status: 200, body: body} -> Map.get(body, "labelIds", [])
+          %{status: status} -> raise "cleanup could not read #{message_id}: HTTP #{status}"
+        end
+
+      add = for id <- touched, id in label_ids, id not in current, do: id
+      remove = for id <- touched, id in current, id not in label_ids, do: id
+
+      if add != [] or remove != [] do
+        body = %{"addLabelIds" => add, "removeLabelIds" => remove}
+
+        case gmail_api(:post, "/messages/#{message_id}/modify", access_token, json: body) do
+          %{status: 200} -> :ok
+          %{status: status} -> raise "cleanup could not relabel #{message_id}: HTTP #{status}"
+        end
+      end
+    end)
+  end
+
+  defp run_id, do: Base.encode16(:crypto.strong_rand_bytes(6), case: :lower)
+
+  # Polls the received trigger from `checkpoint` until signals for all of
+  # `message_ids` arrived and returns the signals with the next checkpoint.
+  defp await_received(access_token, checkpoint, message_ids, poll \\ 1) do
+    assert {:ok, %{signals: signals, checkpoint: next}} = poll_received(checkpoint, access_token)
+
+    seen = MapSet.new(signals, & &1.message_id)
+
+    cond do
+      Enum.all?(message_ids, &MapSet.member?(seen, &1)) ->
+        {signals, next}
+
+      poll < @change_polls ->
+        Process.sleep(2_000)
+        await_received(access_token, checkpoint, message_ids, poll + 1)
+
+      true ->
+        flunk("Gmail history lacked messageAdded records after #{poll} polls")
+    end
+  end
+
+  defp received(signals, message_ids), do: Enum.filter(signals, &(&1.message_id in message_ids))
+
+  defp poll_received(checkpoint, metadata_token) do
+    {context, lease} = grant(metadata_token, [@metadata_scope])
+
+    Connect.poll(Gmail.integration(), "google.gmail.message.received", %{},
+      context: context,
+      credential_lease: lease,
+      checkpoint: checkpoint
     )
   end
 
