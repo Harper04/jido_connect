@@ -1,10 +1,14 @@
 defmodule Jido.Connect.Confluence.RecordedADFTest do
   use ExUnit.Case, async: false
 
-  # Replays the page responses that the live tests recorded from the test site
-  # (`test/fixtures/confluence/recorded/*_page_adf.json`).
+  # Page text and the unsupported-content policy of `confluence.page.get` on
+  # the page responses that the live tests recorded from the test site
+  # (`test/fixtures/confluence/recorded/*_page_adf.json`), and on copies of
+  # them that change one part for content the test site does not have.
 
+  alias Jido.Connect
   alias Jido.Connect.Atlassian.ADF
+  alias Jido.Connect.Confluence
   alias Jido.Connect.Confluence.{Client, TestRuntime}
   alias Jido.Connect.Error
   alias Jido.Connect.TestSupport.LiveSmoke
@@ -29,53 +33,110 @@ defmodule Jido.Connect.Confluence.RecordedADFTest do
     end)
   end
 
-  test "the rich page still fails closed through the page read" do
+  # The supported text of the recorded rich page. The excerpt macro's body
+  # ("An excerpt macro.") is missing because the projection skips a
+  # `bodiedExtension` with its content.
+  @rich_text Enum.join(
+               [
+                 "This page carries content outside the supported ADF subset.",
+                 "Images",
+                 "Macros",
+                 "An info macro.",
+                 ~s{IO.puts("jcl")},
+                 "Date and comment",
+                 "Due on .",
+                 "The phrase JCL inline anchor carries an inline comment."
+               ],
+               "\n"
+             )
+
+  @rich_skipped ["extension", "mediaSingle", "bodiedExtension", "date", "annotation"]
+
+  test "the rich page fails closed by default and degrades to its text and skipped types" do
     body = LiveSmoke.fixture!(:confluence, "rich_page_adf")
+
+    assert_fails_closed(body)
+
+    assert %{text: @rich_text, unsupported_nodes: @rich_skipped, truncated: false} =
+             read(body, "degrade")
+
     Req.Test.expect(__MODULE__, &Req.Test.json(&1, body))
 
-    assert {:error, %Error.ProviderError{reason: :invalid_response}} =
-             Client.get_page(%{id: body["id"]}, request())
+    assert {:ok, %{text: @rich_text, unsupported_nodes: @rich_skipped}} =
+             Connect.invoke(
+               Confluence,
+               "confluence.page.get",
+               %{id: body["id"], on_unsupported: "degrade"},
+               TestRuntime.invoke_opts(runtime())
+             )
   end
 
-  test "the rich page degrades to its supported text and the skipped types" do
-    document = :confluence |> LiveSmoke.fixture!("rich_page_adf") |> page_adf()
+  test "an image caption fails the page by default and is skipped with its image on request" do
+    # The images on the test site have no caption. This copy of the recorded
+    # rich page gives its first image one, as the ADF JSON schema allows
+    # (`mediaSingle_caption_node`, `caption_node` in
+    # https://unpkg.com/@atlaskit/adf-schema/dist/json-schema/v1/full.json).
+    caption = %{
+      "type" => "caption",
+      "content" => [%{"type" => "text", "text" => "A caption of the first image."}]
+    }
 
-    assert {:error, %Error.ValidationError{reason: :unsupported_adf_content}} =
-             ADF.project(document)
+    body =
+      :confluence
+      |> LiveSmoke.fixture!("rich_page_adf")
+      |> update_adf(fn content ->
+        index = Enum.find_index(content, &(&1["type"] == "mediaSingle"))
 
-    assert ADF.project(document, on_unsupported: :degrade) ==
-             {:ok,
-              %{
-                text:
-                  Enum.join(
-                    [
-                      "This page carries content outside the supported ADF subset.",
-                      "Images",
-                      "Macros",
-                      "An info macro.",
-                      ~s{IO.puts("jcl")},
-                      "Date and comment",
-                      "Due on .",
-                      "The phrase JCL inline anchor carries an inline comment."
-                    ],
-                    "\n"
-                  ),
-                unsupported_nodes: [
-                  "extension",
-                  "mediaSingle",
-                  "bodiedExtension",
-                  "date",
-                  "annotation"
-                ]
-              }}
+        List.update_at(
+          content,
+          index,
+          &Map.update!(&1, "content", fn nodes -> nodes ++ [caption] end)
+        )
+      end)
+
+    assert_fails_closed(body)
+
+    # The caption sits inside the skipped `mediaSingle`, so its text is
+    # missing and only the outer type is listed.
+    assert %{text: @rich_text, unsupported_nodes: @rich_skipped} = read(body, "degrade")
   end
 
-  test "the plain page reads through the shared projection with its link target and numbers" do
+  test "an inline comment alone fails the page by default and keeps its text on request" do
+    # No page on the test site has an inline comment as its only unsupported
+    # content. This copy of the recorded plain page puts the annotation mark
+    # recorded on the rich page on its heading text.
+    [annotation] =
+      :confluence
+      |> LiveSmoke.fixture!("rich_page_adf")
+      |> page_adf()
+      |> Map.fetch!("content")
+      |> Enum.flat_map(&Map.get(&1, "content", []))
+      |> Enum.flat_map(&Map.get(&1, "marks", []))
+      |> Enum.filter(&(&1["type"] == "annotation"))
+
+    plain = LiveSmoke.fixture!(:confluence, "plain_page_adf")
+
+    body =
+      update_adf(plain, fn [heading | rest] ->
+        [put_in(heading, ["content", Access.at(0), "marks"], [annotation]) | rest]
+      end)
+
+    assert_fails_closed(body)
+
+    plain_text = read(plain, "fail").text
+    assert %{text: ^plain_text, unsupported_nodes: ["annotation"]} = read(body, "degrade")
+  end
+
+  test "the plain page reads alike in both modes, through the shared projection" do
     body = LiveSmoke.fixture!(:confluence, "plain_page_adf")
-    Req.Test.expect(__MODULE__, &Req.Test.json(&1, body))
+    page = read(body, nil)
 
-    assert {:ok, %{text: text}} = Client.get_page(%{id: body["id"]}, request())
-    assert {:ok, %{text: ^text, unsupported_nodes: []}} = ADF.project(page_adf(body))
+    refute Map.has_key?(page, :unsupported_nodes)
+    assert read(body, "fail") == page
+    assert read(body, "degrade") == Map.put(page, :unsupported_nodes, [])
+
+    assert {:ok, %{text: text, unsupported_nodes: []}} = ADF.project(page_adf(body))
+    assert page.text == text
 
     assert [
              "Plain live-test page",
@@ -91,11 +152,45 @@ defmodule Jido.Connect.Confluence.RecordedADFTest do
     assert length(long_text) == 12
   end
 
+  # Today's unsupported-content error, without the input and with "fail".
+  defp assert_fails_closed(body) do
+    for input <- [%{id: body["id"]}, %{id: body["id"], on_unsupported: "fail"}] do
+      Req.Test.expect(__MODULE__, &Req.Test.json(&1, body))
+
+      assert {:error,
+              %Error.ProviderError{
+                message: "Confluence page response was invalid",
+                provider: :confluence,
+                reason: :invalid_response,
+                delivery: :response_received,
+                mutation?: false,
+                details: %{body_summary: %{type: :map}}
+              }} = Client.get_page(input, request())
+    end
+  end
+
+  defp read(body, mode) do
+    Req.Test.expect(__MODULE__, &Req.Test.json(&1, body))
+    input = if mode, do: %{id: body["id"], on_unsupported: mode}, else: %{id: body["id"]}
+    assert {:ok, page} = Client.get_page(input, request())
+    page
+  end
+
+  defp runtime, do: TestRuntime.build(provider_client: Client)
+
   defp request do
-    assert {:ok, request} = TestRuntime.build() |> Client.request_context()
+    assert {:ok, request} = Client.request_context(runtime())
     request
   end
 
   defp page_adf(body),
     do: body |> get_in(["body", "atlas_doc_format", "value"]) |> Jason.decode!()
+
+  # Changes the top-level content of the page's ADF document, which the
+  # recording holds as a JSON string.
+  defp update_adf(body, fun) do
+    document = page_adf(body)
+    value = Jason.encode!(Map.update!(document, "content", fun))
+    put_in(body, ["body", "atlas_doc_format", "value"], value)
+  end
 end

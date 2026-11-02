@@ -86,6 +86,20 @@ defmodule Jido.Connect.Confluence.PageSourceTest do
     end
   end
 
+  test "an unknown on_unsupported value fails before any request" do
+    # No request is expected: a request would find no Req.Test stub.
+    for value <- ["skip", "Degrade", "", :degrade, true] do
+      assert {:error,
+              %Error.ValidationError{
+                reason: :invalid_confluence_input,
+                subject: :on_unsupported
+              }} = Client.get_page(%{id: "3754688664", on_unsupported: value}, request())
+
+      assert {:error, %Error.ValidationError{}} =
+               invoke(%{id: "3754688664", on_unsupported: value})
+    end
+  end
+
   defp expect_page_read(body) do
     Req.Test.expect(__MODULE__, fn conn ->
       assert conn.method == "GET"
@@ -102,22 +116,9 @@ defmodule Jido.Connect.Confluence.PageSourceTest do
     request
   end
 
-  defp invoke(input) do
-    runtime = runtime()
-
-    lease =
-      Connect.CredentialLease.from_connection!(
-        runtime.context.connection,
-        runtime.credentials,
-        expires_at: DateTime.add(DateTime.utc_now(), 60, :second)
-      )
-
-    Connect.invoke(Confluence, "confluence.page.get", input,
-      context: runtime.context,
-      credential_lease: lease,
-      provider_client: Client
-    )
-  end
+  defp invoke(input),
+    do:
+      Connect.invoke(Confluence, "confluence.page.get", input, TestRuntime.invoke_opts(runtime()))
 
   defp rendered(error), do: inspect(error) <> inspect(Error.to_map(error))
 

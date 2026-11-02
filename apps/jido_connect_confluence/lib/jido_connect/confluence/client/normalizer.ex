@@ -63,33 +63,45 @@ defmodule Jido.Connect.Confluence.Client.Normalizer do
 
   def page_list(_body, _space, _context), do: :error
 
+  @doc """
+  Normalizes a page read with an ADF body.
+
+  `context` carries the `account`, the validated tenant endpoint as
+  `site_url` and the unsupported-content policy as `on_unsupported`
+  (`:fail`, the default, or `:degrade`). With `:degrade` the result adds
+  `unsupported_nodes`.
+  """
   @spec page(map(), String.t(), pos_integer(), map()) :: {:ok, map()} | :error
   def page(body, expected_id, max_characters, context)
       when is_map(body) and is_map(context) do
+    mode = Map.get(context, :on_unsupported, :fail)
+
     with {:ok, metadata} <- page_metadata(body, expected_id),
          {:ok, url} <- page_url(body, context.site_url),
          {:ok, adf} <- adf_body(body),
-         {:ok, %{text: text}} <- ADF.project(adf, on_unsupported: :fail),
+         {:ok, %{text: text, unsupported_nodes: skipped}} <-
+           ADF.project(adf, on_unsupported: mode),
          true <- valid_account?(context.account),
          true <-
            is_integer(max_characters) and
              max_characters in 1..Contract.maximum_max_characters() do
       character_count = String.length(text)
 
-      {:ok,
-       %{
-         kind: "confluence_page",
-         account: context.account,
-         id: metadata.id,
-         title: metadata.title,
-         revision_id: Integer.to_string(metadata.version),
-         version: metadata.version,
-         space_id: metadata.space_id,
-         url: url,
-         text: String.slice(text, 0, max_characters),
-         character_count: character_count,
-         truncated: character_count > max_characters
-       }}
+      page = %{
+        kind: "confluence_page",
+        account: context.account,
+        id: metadata.id,
+        title: metadata.title,
+        revision_id: Integer.to_string(metadata.version),
+        version: metadata.version,
+        space_id: metadata.space_id,
+        url: url,
+        text: String.slice(text, 0, max_characters),
+        character_count: character_count,
+        truncated: character_count > max_characters
+      }
+
+      {:ok, put_unsupported_nodes(page, mode, skipped)}
     else
       _invalid -> :error
     end
@@ -252,6 +264,11 @@ defmodule Jido.Connect.Confluence.Client.Normalizer do
       _invalid -> :error
     end
   end
+
+  defp put_unsupported_nodes(page, :degrade, skipped),
+    do: Map.put(page, :unsupported_nodes, skipped)
+
+  defp put_unsupported_nodes(page, :fail, _skipped), do: page
 
   defp adf_body(raw) do
     with body when is_map(body) <- Data.get(raw, :body),
