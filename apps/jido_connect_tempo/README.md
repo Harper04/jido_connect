@@ -437,13 +437,14 @@ created the worklog:
 | timeout, closed connection | `:request_error` | `:sent_outcome_unknown` | `:do_not_retry` |
 | refused connection, foreign origin | `:request_error` | `:not_sent` | `:safe_to_retry` |
 
-`:period_locked` is the rejection of a booking into a period whose timesheet
-is not open. On the test site Tempo answered a booking into the approved
-August 2026 period this way; it is the signal that
-[Period Bookability](#period-bookability) cannot read in advance. Only this
-recorded text gets the label: an unknown 400 or another 403 keeps its status
-reason, and a period closed in Period Management may answer with a text that
-was not observed. After `:sent_outcome_unknown` the worklog may exist; read
+`:period_locked` is Tempo's 403 with the recorded text, observed on the test
+site for a booking into the approved August 2026 period. It is the signal
+that [Period Bookability](#period-bookability) cannot read in advance. Only
+this text gets the label; an unknown 400 or another 403 keeps its status
+reason. A booking into a period in review or into one closed in Period
+Management was not tried. Its answer may arrive as `:forbidden` or
+`:bad_request`, which are `:rejected` with `:do_not_retry` like
+`:period_locked`. After `:sent_outcome_unknown` the worklog may exist; read
 the day back with `tempo.worklogs.list_own` before booking it again.
 
 Errors hold neither the description nor the attribute values. Tempo quotes

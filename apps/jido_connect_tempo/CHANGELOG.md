@@ -50,7 +50,11 @@
   `Jido.Connect.Tempo.Client.Transport.post/3`. A POST is never retried, also
   when Req options enable retries; a 3xx, a 5xx, a malformed or mismatched
   success and a lost response are `delivery: :sent_outcome_unknown`, and
-  Tempo's 403 for a period whose timesheet is not open is `:period_locked`.
-  Where Tempo's error text quotes the description, an attribute value or the
-  author's account ID, the error holds `[redacted]` instead.
+  Tempo's 403 `The timesheet status must be open for the period`, observed
+  for an approved period, is `:period_locked`. A booking into a period in
+  review or one closed in Period Management was not observed and may fail
+  with `:forbidden` or `:bad_request`, also `delivery: :rejected` with
+  `:do_not_retry`. Where Tempo's error text quotes the description, an
+  attribute value or the author's account ID, the error holds `[redacted]`
+  instead.
 - Add the writer catalog pack `:tempo_writer`; the read packs are unchanged.

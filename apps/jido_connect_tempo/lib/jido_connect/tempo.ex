@@ -42,8 +42,12 @@ defmodule Jido.Connect.Tempo do
   so a strict host creates through `Jido.Connect.prepare/4` and
   `Jido.Connect.commit/4`. The client sends one `POST /4/worklogs`, never
   retries it and reports a 3xx, a 5xx, a malformed or mismatched success
-  and a lost response as `delivery: :sent_outcome_unknown`. A booking into a
-  period whose timesheet is not open fails with `:period_locked`. See
+  and a lost response as `delivery: :sent_outcome_unknown`. Tempo's 403
+  `The timesheet status must be open for the period`, observed for a
+  booking into an approved period, fails with `:period_locked`. A booking
+  into a period in review or one closed in Period Management was not
+  observed and may fail with `:forbidden` or `:bad_request` instead; all
+  three are `delivery: :rejected` with `:do_not_retry`. See
   `Jido.Connect.Tempo.Client.WorklogCreate`.
 
   ## Auth Profiles

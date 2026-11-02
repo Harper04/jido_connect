@@ -17,18 +17,20 @@ defmodule Jido.Connect.Tempo.Client.WorklogCreate do
   whose details name the Tempo ID and the fields, never a value of the
   description, the attributes or the author.
 
-  Tempo answers a booking into a period whose timesheet is not open with a
-  403 and `The timesheet status must be open for the period` (recorded
-  2026-11-02 for an approved period). That answer gets reason
-  `:period_locked`; any other 400 or 403 keeps its status reason. The other
-  error rules are those of `Jido.Connect.Tempo.Client.Response.handle/2`
-  with `mutation?: true`.
+  Tempo answered a booking into an approved period with a 403 and
+  `The timesheet status must be open for the period` (recorded
+  2026-11-02). That answer gets reason `:period_locked`; any other 400 or
+  403 keeps its status reason. A booking into a period in review or one closed in Period
+  Management was not observed and may come back as `:forbidden` or
+  `:bad_request`; like `:period_locked`, both are `delivery: :rejected`
+  with `:do_not_retry`. The other error rules are those of
+  `Jido.Connect.Tempo.Client.Response.handle/2` with `mutation?: true`.
 
-  Tempo quotes rejected input in its error text, as in `Non valid time
-  '25:00:00'`. Before an error keeps that text in `details.message`, the
-  description, every attribute value and the author's account ID are
-  replaced by `[redacted]`, the longest first. The reason is taken from the
-  text before that.
+  Tempo quotes rejected input in its error text, as in
+  `Non valid time '25:00:00'`. Before an error keeps that text in
+  `details.message`, the description, every attribute value and the
+  author's account ID are replaced by `[redacted]`, the longest first. The
+  reason is taken from the text before that.
   """
 
   alias Jido.Connect.Error
@@ -36,8 +38,8 @@ defmodule Jido.Connect.Tempo.Client.WorklogCreate do
   alias Jido.Connect.Tempo.Input.NewWorklog
   alias Jido.Connect.Tempo.Worklog
 
-  # Tempo's answer to a booking in a period whose timesheet is not open,
-  # recorded 2026-11-02 for an approved period.
+  # Tempo's answer to a booking into an approved period, recorded
+  # 2026-11-02.
   @period_locked {403, "The timesheet status must be open for the period", :period_locked}
 
   # The fields a confirmed worklog must share with the request.
