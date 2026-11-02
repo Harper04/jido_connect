@@ -9,20 +9,28 @@ defmodule Jido.Connect.Tempo.LiveSmokeTest do
   `GET /rest/api/3/myself`; that helper call is not recorded. Neither is
   the direct Tempo read that the own worklog checks compare against.
 
-  The own worklog checks rely on the test user's prepared worklogs on
-  `TEMPO_JIRA_ISSUE_ID` from August to October 2026: one on the first and
-  one on the last day of each period (August 1 and 31, September 1 and 30,
-  October 1 and 30); five on October 1, among them two that differ only in
-  their IDs and one with zero billable seconds; and worklog 79166 on
-  October 31, booked at 00:30 Europe/Berlin, so its UTC date is October 30,
-  with a description of 778 bytes. On October 28, besides seed worklog
-  79128, the test user has two worklogs created through Jira's worklog API:
-  79167 at 10:00 for 1200 seconds without a comment and 79168 at 11:00 for
-  1260 seconds with an empty comment. The test user has no worklog in July
-  2026.
+  The own worklog checks hold on the test user's seeded worklogs on
+  `TEMPO_JIRA_ISSUE_ID` alone: one on the first and one on the last day of
+  each period (August 1 and 31, September 1 and 30, October 1 and 30); five
+  on October 1, among them two that differ only in their IDs and one with
+  zero billable seconds; and fillers across October, among them one on
+  October 28 and one on October 30. The test user has no worklog in July
+  2026. Each read compares every worklog with a direct Tempo read and
+  counts only minimums, so further own worklogs from August to October do
+  not break the checks.
+
+  Three recordings also hold worklogs that the seeded data lacks. The test
+  user created them on JCL-2 on 2026-11-02: 79166, booked at 00:30
+  Europe/Berlin on October 31, so its UTC date is October 30, with a
+  description of 778 bytes, in `worklogs_own.2.json` and
+  `worklogs_own_day.json`; and 79167 and 79168 on October 28, created
+  through Jira's worklog API without a comment and with an empty one, in
+  `worklogs_own_jira.json`. Re-recording these files needs those worklogs,
+  since the offline tests pin their IDs and shapes.
 
   ExUnit prints the arguments of a failing call, so checks that involve a real
-  token compute a boolean first and fail with a fixed message.
+  token or the test user's account ID compute a boolean first and fail with
+  a fixed message.
   """
 
   use ExUnit.Case, async: false
@@ -44,8 +52,7 @@ defmodule Jido.Connect.Tempo.LiveSmokeTest do
     "2026-09-01",
     "2026-09-30",
     "2026-10-01",
-    "2026-10-30",
-    "2026-10-31"
+    "2026-10-30"
   ]
   # This file lies in apps/jido_connect_tempo/test/jido_connect/tempo.
   @repository Path.expand("../../../../..", __DIR__)
@@ -155,7 +162,8 @@ defmodule Jido.Connect.Tempo.LiveSmokeTest do
     result = ok!(invoke(context, :api_token, token, range), "the own worklog read")
     worklogs = result.worklogs
 
-    assert %{from: "2026-08-01", to: "2026-10-31", complete: true} = result
+    complete? = result.from == range.from and result.to == range.to and result.complete == true
+    assert complete?, "the read did not return its range with complete: true"
 
     own? = result.account_id == context.connection.subject.account_id
     assert own?, "account_id is not the connection's subject.account_id"
@@ -164,16 +172,13 @@ defmodule Jido.Connect.Tempo.LiveSmokeTest do
     assert Enum.map(worklogs, &key/1) == Enum.map(raw_worklogs!(env, token, range), &raw_key/1)
 
     days = worklogs |> Enum.map(& &1.start_date) |> MapSet.new()
-    assert Enum.filter(@boundary_days, &(&1 not in days)) == []
-
-    assert Enum.any?(worklogs, &(utc_date(&1) != &1.start_date)),
-           "no worklog whose booking day differs from its UTC date"
-
-    assert Enum.any?(worklogs, &(byte_size(&1.description || "") > 512)),
-           "no description longer than 512 bytes"
+    assert Enum.reject(@boundary_days, &(&1 in days)) == []
 
     assert Enum.any?(worklogs, &(&1[:billable_seconds] == 0)), "no zero billable seconds"
-    assert Enum.any?(worklogs, &(rem(&1.time_spent_seconds, 3600) != 0))
+
+    assert Enum.any?(worklogs, &(rem(&1.time_spent_seconds, 3600) != 0)),
+           "no duration that is not a whole hour"
+
     assert twins?(worklogs), "no two worklogs that differ only in their Tempo IDs"
   end
 
@@ -190,7 +195,7 @@ defmodule Jido.Connect.Tempo.LiveSmokeTest do
         "the small page read"
       )
 
-    assert length(worklogs) == 5
+    assert length(worklogs) > 4, "expected three pages of two, got #{length(worklogs)} worklogs"
 
     assert Enum.map(worklogs, &key(Tempo.Worklog.to_map(&1))) ==
              Enum.map(raw_worklogs!(env, token, range), &raw_key/1)
@@ -200,60 +205,76 @@ defmodule Jido.Connect.Tempo.LiveSmokeTest do
   end
 
   # Tempo filters by the booking day in the worker's time zone, not by the
-  # UTC date of the start. The empty range is read second in the same
-  # recording: its response names the account only in links, so the
-  # sanitizer must have learned the account ID from the first one.
+  # UTC date of the start. The seeded data has no worklog on October 31; the
+  # recording holds 79166. An empty answer names the account only in links,
+  # so the sanitizer cannot learn the account ID from it, and a recording
+  # of an empty October 31 would keep the raw ID. Recording mode therefore
+  # stops before the read when Tempo has no worklog on that day.
   @tag env!(["TEMPO_OAUTH_ACCESS_TOKEN", "TEMPO_API_ORIGIN" | @jira])
-  test "a one-day range holds the worklog booked after midnight, an empty range none",
-       %{env: env} do
+  test "a one-day range holds the worklogs of that booking day", %{env: env} do
     token = env["TEMPO_OAUTH_ACCESS_TOKEN"]
     context = context!(env, :oauth2_user)
+    range = %{from: "2026-10-31", to: "2026-10-31"}
+    raw = raw_worklogs!(env, token, range)
+
+    if LiveSmoke.recording?() and raw == [],
+      do: flunk("re-recording worklogs_own_day needs worklog 79166 on 2026-10-31")
+
     LiveSmoke.record(@recorder, :tempo, "worklogs_own_day")
 
-    day =
-      ok!(
-        invoke(context, :oauth2_user, token, %{from: "2026-10-31", to: "2026-10-31"}),
-        "the one-day read"
-      )
+    day = ok!(invoke(context, :oauth2_user, token, range), "the one-day read")
 
-    assert %{complete: true, worklogs: [%{tempo_worklog_id: 79_166} = worklog]} = day
-    assert %{start_date: "2026-10-31", start_time: "00:30:00"} = worklog
-    assert utc_date(worklog) == "2026-10-30"
-    assert worklog.time_spent_seconds == 1801
-    assert byte_size(worklog.description) == 778
+    assert day.complete == true, "the one-day read did not return complete: true"
+    assert Enum.map(day.worklogs, &key/1) == Enum.map(raw, &raw_key/1)
 
-    empty =
-      ok!(
-        invoke(context, :oauth2_user, token, %{from: "2026-07-01", to: "2026-07-31"}),
-        "the empty range read"
-      )
+    on_day? = Enum.all?(day.worklogs, &(&1.start_date == "2026-10-31"))
+    assert on_day?, "a worklog of the one-day read has another booking day"
+  end
 
-    assert %{worklogs: [], complete: true, from: "2026-07-01", to: "2026-07-31"} = empty
+  # The empty range is read second in the same recording: its response names
+  # the account only in links, so the sanitizer must have learned the
+  # account ID from the seeded October 30 first.
+  @tag env!(["TEMPO_OAUTH_ACCESS_TOKEN", "TEMPO_API_ORIGIN" | @jira])
+  test "an empty range returns no worklogs", %{env: env} do
+    token = env["TEMPO_OAUTH_ACCESS_TOKEN"]
+    context = context!(env, :oauth2_user)
+    seeded = %{from: "2026-10-30", to: "2026-10-30"}
+    july = %{from: "2026-07-01", to: "2026-07-31"}
+    LiveSmoke.record(@recorder, :tempo, "worklogs_own_empty")
+
+    day = ok!(invoke(context, :oauth2_user, token, seeded), "the October 30 read")
+
+    assert day.worklogs != [], "no worklog on 2026-10-30"
+
+    assert Enum.map(day.worklogs, &key/1) ==
+             Enum.map(raw_worklogs!(env, token, seeded), &raw_key/1)
+
+    empty = ok!(invoke(context, :oauth2_user, token, july), "the empty range read")
+
+    none? =
+      empty.worklogs == [] and empty.complete == true and empty.from == july.from and
+        empty.to == july.to
+
+    assert none?, "the July read did not return worklogs: [] with complete: true"
   end
 
   # Tempo answers a worklog created through Tempo without a description with
   # its default text, but one created in Jira without a comment or with an
-  # empty comment with an empty description.
+  # empty comment with an empty description. The recording holds two such
+  # worklogs, 79167 and 79168; the seeded data has filler 79128 on this day.
   @tag env!(["TEMPO_API_TOKEN", "TEMPO_API_ORIGIN" | @jira])
-  test "worklogs created in Jira come back with an empty description", %{env: env} do
+  test "keeps the descriptions of October 28 as Tempo sends them", %{env: env} do
     token = env["TEMPO_API_TOKEN"]
     context = context!(env, :api_token)
     range = %{from: "2026-10-28", to: "2026-10-28"}
     LiveSmoke.record(@recorder, :tempo, "worklogs_own_jira")
 
     result = ok!(invoke(context, :api_token, token, range), "the October 28 read")
-    raw = raw_worklogs!(env, token, range)
 
-    assert Enum.map(result.worklogs, &key/1) == Enum.map(raw, &raw_key/1)
+    assert result.worklogs != [], "no worklog on 2026-10-28"
 
-    assert [
-             %{tempo_worklog_id: 79_128, description: "JCL live seed worklog: filler 27"},
-             %{tempo_worklog_id: 79_167, description: "", time_spent_seconds: 1200},
-             %{tempo_worklog_id: 79_168, description: "", time_spent_seconds: 1260}
-           ] = result.worklogs
-
-    assert Enum.map(raw, &Map.fetch(&1, "description")) ==
-             [{:ok, "JCL live seed worklog: filler 27"}, {:ok, ""}, {:ok, ""}]
+    assert Enum.map(result.worklogs, &key/1) ==
+             Enum.map(raw_worklogs!(env, token, range), &raw_key/1)
   end
 
   # The token endpoint's rejections are recorded with an invented code and an
@@ -465,18 +486,19 @@ defmodule Jido.Connect.Tempo.LiveSmokeTest do
       )
 
   # The compared fields, without the author, whose account ID the output
-  # of a failing comparison would show.
+  # of a failing comparison would show. A description that Tempo left out
+  # is nil on both sides.
   defp key(worklog) do
-    {worklog.tempo_worklog_id, worklog.start_date, worklog.time_spent_seconds,
-     worklog[:billable_seconds], worklog.issue_id}
+    {worklog.tempo_worklog_id, worklog.start_date, worklog[:start_time],
+     worklog[:start_date_time_utc], worklog.time_spent_seconds, worklog[:billable_seconds],
+     worklog.issue_id, worklog.description}
   end
 
   defp raw_key(record) do
-    {record["tempoWorklogId"], record["startDate"], record["timeSpentSeconds"],
-     record["billableSeconds"], record["issue"]["id"]}
+    {record["tempoWorklogId"], record["startDate"], record["startTime"],
+     record["startDateTimeUtc"], record["timeSpentSeconds"], record["billableSeconds"],
+     record["issue"]["id"], record["description"]}
   end
-
-  defp utc_date(%{start_date_time_utc: utc}), do: String.slice(utc, 0, 10)
 
   defp twins?(worklogs) do
     worklogs

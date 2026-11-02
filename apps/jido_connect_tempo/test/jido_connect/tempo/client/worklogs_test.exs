@@ -12,10 +12,10 @@ defmodule Jido.Connect.Tempo.Client.WorklogsTest do
   # October 31 in Europe/Berlin and has a description of 778 bytes. The
   # sanitizer replaced the test user's account ID with `account-1`.
   # `worklogs_own_small_page` holds the five worklogs of October 1 in pages
-  # of two, `worklogs_own_day` the one of October 31, `worklogs_own_day.2`
-  # the empty answer for July and `worklogs_own_jira` the three of October
-  # 28, two of them created in Jira, without a comment (79167) and with an
-  # empty one (79168).
+  # of two, `worklogs_own_day` the one of October 31, `worklogs_own_empty.2`
+  # the empty answer for July, read after October 30 on `worklogs_own_empty`,
+  # and `worklogs_own_jira` the three of October 28, two of them created in
+  # Jira, without a comment (79167) and with an empty one (79168).
   @account "account-1"
   @path "/4/worklogs/user/account-1"
   @periods [from: "2026-08-01", to: "2026-10-31"]
@@ -151,7 +151,7 @@ defmodule Jido.Connect.Tempo.Client.WorklogsTest do
     end
 
     test "an empty range returns no worklogs" do
-      Req.Test.expect(__MODULE__, &Fixture.respond(&1, "worklogs_own_day.2"))
+      Req.Test.expect(__MODULE__, &Fixture.respond(&1, "worklogs_own_empty.2"))
 
       assert {:ok, []} = Client.list_own_worklogs(request(), from: "2026-07-01", to: "2026-07-31")
     end
@@ -159,7 +159,7 @@ defmodule Jido.Connect.Tempo.Client.WorklogsTest do
     test "sends the account ID as one encoded path segment" do
       Req.Test.expect(__MODULE__, fn conn ->
         assert conn.request_path == "/4/worklogs/user/557058%3Af0e1%2Fa%20b"
-        Fixture.respond(conn, "worklogs_own_day.2")
+        Fixture.respond(conn, "worklogs_own_empty.2")
       end)
 
       assert {:ok, []} =
@@ -386,7 +386,7 @@ defmodule Jido.Connect.Tempo.Client.WorklogsTest do
         assert conn.query_string |> URI.decode_query() |> Map.keys() |> Enum.sort() ==
                  ["from", "limit", "offset", "to"]
 
-        Fixture.respond(conn, "worklogs_own_day.2")
+        Fixture.respond(conn, "worklogs_own_empty.2")
       end)
 
       assert {:ok, []} =

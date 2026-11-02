@@ -5,8 +5,8 @@ defmodule Jido.Connect.Tempo.ListOwnWorklogsActionTest do
   # Jido action, against the reads that the live tests recorded: the 60
   # worklogs from August 1 to October 31, 2026 on `worklogs_own` (50, with a
   # `next` link) and `worklogs_own.2` (10, without one), the empty answer for
-  # July on `worklogs_own_day.2`, and October 28 on `worklogs_own_jira`, where
-  # two worklogs created in Jira have an empty description.
+  # July on `worklogs_own_empty.2`, and October 28 on `worklogs_own_jira`,
+  # where two worklogs created in Jira have an empty description.
 
   alias Jido.Connect
   alias Jido.Connect.{Connection, Context, CredentialLease, Error}
@@ -116,7 +116,7 @@ defmodule Jido.Connect.Tempo.ListOwnWorklogsActionTest do
     end
 
     test "an empty range returns worklogs [] and complete true" do
-      Req.Test.expect(__MODULE__, &Fixture.respond(&1, "worklogs_own_day.2"))
+      Req.Test.expect(__MODULE__, &Fixture.respond(&1, "worklogs_own_empty.2"))
 
       assert {:ok,
               %{
