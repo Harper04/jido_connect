@@ -5,7 +5,8 @@ defmodule Jido.Connect.Slack.WebhookTest do
   alias Jido.Connect.Slack.Webhook
   alias Jido.Connect.TestSupport.LiveSmoke
 
-  @captured_dir Path.expand("../../fixtures/slack/captured", __DIR__)
+  import Jido.Connect.Slack.TestSupport.CapturedDelivery,
+    only: [capture!: 1, payload!: 1, replay: 1, replay: 2]
 
   test "verifies valid Slack signature" do
     body = ~s({"type":"event_callback"})
@@ -112,10 +113,7 @@ defmodule Jido.Connect.Slack.WebhookTest do
                   }
                 }
               }} =
-               LiveSmoke.replay(capture,
-                 webhook: Webhook,
-                 seen_delivery_ids: ["Ev0CE6SUA42V"]
-               )
+               replay(capture, seen_delivery_ids: ["Ev0CE6SUA42V"])
     end
 
     test "fail verification after a body change, with a wrong or missing secret, or when stale" do
@@ -1042,13 +1040,6 @@ defmodule Jido.Connect.Slack.WebhookTest do
                now: 1_700_000_000
              )
   end
-
-  defp capture!(name),
-    do: @captured_dir |> Path.join("#{name}.json") |> File.read!() |> Jason.decode!()
-
-  defp payload!(name), do: name |> capture!() |> Map.fetch!("body") |> Jason.decode!()
-
-  defp replay(name), do: name |> capture!() |> LiveSmoke.replay(webhook: Webhook)
 
   defp change_shared_attachment(change) do
     update_in(payload!("message_im_shared_public"), ["event", "attachments"], fn [shared] ->
