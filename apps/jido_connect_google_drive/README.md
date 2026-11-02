@@ -67,9 +67,8 @@ The push triggers normalize Google Drive `X-Goog-*` channel headers.
 `google.drive.file.changed.push` covers notifications of channels created with
 `google.drive.changes.watch` or `google.drive.file.watch`,
 `google.drive.collection.changes.push` those of `google.drive.collection.watch`.
-A notification carries no changes; the host polls the matching trigger after
-it. Hosts remain responsible for verifying the HTTPS delivery and the channel
-token before calling the normalizer.
+Hosts remain responsible for verifying the HTTPS delivery and the channel token
+before calling the normalizer.
 
 Drive channels are provider resources. There is no automatic renew endpoint;
 renewal is modeled as creating a replacement watch channel with a new
