@@ -75,6 +75,30 @@ defmodule Jido.Connect.Tempo.Client.PaginationTest do
     end
   end
 
+  # The first recorded page with a `next` link that disagrees with the
+  # metadata: a short page of 45 announcing offset 50, a link that skips to
+  # offset 60, and a link without an offset.
+  test "a next link whose offset is not the page offset plus count fails without a request" do
+    for change <- [
+          fn body ->
+            body
+            |> update_in(["results"], &Enum.take(&1, 45))
+            |> put_in(["metadata", "count"], 45)
+          end,
+          &update_in(&1, ["metadata", "next"], fn next ->
+            String.replace(next, "offset=50", "offset=60")
+          end),
+          &update_in(&1, ["metadata", "next"], fn next ->
+            String.replace(next, "offset=50&", "")
+          end)
+        ] do
+      Req.Test.expect(__MODULE__, &Fixture.respond(&1, "worklogs_page", body: change))
+
+      assert {:error, %Error.ProviderError{reason: :invalid_pagination}} =
+               Pagination.collect(request(), @path, @october)
+    end
+  end
+
   # The second request gets the first recorded page again, as a server stuck
   # on one offset would send it.
   test "a repeated offset fails the whole read" do

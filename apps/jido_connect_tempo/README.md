@@ -187,8 +187,9 @@ origin is accepted while the request stays at the connection's origin.
 | `:max_pages` | 20 | `:page_limit_exceeded`, before the next request |
 | `:max_results` | 1000 | `:result_limit_exceeded`; exactly this many succeed |
 
-A foreign `next` link, a repeated offset, malformed page metadata and any
-failed page also fail the whole read.
+A foreign `next` link, a repeated offset, malformed page metadata, a `next`
+link whose `offset` is not the page's `offset` plus `count`, and any failed
+page also fail the whole read.
 
 ## Errors
 

@@ -26,8 +26,11 @@ defmodule Jido.Connect.Tempo.Client.Pagination do
 
   Other failures that end the whole read: a page whose offset was already
   read, or an empty page that announces a next one (`:repeated_offset`), a
-  page without valid `results` or `metadata` (`:invalid_pagination`), and any
-  failed request. Byte limits on the collected results are host policy.
+  page without valid `results` or `metadata`, or a `next` link whose `offset`
+  is not the page's `offset` plus `count` (`:invalid_pagination`), and any
+  failed request. The last check stops a short page that announces a full
+  one, which would otherwise read results twice. Byte limits on the collected
+  results are host policy.
   """
 
   alias Jido.Connect.Error
@@ -93,6 +96,9 @@ defmodule Jido.Connect.Tempo.Client.Pagination do
       MapSet.member?(state.seen, next_offset) ->
         error(:repeated_offset, "Tempo pagination repeated an offset", %{offset: next_offset})
 
+      link_offset(page.next) != Integer.to_string(next_offset) ->
+        invalid_page()
+
       state.pages >= bounds.max_pages ->
         error(:page_limit_exceeded, "Tempo read exceeds the page limit", %{
           max_pages: bounds.max_pages
@@ -124,6 +130,10 @@ defmodule Jido.Connect.Tempo.Client.Pagination do
   defp page(_body, _state), do: invalid_page()
 
   defp invalid_page, do: error(:invalid_pagination, "Tempo page metadata was invalid", %{})
+
+  defp link_offset(link) do
+    URI.decode_query(URI.parse(link).query || "")["offset"]
+  end
 
   defp error(reason, message, details) do
     Response.invalid_response(message, nil, reason: reason, details: details)
