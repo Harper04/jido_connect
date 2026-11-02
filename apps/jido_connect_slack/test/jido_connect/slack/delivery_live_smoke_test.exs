@@ -11,10 +11,11 @@ defmodule Jido.Connect.Slack.DeliveryLiveSmokeTest do
   with Req outside the package, and deleted again in the same test, because
   the conversation history and thread checks read the prepared data.
 
-  The `conversations.open` check opens the existing bot DM and group DM and is
-  refused an unknown user; it runs without the write gate. The refusal check
-  posts to the channel the bot has left. With `JIDO_CONNECT_RECORD=1` both
-  record the responses that the offline tests replay.
+  The `conversations.open` checks open the existing bot DM, with and without
+  `return_im`, and the group DM, and are refused an unknown user; they run
+  without the write gate. The refusal check posts to the channel the bot has
+  left. With `JIDO_CONNECT_RECORD=1` these checks record the responses that the
+  offline tests replay.
   """
 
   use ExUnit.Case, async: false
@@ -136,6 +137,24 @@ defmodule Jido.Connect.Slack.DeliveryLiveSmokeTest do
 
     assert {:error, %Connect.Error.ProviderError{status: 200, reason: "user_not_found"}} =
              Client.open_conversation(Map.put(@open_defaults, :users, [@unknown_user]), token)
+  end
+
+  # Without return_im Slack answers with the DM's ID only; with it, Slack
+  # returns the DM definition and its user. A separate test, so that recording
+  # it leaves the other conversations.open recordings as they are.
+  @tag env!(["SLACK_BOT_TOKEN", "SLACK_USER_TOKEN", "SLACK_DM_CHANNEL_ID"])
+  test "conversations.open with return_im returns the bot DM and its user", %{env: env} do
+    token = env["SLACK_BOT_TOKEN"]
+    authorizing_user = LiveSlack.user_id!(env["SLACK_USER_TOKEN"])
+    dm = env["SLACK_DM_CHANNEL_ID"]
+    params = Map.merge(@open_defaults, %{return_im: true, users: [authorizing_user]})
+
+    LiveSlack.record("conversations_open_im_return_im", fields: @conversation_fields)
+
+    assert {:ok, %{channel: ^dm, conversation: conversation}} =
+             Client.open_conversation(params, token)
+
+    assert %{id: ^dm, is_im: true, user: ^authorizing_user} = conversation
   end
 
   # Slack refuses the post, but a bot that rejoined the channel would post.

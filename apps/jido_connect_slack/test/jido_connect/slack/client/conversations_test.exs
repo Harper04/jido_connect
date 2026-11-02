@@ -401,6 +401,39 @@ defmodule Jido.Connect.Slack.Client.ConversationsTest do
              )
   end
 
+  # Recorded from the test workspace: the bot opens its DM with the
+  # authorizing user and asks for the full DM definition.
+  test "open conversation sends return_im and returns the DM's user" do
+    Req.Test.expect(__MODULE__, fn conn ->
+      assert conn.request_path == "/api/conversations.open"
+
+      {:ok, body, conn} = Plug.Conn.read_body(conn)
+
+      assert Jason.decode!(body) == %{
+               "users" => "U0CDPFT1RDJ",
+               "return_im" => true,
+               "prevent_creation" => false
+             }
+
+      Req.Test.json(conn, LiveSmoke.fixture!(:slack, "conversations_open_im_return_im"))
+    end)
+
+    assert {:ok,
+            %{
+              channel: "D0CD4G48UFR",
+              conversation: %{
+                id: "D0CD4G48UFR",
+                is_im: true,
+                is_open: true,
+                user: "U0CDPFT1RDJ"
+              }
+            }} ==
+             Client.open_conversation(
+               %{users: ["U0CDPFT1RDJ"], return_im: true, prevent_creation: false},
+               "token"
+             )
+  end
+
   describe "get_conversation_history/2" do
     # Recorded from the public channel of the test workspace with the bot token.
     @channel "C0CEEB41FU0"
