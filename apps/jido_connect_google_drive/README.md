@@ -183,11 +183,27 @@ cannot cover every corpus; Google then recommends narrowing the search to the
 returned as `false`. A caller-supplied `fields` is sent unchanged; when it does
 not name `incompleteSearch`, the result has no `incomplete_search` key.
 
-To follow a folder after the first listing, poll the
-`google.drive.collection.changes` trigger with the folder ID as
-`collection_id`. It reads Drive's change log from a checkpoint and marks each
-change with `collection_match`, so the host does not have to list the folder
-again.
+To follow a folder, poll the `google.drive.collection.changes` trigger once
+with the folder ID as `collection_id` before the first listing. A poll without
+a checkpoint returns no signals and Drive's current change position as its
+checkpoint; it does not replay earlier changes. The host stores the
+checkpoint, lists the folder and then polls from the stored checkpoint. A
+change made between that first poll and the listing can show up in both, so
+the host applies signals by `provider_record_id`, and a change the listing
+already contains updates the same entry again.
+
+Each signal carries `collection_match`: `"yes"` when the changed file is the
+folder or lists it in `parents`, `"no"` when it does not, which includes a file
+moved out of the folder, and `"unknown"` when Drive sends no file, as for a
+removed one. As long as every poll continues from the checkpoint the previous
+poll returned, the host does not have to list the folder again.
+
+A poll that cannot continue from its checkpoint, for example because Drive
+reports it expired (`reason: :checkpoint_expired`), returns an error whose
+`details` carry `checkpoint_reset`. The host then clears the checkpoint and
+polls again. That poll starts from Drive's current position without the
+missed changes, so it takes the place of the first poll above, and the host
+lists the folder again after it.
 
 ## Permission-Aware Field Projections
 
