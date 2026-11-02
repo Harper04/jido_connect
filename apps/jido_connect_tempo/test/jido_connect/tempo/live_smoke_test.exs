@@ -277,6 +277,40 @@ defmodule Jido.Connect.Tempo.LiveSmokeTest do
              Enum.map(raw_worklogs!(env, token, range), &raw_key/1)
   end
 
+  # Tempo reads an approval only for the exact boundaries of one period and
+  # answers a range across periods with a 400. The open October period is
+  # read first, so the sanitizer learns the account ID from its `user`
+  # before it writes the path of the 400, whose body names no account.
+  @tag env!(["TEMPO_OAUTH_ACCESS_TOKEN", "TEMPO_API_ORIGIN" | @jira])
+  test "reads the open October approval and rejects a range across periods", %{env: env} do
+    token = env["TEMPO_OAUTH_ACCESS_TOKEN"]
+    request = request!(env, :oauth2_user, token)
+    LiveSmoke.record(@recorder, :tempo, "timesheet_approval")
+
+    approval =
+      ok!(
+        Client.get_timesheet_approval(request, "2026-10-01", "2026-10-31"),
+        "the October approval read"
+      )
+
+    raw = raw_approval!(env, token, %{from: "2026-10-01", to: "2026-10-31"})
+
+    assert approval.status == "OPEN"
+    assert {approval.status, approval.updated_at} == raw_evidence(raw)
+    assert {approval.period_from, approval.period_to} == {"2026-10-01", "2026-10-31"}
+
+    own? = approval.user_account_id == request.account_id
+    assert own?, "the approval names another user than the connection's account"
+
+    across = Client.get_timesheet_approval(request, "2026-08-01", "2026-09-30")
+
+    rejected? =
+      match?({:error, %Error.ProviderError{reason: :bad_request, status: 400}}, across) and
+        error_message(across) =~ "not a valid period"
+
+    assert rejected?, "a range across two periods did not get Tempo's 400"
+  end
+
   # The token endpoint's rejections are recorded with an invented code and an
   # invented refresh token. A successful exchange needs the code of one
   # browser authorization and every refresh replaces both tokens, so that
@@ -524,6 +558,30 @@ defmodule Jido.Connect.Tempo.LiveSmokeTest do
         flunk("the direct Tempo read did not return one complete page")
     end
   end
+
+  # Reads one approval directly, outside the package and the recorder: the
+  # user's own Tempo view of that period.
+  defp raw_approval!(env, token, %{from: from, to: to}) do
+    path =
+      "/4/timesheet-approvals/user/" <> URI.encode(account_id!(env), &URI.char_unreserved?/1)
+
+    case Req.get(env["TEMPO_API_ORIGIN"] <> path,
+           auth: {:bearer, token},
+           params: [from: from, to: to],
+           retry: false
+         ) do
+      {:ok, %{status: 200, body: %{"status" => %{} = _status} = body}} -> body
+      _other -> flunk("the direct Tempo approval read of #{from} to #{to} failed")
+    end
+  end
+
+  defp raw_evidence(%{"status" => status}), do: {status["key"], status["updatedAt"]}
+
+  defp error_message({:error, %Error.ProviderError{details: %{message: message}}})
+       when is_binary(message),
+       do: message
+
+  defp error_message(_result), do: ""
 
   defp context!(env, profile) do
     Context.new!(%{
