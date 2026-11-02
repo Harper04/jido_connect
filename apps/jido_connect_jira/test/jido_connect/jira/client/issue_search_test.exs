@@ -139,6 +139,31 @@ defmodule Jido.Connect.Jira.Client.IssueSearchTest do
              Client.search_issues(@jql, api_token_request(), fields: ["-description"])
   end
 
+  test "returns the reporter as a plain map, so the page encodes as JSON" do
+    # The recorded JCL-3 in `issue_fields` was reported by the test user.
+    expect_page(page("issue_fields"))
+
+    assert {:ok, result} = Client.search_issues(@jql, api_token_request(), fields: ["*navigable"])
+
+    assert %{
+             issues: [
+               %{reporter: %{account_id: "account-1", display_name: "Person 1"} = reporter}
+             ]
+           } =
+             result
+
+    refute is_struct(reporter)
+    assert {:ok, _json} = Jason.encode(result)
+  end
+
+  test "sends no token for an empty next_page_token" do
+    # Tool-calling models often fill an optional string with "".
+    expect_page(page(4), fn body -> refute Map.has_key?(body, "nextPageToken") end)
+
+    assert {:ok, %{issues: [%{key: "JCL-1"}, %{key: "JCL-2"}]}} =
+             Client.search_issues(@jql, api_token_request(), next_page_token: "")
+  end
+
   test "adds the issue key to a field list that names only id" do
     # `id` alone returns bare issue IDs, which do not normalize without a key.
     # `issue_fields.3` answers `["id", "key"]` with key and `self` but no
