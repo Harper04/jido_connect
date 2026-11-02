@@ -87,6 +87,7 @@ defmodule Jido.Connect.Confluence.Actions.Pages do
         field(:revision_id, :string)
         field(:version, :integer)
         field(:space_id, :string)
+        field(:url, :string)
         field(:text, :string)
         field(:character_count, :integer)
         field(:truncated, :boolean)

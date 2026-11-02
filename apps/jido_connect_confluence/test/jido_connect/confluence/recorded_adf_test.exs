@@ -70,14 +70,12 @@ defmodule Jido.Connect.Confluence.RecordedADFTest do
               }}
   end
 
-  test "the plain page reads as before and projects with its link target and numbers" do
+  test "the plain page reads through the shared projection with its link target and numbers" do
     body = LiveSmoke.fixture!(:confluence, "plain_page_adf")
     Req.Test.expect(__MODULE__, &Req.Test.json(&1, body))
 
-    assert {:ok, page} = Client.get_page(%{id: body["id"]}, request())
-    assert {:ok, page.text} == Jido.Connect.Confluence.ADF.to_text(page_adf(body))
-
-    assert {:ok, %{text: text, unsupported_nodes: []}} = ADF.project(page_adf(body))
+    assert {:ok, %{text: text}} = Client.get_page(%{id: body["id"]}, request())
+    assert {:ok, %{text: ^text, unsupported_nodes: []}} = ADF.project(page_adf(body))
 
     assert [
              "Plain live-test page",

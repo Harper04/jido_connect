@@ -1,8 +1,9 @@
 defmodule Jido.Connect.Confluence.Client.Normalizer do
   @moduledoc "Strict normalization for Confluence Cloud space, page, and effect responses."
 
+  alias Jido.Connect.Atlassian.ADF
   alias Jido.Connect.Data
-  alias Jido.Connect.Confluence.{ADF, Contract}
+  alias Jido.Connect.Confluence.Contract
 
   @identifier_max Contract.maximum_identifier_length()
   @title_max Contract.maximum_title_length()
@@ -66,8 +67,9 @@ defmodule Jido.Connect.Confluence.Client.Normalizer do
   def page(body, expected_id, max_characters, context)
       when is_map(body) and is_map(context) do
     with {:ok, metadata} <- page_metadata(body, expected_id),
+         {:ok, url} <- page_url(body, context.site_url),
          {:ok, adf} <- adf_body(body),
-         {:ok, text} <- ADF.to_text(adf),
+         {:ok, %{text: text}} <- ADF.project(adf, on_unsupported: :fail),
          true <- valid_account?(context.account),
          true <-
            is_integer(max_characters) and
@@ -83,6 +85,7 @@ defmodule Jido.Connect.Confluence.Client.Normalizer do
          revision_id: Integer.to_string(metadata.version),
          version: metadata.version,
          space_id: metadata.space_id,
+         url: url,
          text: String.slice(text, 0, max_characters),
          character_count: character_count,
          truncated: character_count > max_characters
@@ -238,6 +241,17 @@ defmodule Jido.Connect.Confluence.Client.Normalizer do
   end
 
   defp normalize_page_item(_raw, _expected_space_id, _site_url), do: :error
+
+  # The URL joins the validated tenant endpoint and `webui`. A `base` that
+  # names any other root fails the page instead of being used or ignored.
+  defp page_url(raw, site_url) do
+    with links when is_map(links) <- Data.get(raw, :_links),
+         true <- Data.get(links, :base) in [nil, site_url] do
+      web_url(site_url, Data.get(links, :webui))
+    else
+      _invalid -> :error
+    end
+  end
 
   defp adf_body(raw) do
     with body when is_map(body) <- Data.get(raw, :body),

@@ -160,7 +160,9 @@ defmodule Jido.Connect.Confluence.Client.Pages do
 
   defp normalize_page({:ok, %{status: status, body: body}}, id, max_characters, request)
        when status in 200..299 and is_map(body) do
-    case Normalizer.page(body, id, max_characters, %{account: Request.account(request)}) do
+    context = %{account: Request.account(request), site_url: request.endpoint}
+
+    case Normalizer.page(body, id, max_characters, context) do
       {:ok, result} -> {:ok, result}
       :error -> Transport.invalid_success_response("Confluence page response was invalid", body)
     end
