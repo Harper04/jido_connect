@@ -80,6 +80,28 @@ defmodule Jido.Connect.Google.Drive.FileUploadTest do
     refute inspect(error) =~ binary_part(content_base64, 0, 24)
   end
 
+  # The request carries no pre-generated file ID, so Drive may have created the
+  # file, and a repeat would create a second one.
+  test "reports a timed-out upload as an unknown outcome that must not be retried" do
+    test_pid = self()
+
+    Req.Test.expect(__MODULE__, fn conn ->
+      send(test_pid, :upload_attempt)
+      Req.Test.transport_error(conn, :timeout)
+    end)
+
+    assert {:error,
+            %Connect.Error.ProviderError{
+              delivery: :sent_outcome_unknown,
+              mutation?: true,
+              provider_idempotency?: false
+            } = error} = upload(%{content: "jcl upload"})
+
+    assert Connect.Error.retry_guidance(error) == :do_not_retry
+    assert_receive :upload_attempt
+    refute_receive :upload_attempt, 50
+  end
+
   # Every byte value, 20,480 times: the content of the recorded live upload.
   defp limit_content, do: :binary.copy(:binary.list_to_bin(Enum.to_list(0..255)), 20_480)
 
