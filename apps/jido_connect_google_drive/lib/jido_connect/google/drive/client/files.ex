@@ -16,7 +16,8 @@ defmodule Jido.Connect.Google.Drive.Client.Files do
     |> Transport.request()
     |> Req.get(
       url: "/v3/files/#{URI.encode(file_id, &URI.char_unreserved?/1)}",
-      params: Params.get_file_params(params)
+      params: Params.get_file_params(params),
+      headers: Params.resource_key_headers(params)
     )
     |> Response.handle_file_response()
   end
@@ -93,7 +94,7 @@ defmodule Jido.Connect.Google.Drive.Client.Files do
     |> Req.get(
       url: "/v3/files/#{encode_id(file_id)}/export",
       params: Params.file_export_params(params),
-      headers: [{"accept", mime_type}]
+      headers: [{"accept", mime_type} | Params.resource_key_headers(params)]
     )
     |> Response.handle_file_content_response(params)
   end
@@ -105,7 +106,7 @@ defmodule Jido.Connect.Google.Drive.Client.Files do
     |> Req.get(
       url: "/v3/files/#{encode_id(file_id)}",
       params: Params.file_download_params(params),
-      headers: [{"accept", "*/*"}]
+      headers: [{"accept", "*/*"} | Params.resource_key_headers(params)]
     )
     |> Response.handle_file_content_response(params)
   end

@@ -264,6 +264,23 @@ defmodule Jido.Connect.Google.Drive.Client.Params do
     |> Data.compact()
   end
 
+  @doc """
+  Builds the `X-Goog-Drive-Resource-Keys` header for a request on one file.
+
+  Returns `[{"x-goog-drive-resource-keys", "<fileId>/<resourceKey>"}]` when
+  `params` carry a `:resource_key`, otherwise `[]`. The key travels only in
+  this header, never in the query string.
+  """
+  def resource_key_headers(params) do
+    case Data.get(params, :resource_key) do
+      key when is_binary(key) and key != "" ->
+        [{"x-goog-drive-resource-keys", "#{Data.get(params, :file_id)}/#{key}"}]
+
+      _no_key ->
+        []
+    end
+  end
+
   @doc "Builds query params for file deletes."
   def file_delete_params(params) do
     %{
