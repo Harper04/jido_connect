@@ -100,7 +100,9 @@ defmodule Jido.Connect.Tempo.Client.TransportTest do
       plug: {Req.Test, __MODULE__},
       base_url: "https://collector.example.com",
       redirect: true,
-      redirect_trusted: true
+      redirect_trusted: true,
+      follow_redirects: true,
+      location_trusted: true
     )
 
     test_pid = self()

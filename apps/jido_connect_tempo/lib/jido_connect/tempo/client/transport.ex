@@ -18,7 +18,9 @@ defmodule Jido.Connect.Tempo.Client.Transport do
     never receives the `authorization` header.
   - Req options from `:tempo_req_options` and `:req_options`, used for
     `Req.Test` and the live smoke recorder, cannot set `:base_url`, `:url`,
-    `:auth`, `:redirect` or `:redirect_trusted`.
+    `:auth`, `:redirect` or `:redirect_trusted`, nor the legacy
+    `:follow_redirects` and `:location_trusted`, which Req 0.7 still reads
+    before the current names.
 
   Automatic retries are off by default; a caller may enable them through
   `:req_options`. Failures carry `retry_after` for the host's own retry
@@ -37,7 +39,15 @@ defmodule Jido.Connect.Tempo.Client.Transport do
                  message: "Tempo requests must stay at the connection's API origin"
   end
 
-  @locked_options [:base_url, :url, :auth, :redirect, :redirect_trusted]
+  @locked_options [
+    :base_url,
+    :url,
+    :auth,
+    :redirect,
+    :redirect_trusted,
+    :follow_redirects,
+    :location_trusted
+  ]
 
   @doc "Builds the Bearer request for one Tempo connection."
   @spec request(Request.t(), keyword()) :: Req.Request.t()
