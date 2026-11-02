@@ -10,8 +10,9 @@ defmodule Jido.Connect.Jira.Client.Comments do
     * `is_last` is `true` when `startAt` plus the number of comments reaches
       `total`. A page with fewer comments than `maxResults` stays non-final
       until then.
-    * `next_start_at` is `startAt` plus the number of comments, absent on the
-      last page, so a caller that follows it cannot loop on an empty page.
+    * `next_start_at` is `startAt` plus the number of comments. On the last
+      page it is `nil`, and the output of `jira.issue.comment.list` leaves it
+      out, so a caller that follows it cannot loop on an empty page.
 
   A page fails with an `:invalid_response` error whose details name the
   offending key, without comment content, when `comments` is not a list,

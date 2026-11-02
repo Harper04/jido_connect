@@ -8,10 +8,12 @@ defmodule Jido.Connect.Jira.Comment do
   rendering it. `body_adf` is the original ADF document, unchanged.
   `visibility` is Jira's visibility restriction as returned, such as
   `%{"type" => "role", "value" => "Developers", "identifier" => "Developers"}`;
-  it is absent for a comment that every issue reader can see.
+  it is `nil` for a comment that every issue reader can see.
 
-  A comment without a body has none of the three body fields. An empty ADF
+  In a comment without a body the three body fields are `nil`. An empty ADF
   document keeps `body: ""` next to its `body_adf`.
+  `Jido.Connect.Jira.Client.Normalizer.comment_map/1`, which shapes the
+  comments of `jira.issue.comment.list`, leaves the `nil` fields out.
   """
 
   alias Jido.Connect.Jira.User

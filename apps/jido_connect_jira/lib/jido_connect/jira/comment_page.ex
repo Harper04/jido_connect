@@ -5,8 +5,9 @@ defmodule Jido.Connect.Jira.CommentPage do
   `issue` is the issue key or ID exactly as the caller supplied it. `start_at`,
   `max_results` and `total` are Jira's `startAt`, `maxResults` and `total`.
   `is_last` is `true` when `start_at` plus the number of comments reaches
-  `total`. `next_start_at` is `start_at` plus the number of comments and is
-  absent on the last page.
+  `total`. `next_start_at` is `start_at` plus the number of comments. On the
+  last page it is `nil`, and the output of `jira.issue.comment.list` leaves
+  it out.
   """
 
   alias Jido.Connect.Jira.Comment
