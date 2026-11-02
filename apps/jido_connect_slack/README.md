@@ -72,7 +72,9 @@ Inputs:
   required scope (`channels:history`, `groups:history`, `im:history` or
   `mpim:history`) and is not sent to Slack. The package does not infer the
   type from the channel ID, because Slack gives private channels and group
-  DMs IDs that start with `C`.
+  DMs IDs that start with `C`. Tool availability, which runs without input,
+  offers the action to a connection with any one of these scopes; each call
+  still needs the scope of its type.
 - `cursor`, `oldest`, `latest` and `inclusive` (default `false`) go to Slack
   unchanged.
 - `limit` defaults to 100 and must be from 1 through 100. The bound is a

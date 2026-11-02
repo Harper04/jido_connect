@@ -178,8 +178,19 @@ defmodule Jido.Connect.Slack.ConversationHistoryTest do
              nil
            ) == ["mpim:history"]
 
-    # Availability checks run without input and see the static scope.
+    # Availability checks run without input: without a connection, the static
+    # scope applies.
     assert ScopeResolver.required_scopes(%{id: @action_id}, %{}, nil) == ["channels:history"]
+  end
+
+  test "the tool is offered to a connection with any one history scope" do
+    for profile <- [:bot, :user], {_type, scope} <- @history_scopes do
+      assert %{state: :available, missing_scopes: []} =
+               history_availability(context(profile, [scope]).connection)
+    end
+
+    assert %{state: :missing_scopes, missing_scopes: ["channels:history"]} =
+             history_availability(context(:bot, ["channels:read"]).connection)
   end
 
   test "policy denial and an expired lease make no provider call" do
@@ -209,6 +220,12 @@ defmodule Jido.Connect.Slack.ConversationHistoryTest do
              )
 
     refute_received {:slack_request, _query}
+  end
+
+  defp history_availability(connection) do
+    %{connection: connection}
+    |> Jido.Connect.Slack.Plugin.tool_availability()
+    |> Enum.find(&(&1.tool == @action_id))
   end
 
   defp runtime(profile, scopes) do
