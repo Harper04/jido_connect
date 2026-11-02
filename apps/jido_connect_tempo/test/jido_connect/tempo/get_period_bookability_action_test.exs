@@ -49,7 +49,7 @@ defmodule Jido.Connect.Tempo.GetPeriodBookabilityActionTest do
     }
 
     def list_periods(request, opts) do
-      send(self(), {:list_periods, request, opts, DateTime.utc_now()})
+      send(self(), {:list_periods, request, opts})
 
       {:ok,
        for period <- Fixture.recorded!("period_bookability")["body"]["periods"] do
@@ -62,6 +62,38 @@ defmodule Jido.Connect.Tempo.GetPeriodBookabilityActionTest do
       body = Fixture.recorded!(@approvals[from])["body"]
       {:ok, approval} = TimesheetApproval.normalize(body)
       {:ok, %{approval | user_account_id: request.account_id}}
+    end
+  end
+
+  defmodule NextSecondClient do
+    @moduledoc false
+
+    # Answers like RecordingClient, but reads the periods only once the
+    # next full UTC second has begun and reports that time. A checked_at
+    # taken before this read is therefore an earlier second than the read.
+
+    alias Jido.Connect.Tempo.GetPeriodBookabilityActionTest.RecordingClient
+
+    def list_periods(request, opts) do
+      next_second =
+        DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.add(1, :second)
+
+      wait_until(next_second)
+      send(self(), {:periods_read_at, DateTime.utc_now()})
+      RecordingClient.list_periods(request, opts)
+    end
+
+    defdelegate get_timesheet_approval(request, from, to), to: RecordingClient
+
+    defp wait_until(time) do
+      case DateTime.diff(time, DateTime.utc_now(), :microsecond) do
+        wait when wait > 0 ->
+          Process.sleep(div(wait, 1000) + 1)
+          wait_until(time)
+
+        _reached ->
+          :ok
+      end
     end
   end
 
@@ -143,6 +175,8 @@ defmodule Jido.Connect.Tempo.GetPeriodBookabilityActionTest do
       assert {:ok, _json} = Jason.encode(result)
     end
 
+    # The periods read starts only in the next full second, so a checked_at
+    # taken after it would be that second or later.
     test "checked_at is a UTC second taken before the first request" do
       context = context(:api_token)
       before = DateTime.utc_now() |> DateTime.truncate(:second)
@@ -151,14 +185,16 @@ defmodule Jido.Connect.Tempo.GetPeriodBookabilityActionTest do
                GetPeriodBookability.run(@range, %{
                  integration_context: context,
                  credential_lease: lease(context),
-                 provider_client: RecordingClient
+                 provider_client: NextSecondClient
                })
 
-      assert_received {:list_periods, _request, _opts, first_request_at}
+      assert_received {:periods_read_at, periods_read_at}
       assert {:ok, checked_at_time, 0} = DateTime.from_iso8601(checked_at)
       assert checked_at =~ ~r/\A\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z\z/
       assert DateTime.compare(checked_at_time, before) != :lt
-      assert DateTime.compare(checked_at_time, first_request_at) != :gt
+
+      assert DateTime.compare(checked_at_time, DateTime.truncate(periods_read_at, :second)) ==
+               :lt
     end
 
     # The recorded periods reduced to those that Tempo returns for each range.
@@ -433,7 +469,7 @@ defmodule Jido.Connect.Tempo.GetPeriodBookabilityActionTest do
                  provider_client: RecordingClient
                })
 
-      assert_received {:list_periods, %{account_id: @account}, opts, _at}
+      assert_received {:list_periods, %{account_id: @account}, opts}
       assert opts == [from: "2026-08-15", to: "2026-10-15"]
 
       for {from, to} <- [
@@ -483,7 +519,7 @@ defmodule Jido.Connect.Tempo.GetPeriodBookabilityActionTest do
                  })
       end
 
-      refute_received {:list_periods, _request, _opts, _at}
+      refute_received {:list_periods, _request, _opts}
     end
 
     test "no input selects another account" do
