@@ -98,11 +98,15 @@ defmodule Jido.Connect.Google.Docs.Actions.Documents do
         field(:requests, {:array, :map},
           required?: true,
           description:
-            "List of batch update operations. Each map must contain exactly one operation key."
+            "1 to 100 batch update operations, applied in order. Each map must contain " <>
+              "exactly one operation key. Keys use Google's snake_case request names, such as " <>
+              "insert_text with location.index and location.tab_id, and are sent unchanged."
         )
 
         field(:write_control, :map,
-          description: "Optional write control for concurrency control."
+          description:
+            "Optional write control, sent as writeControl unchanged, such as " <>
+              "required_revision_id with the revision the batch expects."
         )
       end
 
