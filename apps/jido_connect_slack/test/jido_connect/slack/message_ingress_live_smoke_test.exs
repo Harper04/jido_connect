@@ -39,6 +39,17 @@ defmodule Jido.Connect.Slack.MessageIngressLiveSmokeTest do
   new reply count, a broadcast reply's update of its thread root and a link
   unfurl, must verify without a signal.
 
+  The third test replays the deletions of thread parents with replies in the
+  public channel, which the bot posted, replied to and deleted with
+  `chat.delete`, one of them after an edit. Slack reports such a deletion as
+  a `message_changed` whose `message` is a tombstone, and the removal of the
+  tombstone after the last reply was deleted as a `message_deleted` whose
+  `previous_message` is the tombstone. The test finds each tombstone by its
+  subtype and the parent by its `ts`. The tombstone must yield a deletion
+  signal with the parent's `ts` and author and no edit, the removal a
+  deletion signal with the same `ts`, no author and an event ID of its own,
+  and the bot token must no longer find the parent.
+
   With `JIDO_CONNECT_RECORD=1` each delivery the tests use becomes the
   fixture `test/fixtures/slack/captured/<name>.json`, sanitized and signed
   again with `LiveSmoke.replay_secret/0`; the posts that were edited stay
@@ -326,6 +337,27 @@ defmodule Jido.Connect.Slack.MessageIngressLiveSmokeTest do
     end
   end
 
+  @tag env!(@env)
+  test "captured deletions of thread parents with replies yield deletion signals", %{env: env} do
+    secret = env["SLACK_SIGNING_SECRET"]
+    token = env["SLACK_BOT_TOKEN"]
+    sequences = tombstone_sequences!(first_deliveries!(env), env)
+
+    plain = Enum.find(sequences, &(not edited_parent?(&1))) || flunk("no unedited parent")
+    edited = Enum.find(sequences, &edited_parent?/1) || flunk("no edited parent")
+    assert plain.removal, "no removal of the tombstone #{plain.ts}"
+
+    if LiveSmoke.recording?() do
+      write_change!(plain.tombstone, "message_changed_tombstone", secret, [])
+      write_change!(plain.removal, "message_deleted_tombstone", secret, [])
+      write_change!(edited.tombstone, "message_changed_tombstone_edited", secret, [])
+    end
+
+    for sequence <- sequences do
+      assert_tombstone_sequence(sequence, secret, token, env)
+    end
+  end
+
   defp assert_change_sequence(spec, sequence, secret, token, env) do
     %{original: original, edits: edits, deletion: deletion} = sequence
 
@@ -420,6 +452,105 @@ defmodule Jido.Connect.Slack.MessageIngressLiveSmokeTest do
 
     %{original: original, edits: edits, deletion: deletion}
   end
+
+  defp assert_tombstone_sequence(sequence, secret, token, env) do
+    %{ts: ts, parent: parent, tombstone: tombstone, removal: removal} = sequence
+    channel = env["SLACK_PUBLIC_CHANNEL_ID"]
+    posted = event(parent)
+    payload = Jason.decode!(tombstone["body"])
+
+    assert {:ok, %WebhookDelivery{signature_state: :verified, normalized_signal: %{} = signal}} =
+             LiveSmoke.replay(tombstone, webhook: Webhook, secret: secret),
+           "the tombstone of #{ts} yields no signal"
+
+    signal = Map.delete(signal, :delivery)
+
+    assert {:ok, ^signal} = Webhook.normalize_event(payload)
+    assert {:ok, ^signal} = Webhook.normalize_signal("message.channels.deleted", payload)
+
+    assert {:error, %ProviderError{reason: :not_an_edit}} =
+             Webhook.normalize_signal("message.channels.changed", payload)
+
+    assert %{subtype: "message_deleted", channel: ^channel, ts: ^ts, thread_ts: ^ts} = signal
+    assert signal.notification_ts == payload["event"]["ts"]
+
+    assert Map.take(signal, [:user, :bot_id, :app_id]) ==
+             %{user: posted["user"], bot_id: posted["bot_id"], app_id: posted["app_id"]}
+
+    for key <- [:text, :editor, :edited_ts], do: refute(Map.has_key?(signal, key))
+
+    removed = if removal, do: assert_tombstone_removal(removal, signal, secret, token)
+
+    IO.puts(
+      "live_smoke slack: tombstone #{channel} #{ts} #{signal.event_id} is a deletion" <>
+        if(removed, do: ", its removal #{removed.event_id} another; the parent is gone", else: "")
+    )
+  end
+
+  defp assert_tombstone_removal(removal, deleted, secret, token) do
+    %{channel: channel, ts: ts} = deleted
+
+    assert {:ok, %WebhookDelivery{signature_state: :verified, normalized_signal: %{} = signal}} =
+             LiveSmoke.replay(removal, webhook: Webhook, secret: secret),
+           "the removal of the tombstone of #{ts} yields no signal"
+
+    signal = Map.delete(signal, :delivery)
+    payload = Jason.decode!(removal["body"])
+
+    assert {:ok, ^signal} = Webhook.normalize_event(payload)
+    assert {:ok, ^signal} = Webhook.normalize_signal("message.channels.deleted", payload)
+    assert %{subtype: "message_deleted", channel: ^channel, ts: ^ts, thread_ts: ^ts} = signal
+    refute signal.event_id == deleted.event_id
+
+    for key <- [:user, :bot_id, :app_id, :text], do: refute(Map.has_key?(signal, key))
+
+    refute_stored!(token, channel, ts, nil)
+    signal
+  end
+
+  # Each tombstone in the public channel with the parent it replaces, found
+  # by its `ts`, and the removal of the tombstone if Slack sent one.
+  defp tombstone_sequences!(captures, env) do
+    channel = env["SLACK_PUBLIC_CHANNEL_ID"]
+
+    tombstones =
+      Enum.filter(captures, fn capture ->
+        event = event(capture)
+
+        event["subtype"] == "message_changed" and event["channel"] == channel and
+          tombstone?(event["message"])
+      end)
+
+    assert tombstones != [], "no tombstone in SLACK_CAPTURE_DIR"
+
+    for tombstone <- tombstones do
+      ts = event(tombstone)["message"]["ts"]
+
+      parent =
+        Enum.find(captures, fn capture ->
+          event = event(capture)
+
+          event["type"] == "message" and event["subtype"] == nil and
+            event["channel"] == channel and event["ts"] == ts
+        end) || flunk("no first delivery of the parent #{ts} in SLACK_CAPTURE_DIR")
+
+      removal =
+        Enum.find(captures, fn capture ->
+          event = event(capture)
+
+          event["subtype"] == "message_deleted" and event["channel"] == channel and
+            event["deleted_ts"] == ts and tombstone?(event["previous_message"])
+        end)
+
+      %{ts: ts, parent: parent, tombstone: tombstone, removal: removal}
+    end
+  end
+
+  defp tombstone?(%{"subtype" => "tombstone"}), do: true
+  defp tombstone?(_message), do: false
+
+  defp edited_parent?(%{tombstone: tombstone}),
+    do: is_map(event(tombstone)["previous_message"]["edited"])
 
   defp unedited_change!(captures, spec, env) do
     Enum.find(captures, fn capture ->
