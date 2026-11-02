@@ -431,6 +431,9 @@ Options:
   `:body_too_large` before the signature check.
 - `:now` sets the current Unix time for the five-minute timestamp window.
 - `:seen_delivery_ids` lists delivery IDs the host has already processed.
+- `:api_app_id` names the host's Slack app. Only the `block_actions`
+  normalizer reads it, as the next section describes; the transport does not
+  check the app.
 
 The signature and timestamp checks are those of
 `Jido.Connect.Slack.Webhook.verify_signature/4` and return its auth errors. The
@@ -441,7 +444,11 @@ otherwise the error reason is `:missing_payload`, `:duplicate_payload` or
 Slack sends no delivery ID with interactivity requests. The delivery ID is the
 lowercase hex SHA-256 of the verified raw body. A byte-identical redelivery
 gets the same ID and is marked `duplicate?: true` when that ID is in
-`:seen_delivery_ids`; a body that differs in any byte gets another ID.
+`:seen_delivery_ids`; a body that differs in any byte gets another ID. The
+ID, `duplicate?` and `received_at` stay on the delivery. Unlike a signal from
+`Jido.Connect.Slack.Webhook.normalize_signal/1`, an interactivity signal
+carries no `delivery` map, so a host that handles both reads `delivery_id`
+from the `WebhookDelivery`.
 
 `event` is the payload `type`, and `metadata` carries `team_id` and
 `api_app_id`. `payload` is the decoded object without the temporary
@@ -545,6 +552,11 @@ the reason and the payload path, never a value:
   different channels, messages or threads;
 - `:unexpected_app` when `:api_app_id` is given and the click is for another
   app.
+
+A click for another app still verifies, without a signal and without an
+error, because only the normalizer reads `:api_app_id`. A wrong
+`:api_app_id` in the host's configuration therefore drops every click
+silently; `metadata.api_app_id` of the delivery shows the app Slack named.
 
 `Jido.Connect.WebhookDelivery.to_public_map/1`, and with it `inspect/2` of a
 delivery, bounds every binary at 512 bytes by design, so a long `value`

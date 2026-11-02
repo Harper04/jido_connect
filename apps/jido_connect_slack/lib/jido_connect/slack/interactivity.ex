@@ -27,6 +27,11 @@ defmodule Jido.Connect.Slack.Interactivity do
   IDs the host has already processed as `:seen_delivery_ids` to have a
   redelivery marked `duplicate?: true`.
 
+  The ID, `duplicate?` and `received_at` stay on the delivery. Unlike a
+  signal from `Jido.Connect.Slack.Webhook.normalize_signal/1`, an
+  interactivity signal carries no `delivery` map, so a host that handles
+  both reads `delivery_id` from the `WebhookDelivery`.
+
   ## Delivery contents
 
   `event` is the payload `type`, such as `"block_actions"`. `metadata` holds
@@ -56,16 +61,19 @@ defmodule Jido.Connect.Slack.Interactivity do
   Several actions, another element or another container fail with
   `:unsupported_block_action`. So does a button in an ephemeral message:
   Slack marks the container `is_ephemeral: true` and sends no `message`
-  object, so the click names no message the normalizer could check.
-  An org-wide install, which sends
-  `is_enterprise_install: true` and no team, fails with `:no_workspace`.
+  object, so the click names no message the normalizer could check. An
+  org-wide install, which sends `is_enterprise_install: true` and no team,
+  fails with `:no_workspace`.
   A missing or empty app, user, channel, message or button field, a value
   that is no string, or a value or ID beyond Slack's limits fails with
   `:invalid_block_action`. The container's `channel_id`, `message_ts` and
   `thread_ts` must match `channel.id`, `message.ts` and `message.thread_ts`,
   otherwise the reason is `:conflicting_block_action`. With the option
   `:api_app_id`, a click for another app fails with `:unexpected_app`.
-  Error details name payload paths, never a value.
+  Only this normalizer reads the option; the transport does not check the
+  app, so such a click verifies with `normalized_signal: nil` and no error.
+  A wrong `:api_app_id` therefore drops every click silently. Error details
+  name payload paths, never a value.
   """
 
   alias Jido.Connect.{Error, WebhookDelivery}
@@ -95,8 +103,11 @@ defmodule Jido.Connect.Slack.Interactivity do
       Defaults to the system time.
     * `:seen_delivery_ids` - delivery IDs already processed by the host.
       Defaults to `[]`.
-    * `:api_app_id` - the host's Slack app ID. When given, a block action
-      for another app yields no signal.
+    * `:api_app_id` - the host's Slack app ID, read only by the
+      `block_actions` normalizer. A click for another app still verifies,
+      with `normalized_signal: nil` and no error; `normalize_signal/2` with
+      the same option returns `:unexpected_app`. Other payload types and
+      the transport ignore it.
 
   All options are passed on to the payload type normalizer.
   """
@@ -128,7 +139,9 @@ defmodule Jido.Connect.Slack.Interactivity do
 
   `verify_delivery/4` keeps `normalized_signal: nil` when this fails; call
   this function on such a delivery to learn why. `opts` are those of
-  `verify_delivery/4`.
+  `verify_delivery/4`; pass the same ones, because without `:api_app_id`
+  a click for another app normalizes. The signal carries no `delivery`
+  map; the delivery ID is the delivery's `delivery_id`.
   """
   @spec normalize_signal(WebhookDelivery.t(), keyword()) ::
           {:ok, map()} | {:error, Error.ProviderError.t()}
