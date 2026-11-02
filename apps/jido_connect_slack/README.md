@@ -367,10 +367,10 @@ dedupes the deletions of one message by `channel` and `ts` if it needs to.
 
 The signal, described by `Jido.Connect.Slack.MessageChange`, names the
 original message by `channel` and `ts`: `message.ts` of an edit or a
-tombstone and `deleted_ts` of a deletion. `notification_ts` and `event_ts` belong to the
-notification. Every edit and deletion has its own `event_id`, also two
-edits of one message, and the triggers dedupe on `team_id` and `event_id`.
-IDs and timestamps stay Slack's strings.
+tombstone and `deleted_ts` of a deletion. `notification_ts` and `event_ts`
+belong to the notification. Every edit and deletion has its own
+`event_id`, also two edits of one message, and the triggers dedupe on
+`team_id` and `event_id`. IDs and timestamps stay Slack's strings.
 
 - An edit carries the text after the edit as `text`, in full, and as `""`
   when Slack stores an empty text, as after an edit to an empty text beside
@@ -397,7 +397,7 @@ of a message in each conversation class and of a thread reply, each by the
 person who wrote it, and bot edits through `chat.update`, one of them to an
 empty text beside an attachment. The deletion of a thread parent with
 replies was captured for two bot messages deleted through `chat.delete`,
-one of them after an edit, together with the removal of a tombstone. An
+one of them after an edit, and the removal of both tombstones. An
 edit by another person than the author, a deletion without
 `previous_message`, a change that repeats an earlier edit and a person's
 deletion of a thread parent with replies were not captured.
