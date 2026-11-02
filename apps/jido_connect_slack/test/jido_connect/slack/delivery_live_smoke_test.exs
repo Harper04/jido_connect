@@ -11,9 +11,10 @@ defmodule Jido.Connect.Slack.DeliveryLiveSmokeTest do
   with Req outside the package, and deleted again in the same test, because
   the conversation history and thread checks read the prepared data.
 
-  The recording test opens the group DM and records two refusals. It runs only
-  with `JIDO_CONNECT_RECORD=1`: the offline tests replay its recordings, and
-  the delivery check needs no group DM.
+  The `conversations.open` check opens the existing bot DM and group DM and is
+  refused an unknown user; it runs without the write gate. The refusal check
+  posts to the channel the bot has left. With `JIDO_CONNECT_RECORD=1` both
+  record the responses that the offline tests replay.
   """
 
   use ExUnit.Case, async: false
@@ -27,6 +28,9 @@ defmodule Jido.Connect.Slack.DeliveryLiveSmokeTest do
   @text "Delivery check from the jido_connect_slack live test: " <>
           "<#{@link}|open the delivery check> – " <>
           String.duplicate("This sentence pads the text past 512 bytes. ", 12)
+
+  # The parameters slack.conversation.open sends with its defaults.
+  @open_defaults %{return_im: false, prevent_creation: false}
 
   # No Slack user has this ID.
   @unknown_user "U0000000000"
@@ -98,29 +102,23 @@ defmodule Jido.Connect.Slack.DeliveryLiveSmokeTest do
     assert channel_history(token, channel, reply.ts) == []
   end
 
+  # Both conversations exist, so opening them changes no messages.
   @tag env!([
          "SLACK_BOT_TOKEN",
          "SLACK_USER_TOKEN",
          "SLACK_SECOND_USER_ID",
          "SLACK_DM_CHANNEL_ID",
-         "SLACK_MPIM_CHANNEL_ID",
-         "SLACK_NO_ACCESS_CHANNEL_ID"
+         "SLACK_MPIM_CHANNEL_ID"
        ])
-  @tag write!(:slack)
-  unless LiveSmoke.recording?() do
-    @tag skip: "set JIDO_CONNECT_RECORD=1 to record conversations.open and the refusals"
-  end
-
-  test "records conversations.open for a DM and a group DM and two refusals", %{env: env} do
+  test "conversations.open opens the bot DM and the group DM and refuses an unknown user",
+       %{env: env} do
     token = env["SLACK_BOT_TOKEN"]
     authorizing_user = LiveSlack.user_id!(env["SLACK_USER_TOKEN"])
-    # The parameters slack.conversation.open sends with its defaults.
-    defaults = %{return_im: false, prevent_creation: false}
 
     LiveSlack.record("conversations_open_im", fields: @conversation_fields)
 
     assert {:ok, %{channel: dm}} =
-             Client.open_conversation(Map.put(defaults, :users, [authorizing_user]), token)
+             Client.open_conversation(Map.put(@open_defaults, :users, [authorizing_user]), token)
 
     assert dm == env["SLACK_DM_CHANNEL_ID"]
 
@@ -128,7 +126,7 @@ defmodule Jido.Connect.Slack.DeliveryLiveSmokeTest do
 
     assert {:ok, %{channel: mpim, conversation: %{is_mpim: true}}} =
              Client.open_conversation(
-               Map.put(defaults, :users, [authorizing_user, env["SLACK_SECOND_USER_ID"]]),
+               Map.put(@open_defaults, :users, [authorizing_user, env["SLACK_SECOND_USER_ID"]]),
                token
              )
 
@@ -137,10 +135,17 @@ defmodule Jido.Connect.Slack.DeliveryLiveSmokeTest do
     LiveSlack.record("conversations_open_user_not_found")
 
     assert {:error, %Connect.Error.ProviderError{status: 200, reason: "user_not_found"}} =
-             Client.open_conversation(Map.put(defaults, :users, [@unknown_user]), token)
+             Client.open_conversation(Map.put(@open_defaults, :users, [@unknown_user]), token)
+  end
+
+  # Slack refuses the post, but a bot that rejoined the channel would post.
+  @tag env!(["SLACK_BOT_TOKEN", "SLACK_NO_ACCESS_CHANNEL_ID"])
+  @tag write!(:slack)
+  test "chat.postMessage refuses a post to the channel the bot has left", %{env: env} do
+    token = env["SLACK_BOT_TOKEN"]
+    no_access = env["SLACK_NO_ACCESS_CHANNEL_ID"]
 
     LiveSlack.record("chat_post_message_not_in_channel")
-    no_access = env["SLACK_NO_ACCESS_CHANNEL_ID"]
 
     case Client.post_message(%{channel: no_access, text: @text, reply_broadcast: false}, token) do
       {:error, %Connect.Error.ProviderError{status: 200, reason: "not_in_channel"}} ->
