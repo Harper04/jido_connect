@@ -8,8 +8,8 @@ defmodule Jido.Connect.Gmail.AttachmentContentTest do
 
   # Runs Client.get_attachment_content/2 and google.gmail.message.attachment.content.get
   # against Req.Test. Every response body is recorded from the prepared
-  # messages of the live test account; live_smoke_test.exs records them.
-  # Gmail issues new attachment IDs with every response, so the recordings
+  # messages of the live test account; the `*_live_smoke_test.exs` files
+  # beside this one record them. Gmail issues new attachment IDs with every response, so the recordings
   # named attachment_content_<name> hold a format=full response and the
   # attachments.get response for an attachment ID from it. A test that needs
   # a shape the recordings lack derives it from a recording and says so. Each

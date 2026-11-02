@@ -796,9 +796,9 @@ defmodule Jido.Connect.Gmail.ClientTest do
   end
 
   describe "message label changes" do
-    # The answers are messages.modify responses that live_smoke_test.exs
-    # recorded for one message of the archive pair and for the ID of a message
-    # deleted for good.
+    # The answers are messages.modify responses that
+    # labels_live_smoke_test.exs recorded for one message of the archive pair
+    # and for the ID of a message deleted for good.
 
     test "sends a message ID with a slash and a space as one encoded path segment" do
       archived = LiveSmoke.fixture!(:gmail, "message_modify_archive")
@@ -1040,7 +1040,8 @@ defmodule Jido.Connect.Gmail.ClientTest do
 
   describe "content requests" do
     # The response bodies are format=full responses recorded from the prepared
-    # messages of the live test account; live_smoke_test.exs records them.
+    # messages of the live test account; content_live_smoke_test.exs records
+    # them.
 
     test "gets a message with format=full and without metadataHeaders" do
       recorded = LiveSmoke.fixture!(:gmail, "message_full_forward_attached")

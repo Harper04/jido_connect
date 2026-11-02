@@ -7,9 +7,9 @@ defmodule Jido.Connect.Gmail.ContentTest do
 
   # Runs the content actions through Jido.Connect.invoke/4 and the Gmail
   # client against Req.Test. Every response body is recorded from the prepared
-  # messages of the live test account; live_smoke_test.exs records them. A test
-  # that needs a shape the recordings lack derives it from a recording and says
-  # so. Each test expects exactly the requests it lists, so any further request,
+  # messages of the live test account; content_live_smoke_test.exs records
+  # them. A test that needs a shape the recordings lack derives it from a
+  # recording and says so. Each test expects exactly the requests it lists, so any further request,
   # such as an attachment fetch, fails it.
   #
   # Gmail keeps a large body text part behind an attachmentId, and
