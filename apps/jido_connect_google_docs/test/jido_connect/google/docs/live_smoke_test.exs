@@ -36,39 +36,39 @@ defmodule Jido.Connect.Google.Docs.LiveSmokeTest do
     %{
       "insert_text" => %{
         "location" => %{"index" => 1, "tab_id" => "t.0"},
-        "text" => "jcl-live-258-second\n"
+        "text" => "jcl-live-second\n"
       }
     },
     %{
       "insert_text" => %{
         "location" => %{"index" => 1, "tab_id" => "t.0"},
-        "text" => "jcl-live-258-first\n"
+        "text" => "jcl-live-first\n"
       }
     }
   ]
 
-  # Replaces the second marker, indexes 20 to 39, and keeps its newline.
+  # Replaces the second marker, indexes 16 to 31, and keeps its newline.
   @range_replacement_batch [
     %{
       "delete_content_range" => %{
-        "range" => %{"start_index" => 20, "end_index" => 39, "tab_id" => "t.0"}
+        "range" => %{"start_index" => 16, "end_index" => 31, "tab_id" => "t.0"}
       }
     },
     %{
       "insert_text" => %{
-        "location" => %{"index" => 20, "tab_id" => "t.0"},
-        "text" => "jcl-live-258-replaced"
+        "location" => %{"index" => 16, "tab_id" => "t.0"},
+        "text" => "jcl-live-replaced"
       }
     }
   ]
 
-  @text_after_replacement "jcl-live-258-first\njcl-live-258-replaced\n\n"
+  @text_after_replacement "jcl-live-first\njcl-live-replaced\n\n"
 
   @stale_batch [
     %{
       "insert_text" => %{
         "location" => %{"index" => 1, "tab_id" => "t.0"},
-        "text" => "jcl-live-258-stale\n"
+        "text" => "jcl-live-stale\n"
       }
     }
   ]
@@ -168,7 +168,7 @@ defmodule Jido.Connect.Google.Docs.LiveSmokeTest do
     refute Map.has_key?(inserted, :document)
 
     assert read_scratch(token, document_id).text ==
-             "jcl-live-258-first\njcl-live-258-second\n\n"
+             "jcl-live-first\njcl-live-second\n\n"
 
     LiveSmoke.record(@req_options, :google_docs, "batch_update_range_replacement")
 

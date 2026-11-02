@@ -18,7 +18,7 @@ defmodule Jido.Connect.Google.Docs.BatchUpdateTest do
   @marker_insert %{
     "insert_text" => %{
       "location" => %{"index" => 1, "tab_id" => "t.0"},
-      "text" => "jcl-live-258-stale\n"
+      "text" => "jcl-live-stale\n"
     }
   }
 
@@ -51,13 +51,13 @@ defmodule Jido.Connect.Google.Docs.BatchUpdateTest do
                  %{
                    "insert_text" => %{
                      "location" => %{"index" => 1, "tab_id" => "t.0"},
-                     "text" => "jcl-live-258-second\n"
+                     "text" => "jcl-live-second\n"
                    }
                  },
                  %{
                    "insert_text" => %{
                      "location" => %{"index" => 1, "tab_id" => "t.0"},
-                     "text" => "jcl-live-258-first\n"
+                     "text" => "jcl-live-first\n"
                    }
                  }
                ],
@@ -74,13 +74,13 @@ defmodule Jido.Connect.Google.Docs.BatchUpdateTest do
                  %{
                    "insert_text" => %{
                      "location" => %{"index" => 1, "tab_id" => "t.0"},
-                     "text" => "jcl-live-258-second\n"
+                     "text" => "jcl-live-second\n"
                    }
                  },
                  %{
                    "insert_text" => %{
                      "location" => %{"index" => 1, "tab_id" => "t.0"},
-                     "text" => "jcl-live-258-first\n"
+                     "text" => "jcl-live-first\n"
                    }
                  }
                ],
@@ -110,13 +110,13 @@ defmodule Jido.Connect.Google.Docs.BatchUpdateTest do
                "requests" => [
                  %{
                    "delete_content_range" => %{
-                     "range" => %{"start_index" => 20, "end_index" => 39, "tab_id" => "t.0"}
+                     "range" => %{"start_index" => 16, "end_index" => 31, "tab_id" => "t.0"}
                    }
                  },
                  %{
                    "insert_text" => %{
-                     "location" => %{"index" => 20, "tab_id" => "t.0"},
-                     "text" => "jcl-live-258-replaced"
+                     "location" => %{"index" => 16, "tab_id" => "t.0"},
+                     "text" => "jcl-live-replaced"
                    }
                  }
                ],
@@ -132,13 +132,13 @@ defmodule Jido.Connect.Google.Docs.BatchUpdateTest do
                requests: [
                  %{
                    "delete_content_range" => %{
-                     "range" => %{"start_index" => 20, "end_index" => 39, "tab_id" => "t.0"}
+                     "range" => %{"start_index" => 16, "end_index" => 31, "tab_id" => "t.0"}
                    }
                  },
                  %{
                    "insert_text" => %{
-                     "location" => %{"index" => 20, "tab_id" => "t.0"},
-                     "text" => "jcl-live-258-replaced"
+                     "location" => %{"index" => 16, "tab_id" => "t.0"},
+                     "text" => "jcl-live-replaced"
                    }
                  }
                ],
@@ -305,7 +305,7 @@ defmodule Jido.Connect.Google.Docs.BatchUpdateTest do
   defp envelope(:camel_case_operation) do
     %{
       document_id: @document_id,
-      requests: [%{"insertText" => %{"location" => %{"index" => 1}, "text" => "jcl-live-258"}}]
+      requests: [%{"insertText" => %{"location" => %{"index" => 1}, "text" => "jcl-live"}}]
     }
   end
 
