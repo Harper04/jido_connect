@@ -17,8 +17,9 @@
   signed interactivity form body and returns a `WebhookDelivery`. Bodies above
   `:max_body_bytes` (default 256 KiB) fail before the signature check. The
   delivery ID is the lowercase hex SHA-256 of the raw body, and the payload
-  drops `token`, `response_url` and `trigger_id`. No payload type is
-  normalized yet.
+  drops `token`, `response_url`, `response_urls` and `trigger_id`, including
+  `response_urls` inside a submitted `view`. No payload type is normalized
+  yet.
 
 ## 0.1.0
 

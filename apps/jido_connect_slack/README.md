@@ -168,7 +168,8 @@ gets the same ID and is marked `duplicate?: true` when that ID is in
 
 `event` is the payload `type`, and `metadata` carries `team_id` and
 `api_app_id`. `payload` is the decoded object without the temporary
-capabilities `token`, `response_url` and `trigger_id`; the raw body is not
-kept. No payload type is normalized yet, so `normalized_signal` is `nil`.
+capabilities `token`, `response_url`, `response_urls` and `trigger_id`. A
+`view_submission` can also carry `response_urls` inside `view`, where it is
+dropped as well. The raw body is not kept. No payload type is normalized yet, so `normalized_signal` is `nil`.
 Verification makes no HTTP request and does not acknowledge the request; the
 host answers Slack.

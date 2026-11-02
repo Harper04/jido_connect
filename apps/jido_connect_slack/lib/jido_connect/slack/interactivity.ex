@@ -32,8 +32,10 @@ defmodule Jido.Connect.Slack.Interactivity do
   `event` is the payload `type`, such as `"block_actions"`. `metadata` holds
   `team_id` (from `team.id`) and `api_app_id`; either is `nil` when the
   payload lacks it. `payload` is the decoded object without the temporary
-  capabilities `token`, `response_url` and `trigger_id`. The raw body is not
-  kept.
+  capabilities `token`, `response_url`, `response_urls` and `trigger_id`.
+  A `view_submission` can also carry `response_urls` inside `view`, where it
+  is dropped as well. Other nested objects stay as Slack sent them, because
+  `view.state.values` uses keys chosen by the host. The raw body is not kept.
 
   The payload is handed to a normalizer for its `type` together with the
   options. No type has a normalizer yet, so `normalized_signal` stays `nil`.
@@ -47,7 +49,8 @@ defmodule Jido.Connect.Slack.Interactivity do
   alias Jido.Connect.Webhook, as: CoreWebhook
 
   @max_body_bytes 256 * 1024
-  @temporary_capabilities ["token", "response_url", "trigger_id"]
+  @temporary_capabilities ["token", "response_url", "response_urls", "trigger_id"]
+  @view_temporary_capabilities ["response_urls"]
 
   @doc """
   Verifies a Slack interactivity request and returns it as a verified delivery.
@@ -69,7 +72,7 @@ defmodule Jido.Connect.Slack.Interactivity do
     with :ok <- check_body_size(body, Keyword.get(opts, :max_body_bytes, @max_body_bytes)),
          :ok <- Webhook.verify_signature(body, headers, signing_secret, opts),
          {:ok, payload} <- Form.decode_payload(body),
-         payload = Map.drop(payload, @temporary_capabilities),
+         payload = drop_temporary_capabilities(payload),
          delivery_id = delivery_id(body),
          {:ok, delivery} <-
            WebhookDelivery.verified(:slack, %{
@@ -95,6 +98,21 @@ defmodule Jido.Connect.Slack.Interactivity do
          reason: :body_too_large,
          details: %{max_body_bytes: max}
        )}
+    end
+  end
+
+  # Only the named nested objects are touched: view.state.values carries keys
+  # chosen by the host, so a recursive drop could remove host data.
+  defp drop_temporary_capabilities(payload) do
+    payload
+    |> Map.drop(@temporary_capabilities)
+    |> drop_nested("view", @view_temporary_capabilities)
+  end
+
+  defp drop_nested(payload, key, fields) do
+    case payload do
+      %{^key => %{} = nested} -> Map.put(payload, key, Map.drop(nested, fields))
+      _payload -> payload
     end
   end
 

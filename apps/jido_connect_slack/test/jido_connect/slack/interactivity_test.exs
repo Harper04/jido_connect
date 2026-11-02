@@ -136,6 +136,69 @@ defmodule Jido.Connect.Slack.InteractivityTest do
                             ""
                           )
 
+  # view_submission example from
+  # https://docs.slack.dev/reference/interaction-payloads/view-interactions-payload
+  # verbatim; form-encoded and signed by the test like the block_actions one.
+  # The example carries response_urls under view, while the property table on
+  # the same page lists the field at the top level of the payload.
+  @view_submission_payload String.replace_suffix(
+                             ~S"""
+                             {
+                                 "type": "view_submission",
+                                 "team": {
+                                     "id": "T1234567",
+                                     "domain": "example-domain"
+                                 },
+                                 "user": {
+                                     "id": "U1234567",
+                                     "username": "example-user"
+                                 },
+                                 "view": {
+                                     "id": "VNHU13V36",
+                                     "type": "modal",
+                                     "title": {
+                                         "type": "plain_text",
+                                         "text": "Modal Title"
+                                     },
+                                     "submit": {
+                                         "type": "plain_text",
+                                         "text": "Submit"
+                                     },
+                                     "blocks": [],
+                                     "private_metadata": "shhh-its-secret",
+                                     "callback_id": "modal-with-inputs",
+                                     "state": {
+                                         "values": {
+                                             "multiline": {
+                                                 "mlvalue": {
+                                                     "type": "plain_text_input",
+                                                     "value": "This is my example inputted value"
+                                                 }
+                                             },
+                                             "target_channel": {
+                                                 "target_select": {
+                                                     "type": "conversations_select",
+                                                     "selected_conversation": "C123B12DE"
+                                                 }
+                                             }
+                                         }
+                                     },
+                                     "hash": "156663117.cd33ad1f",
+                                     "response_urls": [
+                                         {
+                                             "block_id": "target_channel",
+                                             "action_id": "target_select",
+                                             "channel_id": "C123B12DE",
+                                             "response_url": "https://hooks.slack.com/app/ABC12312/1234567890/A100B100C100d100"
+                                         }
+                                     ]
+                                 }
+                             }
+                             """,
+                             "\n",
+                             ""
+                           )
+
   # Temporary capabilities and credentials of the documented examples.
   @secret_values [
     @doc_secret,
@@ -318,6 +381,45 @@ defmodule Jido.Connect.Slack.InteractivityTest do
         refute Map.has_key?(delivery.payload, "response_url")
         refute Map.has_key?(delivery.payload, "trigger_id")
         assert %{"team" => %{"id" => _team}, "user" => %{"id" => _user}} = delivery.payload
+
+        refute_secrets(delivery.payload, body)
+        refute_secrets(WebhookDelivery.to_public_map(delivery), body)
+        refute_secrets(inspect(delivery, limit: :infinity, printable_limit: :infinity), body)
+      end
+    end
+
+    test "drops view_submission response_urls at the top level and under view" do
+      # The documented example keeps response_urls under view; the second body
+      # moves them to the top level, where the property table lists them.
+      documented = Jason.decode!(@view_submission_payload)
+      {response_urls, view} = Map.pop!(documented["view"], "response_urls")
+
+      top_level =
+        documented
+        |> Map.put("view", view)
+        |> Map.put("response_urls", response_urls)
+        |> Jason.encode!()
+
+      for json <- [@view_submission_payload, top_level] do
+        body = form_body(json)
+
+        assert {:ok, %WebhookDelivery{event: "view_submission"} = delivery} = verify(body)
+
+        refute Map.has_key?(delivery.payload, "response_urls")
+        assert %{"view" => delivered_view} = delivery.payload
+        refute Map.has_key?(delivered_view, "response_urls")
+
+        assert %{
+                 "callback_id" => "modal-with-inputs",
+                 "private_metadata" => "shhh-its-secret",
+                 "state" => %{
+                   "values" => %{
+                     "target_channel" => %{
+                       "target_select" => %{"selected_conversation" => "C123B12DE"}
+                     }
+                   }
+                 }
+               } = delivered_view
 
         refute_secrets(delivery.payload, body)
         refute_secrets(WebhookDelivery.to_public_map(delivery), body)
