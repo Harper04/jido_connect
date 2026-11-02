@@ -21,12 +21,58 @@ defmodule Jido.Connect.Google.Drive.LiveSmokeTest do
   # Account identifiers and the content thumbnail URL that no offline test needs.
   @masked [fields: ["permissionId", "photoLink", "thumbnailLink"]]
 
+  # Upper bound for the paging loop, so a provider that keeps returning
+  # `nextPageToken` fails the test instead of looping.
+  @max_pages 20
+
+  # A caller-supplied projection without `incompleteSearch`.
+  @caller_list_fields "nextPageToken,files(id,name,mimeType,parents)"
+
   @tag env!(["GOOGLE_ACCESS_TOKEN"])
   test "reads the Drive about resource", %{env: env} do
     LiveSmoke.record(@req_options, :google_drive, "about")
 
     assert {:ok, about} = Client.get_about(%{}, env["GOOGLE_ACCESS_TOKEN"])
     assert is_map(about)
+  end
+
+  @tag env!(["GOOGLE_ACCESS_TOKEN", "GOOGLE_DRIVE_FOLDER_ID"])
+  test "lists the prepared folder's direct children one file per page", %{env: env} do
+    token = env["GOOGLE_ACCESS_TOKEN"]
+    in_folder = "'#{env["GOOGLE_DRIVE_FOLDER_ID"]}' in parents"
+    query = "#{in_folder} and trashed = false"
+
+    # The known direct children: one unfiltered listing, which also returns
+    # trashed children, filtered here instead of by the provider.
+    assert {:ok, %{files: children} = unfiltered} =
+             invoke("google.drive.files.list", %{query: in_folder, page_size: 100}, token)
+
+    refute Map.has_key?(unfiltered, :next_page_token)
+    known_ids = for file <- children, not file.trashed?, do: file.file_id
+    assert length(known_ids) >= 2
+
+    LiveSmoke.record(@req_options, :google_drive, "files_list_caller_fields", @masked)
+
+    assert {:ok, listing} =
+             invoke(
+               "google.drive.files.list",
+               %{query: query, page_size: 100, fields: @caller_list_fields},
+               token
+             )
+
+    assert Enum.sort(file_ids(listing)) == Enum.sort(known_ids)
+    refute Map.has_key?(listing, :incomplete_search)
+
+    LiveSmoke.record(@req_options, :google_drive, "files_list_folder_page", @masked)
+    pages = list_pages(%{query: query, page_size: 1}, token)
+
+    assert length(pages) >= 2
+    assert Enum.sort(Enum.flat_map(pages, &file_ids/1)) == Enum.sort(known_ids)
+    refute Map.has_key?(List.last(pages), :next_page_token)
+
+    for page <- pages do
+      assert is_boolean(page[:incomplete_search])
+    end
   end
 
   @tag env!(["GOOGLE_ACCESS_TOKEN", "GOOGLE_DRIVE_SHARED_LINK_URL", "GOOGLE_DRIVE_SHORTCUT_ID"])
@@ -98,6 +144,21 @@ defmodule Jido.Connect.Google.Drive.LiveSmokeTest do
 
     refute inspect(error) =~ resource_key
   end
+
+  defp list_pages(input, access_token, pages \\ []) do
+    assert length(pages) < @max_pages
+    assert {:ok, page} = invoke("google.drive.files.list", input, access_token)
+
+    case page do
+      %{next_page_token: token} ->
+        list_pages(Map.put(input, :page_token, token), access_token, [page | pages])
+
+      _final ->
+        Enum.reverse([page | pages])
+    end
+  end
+
+  defp file_ids(%{files: files}), do: Enum.map(files, & &1.file_id)
 
   defp invoke(action_id, input, access_token) do
     connection =
