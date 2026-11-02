@@ -62,8 +62,8 @@ defmodule Jido.Connect.Jira.Webhook.Payload do
 
   @doc """
   Converts epoch milliseconds, as an integer or a string of digits, to an
-  ISO 8601 UTC string. Returns `:error` for any other value and for an epoch
-  outside the range of `DateTime`.
+  ISO 8601 UTC string. Returns `:error` for any other value, a sign in a
+  string included, and for an epoch outside the range of `DateTime`.
   """
   @spec epoch_to_iso8601(term()) :: {:ok, String.t()} | :error
   def epoch_to_iso8601(epoch) when is_integer(epoch) do
@@ -74,10 +74,9 @@ defmodule Jido.Connect.Jira.Webhook.Payload do
   end
 
   def epoch_to_iso8601(epoch) when is_binary(epoch) do
-    case Integer.parse(epoch) do
-      {integer, ""} -> epoch_to_iso8601(integer)
-      _other -> :error
-    end
+    if epoch =~ ~r/\A[0-9]+\z/,
+      do: epoch |> String.to_integer() |> epoch_to_iso8601(),
+      else: :error
   end
 
   def epoch_to_iso8601(_epoch), do: :error

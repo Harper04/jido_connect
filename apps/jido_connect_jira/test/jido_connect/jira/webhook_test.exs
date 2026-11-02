@@ -184,6 +184,11 @@ defmodule Jido.Connect.Jira.WebhookTest do
       assert Webhook.timestamp_to_iso8601("1747324800000ms") == nil
     end
 
+    test "returns nil for a signed string, which is not a string of digits" do
+      assert Webhook.timestamp_to_iso8601("-5") == nil
+      assert Webhook.timestamp_to_iso8601("+1747324800000") == nil
+    end
+
     test "returns nil instead of raising for an epoch beyond the DateTime range" do
       assert Webhook.timestamp_to_iso8601(10 ** 20) == nil
       assert Webhook.timestamp_to_iso8601("100000000000000000000") == nil
