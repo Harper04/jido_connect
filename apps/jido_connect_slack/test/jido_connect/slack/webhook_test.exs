@@ -6,7 +6,7 @@ defmodule Jido.Connect.Slack.WebhookTest do
   alias Jido.Connect.TestSupport.LiveSmoke
 
   import Jido.Connect.Slack.TestSupport.CapturedDelivery,
-    only: [capture!: 1, payload!: 1, replay: 1, replay: 2]
+    only: [capture!: 1, payload!: 1, replay: 1, replay: 2, derive: 2]
 
   test "verifies valid Slack signature" do
     body = ~s({"type":"event_callback"})
@@ -513,6 +513,29 @@ defmodule Jido.Connect.Slack.WebhookTest do
 
       assert {:error, %Error.ProviderError{reason: :unsupported_event}} =
                Webhook.normalize_event(unknown)
+    end
+
+    test "an app mention in a thread keeps the thread's ts" do
+      # Derived: the captured app mention as a reply in the thread of the
+      # captured public message, with the `thread_ts` Slack sends for it.
+      capture = derive("app_mention", &put_in(&1, ["event", "thread_ts"], "1793627736.679599"))
+
+      assert {:ok, %WebhookDelivery{event: "app_mention", normalized_signal: delivered}} =
+               replay(capture)
+
+      signal = Map.delete(delivered, :delivery)
+
+      assert signal == %{
+               team_id: "T0CEE692400",
+               event_id: "Ev0CE6SUA42V",
+               channel: "C0CEEB41FU0",
+               user: "U0CDPFT1RDJ",
+               text: payload!("app_mention")["event"]["text"],
+               ts: "1793628489.450879",
+               thread_ts: "1793627736.679599"
+             }
+
+      assert {:ok, ^signal} = Zoi.parse(trigger("slack.event.app_mention").signal_schema, signal)
     end
 
     test "edits, deletions, bot messages and unknown subtypes stay unsupported" do
