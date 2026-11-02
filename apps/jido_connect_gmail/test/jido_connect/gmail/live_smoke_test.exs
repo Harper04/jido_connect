@@ -591,8 +591,10 @@ defmodule Jido.Connect.Gmail.LiveSmokeTest do
   @modify_scope "https://www.googleapis.com/auth/gmail.modify"
   @mail_scope "https://mail.google.com/"
 
-  # Gmail's history can trail a write; a step polls this often, 2 s apart.
-  @change_polls 15
+  # Gmail's history can trail a write. A wait for it polls at most this often,
+  # 2 s apart, and so sleeps at most 28 s; a test that waits sets its timeout
+  # for all of its waits.
+  @history_polls 15
 
   @tag env!(["GOOGLE_GMAIL_METADATA_ACCESS_TOKEN"])
   test "the change poll turns a history ID older than Gmail's history into a checkpoint reset",
@@ -660,7 +662,13 @@ defmodule Jido.Connect.Gmail.LiveSmokeTest do
       Enum.reduce(steps, start, fn {action_id, input, expected}, checkpoint ->
         assert {:ok, _output} = commit(grant, action_id, input)
 
-        {signals, next} = await_change(metadata_token, checkpoint, message_id)
+        {signals, next} =
+          await_history(
+            &poll_changes(%{}, &1, metadata_token),
+            checkpoint,
+            &(changes(&1, message_id) != [])
+          )
+
         assert changes(signals, message_id) == [expected]
         assert Enum.all?(signals, &(&1.message_id != message_id or &1.thread_id == thread_id))
         assert String.to_integer(next) > String.to_integer(checkpoint)
@@ -745,11 +753,10 @@ defmodule Jido.Connect.Gmail.LiveSmokeTest do
   end
 
   # google.gmail.message.received. The poll runs on a metadata-only lease from
-  # a checkpoint it initializes from the profile. The history of the prepared
-  # conversation can be older than Gmail keeps, so the test inserts a new
-  # message and a reply to it into the inbox. messages.insert files them like
-  # received mail and sends nothing; both are deleted for good when the test
-  # exits.
+  # a checkpoint it initializes from the profile. Such a checkpoint replays no
+  # earlier history, so the test inserts a new message and a reply to it into
+  # the inbox after the first poll. messages.insert files them like received
+  # mail and sends nothing; both are deleted for good when the test exits.
 
   @tag env!(["GOOGLE_ACCESS_TOKEN", "GOOGLE_GMAIL_METADATA_ACCESS_TOKEN"])
   @tag write!(:google)
@@ -787,14 +794,18 @@ defmodule Jido.Connect.Gmail.LiveSmokeTest do
 
     assert %{"id" => reply_id, "threadId" => ^thread_id} = reply
     assert reply_id != original_id
+    message_ids = [original_id, reply_id]
 
-    {signals, next} = await_received(metadata_token, start, [original_id, reply_id])
+    {signals, next} =
+      await_history(&poll_received(&1, metadata_token), start, fn signals ->
+        message_ids -- Enum.map(signals, & &1.message_id) == []
+      end)
 
     # One signal per message, the reply after its original, both in one thread.
     assert [
              %{message_id: ^original_id, thread_id: ^thread_id} = original_signal,
              %{message_id: ^reply_id, thread_id: ^thread_id} = reply_signal
-           ] = received(signals, [original_id, reply_id])
+           ] = received(signals, message_ids)
 
     assert "INBOX" in original_signal.label_ids
     assert "INBOX" in reply_signal.label_ids
@@ -806,8 +817,7 @@ defmodule Jido.Connect.Gmail.LiveSmokeTest do
     assert {:ok, %{signals: recorded, checkpoint: checkpoint}} =
              poll_received(start, metadata_token)
 
-    assert received(recorded, [original_id, reply_id]) ==
-             received(signals, [original_id, reply_id])
+    assert received(recorded, message_ids) == received(signals, message_ids)
 
     assert String.to_integer(checkpoint) >= String.to_integer(next)
   end
@@ -877,6 +887,9 @@ defmodule Jido.Connect.Gmail.LiveSmokeTest do
     labels = pair[message_id]
     restore_labels_on_exit(access_token, message_id, labels, ["INBOX"])
     archived = labels -- ["INBOX"]
+
+    # The answer to the archive request alone; prepare does not call Gmail.
+    LiveSmoke.record(@req_options, :gmail, "message_modify_archive")
 
     assert {:ok, %{message: %{message_id: ^message_id, thread_id: ^thread_id} = changed}} =
              commit(grant, "google.gmail.message.labels.apply", %{
@@ -1009,26 +1022,6 @@ defmodule Jido.Connect.Gmail.LiveSmokeTest do
 
   defp run_id, do: Base.encode16(:crypto.strong_rand_bytes(6), case: :lower)
 
-  # Polls the received trigger from `checkpoint` until signals for all of
-  # `message_ids` arrived and returns the signals with the next checkpoint.
-  defp await_received(access_token, checkpoint, message_ids, poll \\ 1) do
-    assert {:ok, %{signals: signals, checkpoint: next}} = poll_received(checkpoint, access_token)
-
-    seen = MapSet.new(signals, & &1.message_id)
-
-    cond do
-      Enum.all?(message_ids, &MapSet.member?(seen, &1)) ->
-        {signals, next}
-
-      poll < @change_polls ->
-        Process.sleep(2_000)
-        await_received(access_token, checkpoint, message_ids, poll + 1)
-
-      true ->
-        flunk("Gmail history lacked messageAdded records after #{poll} polls")
-    end
-  end
-
   defp received(signals, message_ids), do: Enum.filter(signals, &(&1.message_id in message_ids))
 
   defp poll_received(checkpoint, metadata_token) do
@@ -1041,22 +1034,21 @@ defmodule Jido.Connect.Gmail.LiveSmokeTest do
     )
   end
 
-  # Polls from `checkpoint` until a signal for `message_id` arrives and
-  # returns the signals with the next checkpoint.
-  defp await_change(access_token, checkpoint, message_id, poll \\ 1) do
-    assert {:ok, %{signals: signals, checkpoint: next}} =
-             poll_changes(%{}, checkpoint, access_token)
+  # Runs `poll` from `checkpoint` until `done?` accepts the signals of one
+  # poll and returns those signals with the next checkpoint.
+  defp await_history(poll, checkpoint, done?, attempt \\ 1) do
+    assert {:ok, %{signals: signals, checkpoint: next}} = poll.(checkpoint)
 
     cond do
-      changes(signals, message_id) != [] ->
+      done?.(signals) ->
         {signals, next}
 
-      poll < @change_polls ->
+      attempt < @history_polls ->
         Process.sleep(2_000)
-        await_change(access_token, checkpoint, message_id, poll + 1)
+        await_history(poll, checkpoint, done?, attempt + 1)
 
       true ->
-        flunk("Gmail history lacked a change of #{message_id} after #{poll} polls")
+        flunk("Gmail history lacked the expected signals after #{attempt} polls")
     end
   end
 
