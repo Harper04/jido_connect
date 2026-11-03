@@ -10,9 +10,10 @@ defmodule Jido.Connect.Gmail.MIME do
   A subject with a character outside ASCII goes out as RFC 2047 encoded
   words, `=?UTF-8?B?...?=`, each holding at most 39 bytes of whole UTF-8
   code points, folded so that no line of the `Subject` header exceeds 76
-  characters. An ASCII subject goes out unchanged, on one line. Gmail reads
-  8-bit header bytes in a single-byte charset and would store a raw UTF-8
-  subject garbled; the body keeps its bytes.
+  characters. An ASCII subject goes out unchanged, on one line. When the
+  live test created a draft with a raw UTF-8 subject, Gmail stored the
+  subject garbled and the `8bit` body with its bytes; sending was not tried
+  with a raw subject.
 
   A header value in the input must not break the line. After trimming, a CR
   or LF in `subject`, `in_reply_to` or `references` fails with reason

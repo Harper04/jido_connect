@@ -35,9 +35,10 @@ defmodule Jido.Connect.Gmail.MIMETest do
   end
 
   describe "non-ASCII text" do
-    # Gmail reads 8-bit header bytes in a single-byte charset and stores the
-    # subject garbled, so a non-ASCII subject goes out as RFC 2047 encoded
-    # words. The body keeps its UTF-8 bytes under the declared charset.
+    # When the live test created a draft with a raw UTF-8 subject, Gmail
+    # stored the subject garbled, so a non-ASCII subject goes out as RFC 2047
+    # encoded words. The body keeps its UTF-8 bytes under the declared
+    # charset.
     test "encodes the subject as UTF-8 B encoded words and keeps the body bytes" do
       assert {:ok, raw} =
                MIME.build_raw(%{
