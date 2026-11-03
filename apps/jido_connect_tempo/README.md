@@ -788,8 +788,9 @@ The booking lookup checks are in `booking_lookup_live_smoke_test.exs`:
 | the seeded worklog of October 1 stores a stored value labelled build, `"true"`, `"1.5"` and the account key `JCL-PROJECT` | action, API token | `work_attribute_values` |
 
 The work attribute checks need the test attributes, which exist on the test
-site only around a run; see the Tempo section of
-`docs/live_smoke_tests.md`.
+site only around a run. They run only with `TEMPO_WORK_ATTRIBUTES` set to
+`required` or `optional`, the mode in which the attributes were created;
+see the Tempo section of `docs/live_smoke_tests.md`.
 
 The successful code exchange and refresh are recorded in
 `oauth_exchange.json` and `oauth_refresh.json`, the rejections in

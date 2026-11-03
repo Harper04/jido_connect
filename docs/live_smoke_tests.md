@@ -233,6 +233,7 @@ as seed input belong to the scripts that create the test data.
 | `TEMPO_ACCOUNT_ID` | setting | Tempo account linked to the test project |
 | `TEMPO_JIRA_ISSUE_ID` | setting | Jira issue for worklogs |
 | `TEMPO_JIRA_PROJECT_ID` | setting | Jira project for worklogs |
+| `TEMPO_WORK_ATTRIBUTES` | setting | `required` or `optional`: the mode in which the test work attributes exist for this run; unset when they do not exist |
 | `TEMPO_LIVE_DESTRUCTIVE` | gate | `true` allows tests that create worklogs |
 
 The Tempo exchange test runs only when `TEMPO_OAUTH_CODE` is set, taken from
@@ -302,8 +303,10 @@ site only around a run, since every user's time-entry form shows them.
 `~/.config/jido_connect/live/seed/atlassian/tempo_attributes.py up` creates
 them, required unless `--optional`, and gives the seeded worklog of
 October 1, 2026 a value for each; `down` deletes them and their values.
-Without them those checks fail. The attribute check names its recording
-after the mode it observes, `work_attributes_required` or
+Those checks run only with `TEMPO_WORK_ATTRIBUTES` set to the mode of the
+run, `required` or `optional`, and are skipped without it. The attribute
+check compares every test attribute's required flag with that mode and
+names its recording after it, `work_attributes_required` or
 `work_attributes_optional`. Tempo assigns new stored values each time
 `up` creates `_JclPhase_`, so `work_attribute_values` must be recorded in
 the window of `work_attributes_required`, whose stored values the offline

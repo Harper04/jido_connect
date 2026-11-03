@@ -19,10 +19,11 @@ defmodule Jido.Connect.Tempo.BookingLookupLiveSmokeTest do
   They exist on the site only around a run: the seed script
   `tempo_attributes.py up` creates them, required unless `--optional`, and
   gives the seeded worklog of October 1, 2026 the values build, true, 1.5
-  and JCL-PROJECT; `down` deletes them. Without them these checks fail. The
-  attribute check compares with that configured form, required or optional
-  as the window created it, and names the recording after the mode it
-  observed: `work_attributes_required` or `work_attributes_optional`.
+  and JCL-PROJECT; `down` deletes them. These checks run only with
+  `TEMPO_WORK_ATTRIBUTES` set to the mode of the run, `required` or
+  `optional`. The attribute check compares with that configured form and
+  names the recording after the mode: `work_attributes_required` or
+  `work_attributes_optional`.
 
   Recordings leave out what the shared site returns besides the test data
   (see `site_data/1`). The test user's account ID comes from Jira
@@ -117,20 +118,20 @@ defmodule Jido.Connect.Tempo.BookingLookupLiveSmokeTest do
 
   # Needs the four test attributes, which exist only in a work-attribute
   # window; see the moduledoc.
-  @tag env!(["TEMPO_OAUTH_ACCESS_TOKEN", "TEMPO_API_ORIGIN" | @jira])
+  @tag env!(["TEMPO_WORK_ATTRIBUTES", "TEMPO_OAUTH_ACCESS_TOKEN", "TEMPO_API_ORIGIN" | @jira])
   test "the work attributes match the configured time-entry form", %{env: env} do
     token = env["TEMPO_OAUTH_ACCESS_TOKEN"]
     context = context!(env, :oauth2_user, ["tempo.worklogs.read"])
-    raw = raw_test_attributes!(env, token)
+    mode = env["TEMPO_WORK_ATTRIBUTES"]
 
     required =
-      case raw |> Map.values() |> Enum.map(& &1["required"]) |> Enum.uniq() do
-        [required] when is_boolean(required) -> required
-        _other -> flunk("the four test attributes do not share one required flag")
+      case mode do
+        "required" -> true
+        "optional" -> false
+        _other -> flunk("TEMPO_WORK_ATTRIBUTES must be required or optional")
       end
 
-    mode = if required, do: "required", else: "optional"
-    IO.puts("work attribute window observed: #{mode}")
+    raw = raw_test_attributes!(env, token)
     LiveSmoke.record(@recorder, :tempo, "work_attributes_" <> mode, transform: site_data(%{}))
 
     result =
@@ -162,7 +163,12 @@ defmodule Jido.Connect.Tempo.BookingLookupLiveSmokeTest do
 
   # Needs the four test attributes; see the moduledoc. The worklog read is
   # recorded after the attribute and account reads, which are not.
-  @tag env!(["TEMPO_API_TOKEN", "TEMPO_API_ORIGIN", "TEMPO_JIRA_PROJECT_ID" | @jira])
+  @tag env!([
+         "TEMPO_WORK_ATTRIBUTES",
+         "TEMPO_API_TOKEN",
+         "TEMPO_API_ORIGIN",
+         "TEMPO_JIRA_PROJECT_ID" | @jira
+       ])
   test "the seeded worklog stores the value each attribute type takes", %{env: env} do
     token = env["TEMPO_API_TOKEN"]
     project = String.to_integer(env["TEMPO_JIRA_PROJECT_ID"])
