@@ -13,8 +13,8 @@ defmodule Jido.Connect.Gmail.SendLiveSmokeTest do
 
   `google.gmail.draft.create` and `google.gmail.draft.update` must create a
   reply draft in the thread of an inserted message and replace it under the
-  same draft ID with a new message, which Gmail stores with the replacement
-  body and the reply headers as a draft that was not sent.
+  same draft ID with a new message. Gmail must store both versions with their
+  own body and the reply headers as a draft that was not sent.
 
   The tests read `GOOGLE_ACCESS_TOKEN` and `GOOGLE_GMAIL_RECIPIENT` and run
   only with `GOOGLE_LIVE_DESTRUCTIVE=true`. Each run of the send test puts two
@@ -135,6 +135,8 @@ defmodule Jido.Connect.Gmail.SendLiveSmokeTest do
               }
             }} = created
 
+    assert_unsent_reply_draft(access_token, draft_id, first_message_id, reply, original_header_id)
+
     replacement =
       reply
       |> Map.put(:draft_id, draft_id)
@@ -152,19 +154,34 @@ defmodule Jido.Connect.Gmail.SendLiveSmokeTest do
 
     assert message_id != first_message_id
 
+    assert_unsent_reply_draft(
+      access_token,
+      draft_id,
+      message_id,
+      replacement,
+      original_header_id
+    )
+
+    assert thread_message_ids!(access_token, thread_id) == [original_id, message_id]
+  end
+
+  # The draft as Gmail stores it holds `message_id`, carries DRAFT and not
+  # SENT, and has the body, the subject and the threading headers of `input`,
+  # a reply to `header_id`.
+  defp assert_unsent_reply_draft(access_token, draft_id, message_id, input, header_id) do
     stored = stored_draft!(access_token, draft_id)
+    subject = input.subject
+
     assert stored.message_id == message_id
     assert "DRAFT" in stored.label_ids
     refute "SENT" in stored.label_ids
-    assert stored.body_sha256 == LiveGmail.sha256(replacement.body_text)
+    assert stored.body_sha256 == LiveGmail.sha256(input.body_text)
 
     assert %{
-             "subject" => [^reply_subject],
-             "in-reply-to" => [^original_header_id],
-             "references" => [^original_header_id]
+             "subject" => [^subject],
+             "in-reply-to" => [^header_id],
+             "references" => [^header_id]
            } = stored.headers
-
-    assert thread_message_ids!(access_token, thread_id) == [original_id, message_id]
   end
 
   # Each cleanup is registered as soon as a write has answered with an ID,
