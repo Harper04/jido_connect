@@ -36,6 +36,40 @@ defmodule Jido.Connect.Slack.OAuthTest do
     assert params["redirect_uri"] == "https://demo.test/integrations/slack/oauth/callback"
     assert params["scope"] == "channels:read,chat:write"
     assert params["state"] == "state"
+    refute Map.has_key?(params, "user_scope")
+  end
+
+  test "sends user scopes as user_scope beside the bot scopes" do
+    opts = [
+      client_id: "client",
+      redirect_uri: "https://demo.test/integrations/slack/oauth/callback",
+      scopes: ["channels:read", "chat:write"],
+      state: "state"
+    ]
+
+    without = OAuth.authorize_url(opts)
+
+    url =
+      OAuth.authorize_url(
+        opts ++
+          [user_scope: ["channels:history", "groups:history", "im:history", "mpim:history"]]
+      )
+
+    params = url |> URI.parse() |> Map.fetch!(:query) |> URI.decode_query()
+
+    assert params == %{
+             "client_id" => "client",
+             "redirect_uri" => "https://demo.test/integrations/slack/oauth/callback",
+             "scope" => "channels:read,chat:write",
+             "state" => "state",
+             "user_scope" => "channels:history,groups:history,im:history,mpim:history"
+           }
+
+    assert Map.delete(params, "user_scope") ==
+             without |> URI.parse() |> Map.fetch!(:query) |> URI.decode_query()
+
+    assert OAuth.authorize_url(opts ++ [user_scope: []]) == without
+    assert OAuth.authorize_url(opts ++ [user_scope: nil]) == without
   end
 
   test "exchanges code for bot token" do

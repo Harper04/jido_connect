@@ -15,6 +15,15 @@ defmodule Jido.Connect.Slack.OAuth do
   @authorize_url "https://slack.com/oauth/v2/authorize"
   @token_url "https://slack.com/api/oauth.v2.access"
 
+  @doc """
+  Builds Slack's authorize URL.
+
+  `:scopes` (or `:scope`) are the bot scopes and go to Slack as `scope`.
+  `:user_scope` lists the scopes of a user token for the person who
+  authorizes, such as `["channels:history", "groups:history", "im:history",
+  "mpim:history"]`, and goes to Slack as `user_scope`. Without `:user_scope`,
+  or with an empty list, the URL has no `user_scope`.
+  """
   def authorize_url(opts) when is_list(opts) do
     client_id = CoreOAuth.fetch_required!(opts, :client_id, "SLACK_CLIENT_ID")
     redirect_uri = Keyword.fetch!(opts, :redirect_uri)
@@ -29,9 +38,13 @@ defmodule Jido.Connect.Slack.OAuth do
       client_id: client_id,
       redirect_uri: redirect_uri,
       scope: scopes,
+      user_scope: opts |> Keyword.get(:user_scope) |> encode_scopes(),
       state: state
     })
   end
+
+  defp encode_scopes(nil), do: nil
+  defp encode_scopes(scopes), do: Scope.encode(scopes, separator: ",")
 
   def exchange_code(code, opts \\ []) when is_binary(code) and is_list(opts) do
     client_id = CoreOAuth.fetch_required!(opts, :client_id, "SLACK_CLIENT_ID")
