@@ -86,6 +86,16 @@ defmodule Jido.Connect.Tempo.ScopeResolverTest do
              ) == ["tempo.periods.read", "tempo.approvals.read"]
     end
 
+    # Tempo grants token rights per area and has no area for work
+    # attributes; requiring the worklog read label is the connector's choice.
+    test "maps the work attribute list to the worklog read label only" do
+      assert ScopeResolver.required_scopes(
+               %{action_id: "tempo.work_attribute.list"},
+               %{},
+               nil
+             ) == ["tempo.worklogs.read"]
+    end
+
     test "maps the account list for a project to the account read label only" do
       assert ScopeResolver.required_scopes(
                %{action_id: "tempo.account.list_for_project"},
@@ -99,6 +109,7 @@ defmodule Jido.Connect.Tempo.ScopeResolverTest do
                "tempo.worklogs.list_own" => ["tempo.worklogs.read"],
                "tempo.worklog.create" => ["tempo.worklogs.write"],
                "tempo.period.bookability.get" => ["tempo.periods.read", "tempo.approvals.read"],
+               "tempo.work_attribute.list" => ["tempo.worklogs.read"],
                "tempo.account.list_for_project" => ["tempo.accounts.read"]
              }
 

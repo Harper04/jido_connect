@@ -13,6 +13,7 @@ defmodule Jido.Connect.Tempo.Client do
     Periods,
     Request,
     TimesheetApprovals,
+    WorkAttributes,
     WorklogCreate,
     Worklogs
   }
@@ -49,6 +50,12 @@ defmodule Jido.Connect.Tempo.Client do
   `from` to `to`. See `Jido.Connect.Tempo.Client.TimesheetApprovals.get/3`.
   """
   defdelegate get_timesheet_approval(request, from, to), to: TimesheetApprovals, as: :get
+
+  @doc """
+  Reads every work attribute of the site. See
+  `Jido.Connect.Tempo.Client.WorkAttributes.list/2`.
+  """
+  defdelegate list_work_attributes(request, opts \\ []), to: WorkAttributes, as: :list
 
   @doc """
   Reads the account candidates of the Jira project `project_id` with

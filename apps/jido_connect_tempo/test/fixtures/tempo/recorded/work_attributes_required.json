@@ -1,0 +1,100 @@
+{
+  "body": {
+    "metadata": {
+      "count": 7,
+      "limit": 50,
+      "offset": 0
+    },
+    "results": [
+      {
+        "key": "_Other1_",
+        "name": "Other attribute 1",
+        "required": false,
+        "self": "https://api.tempo.io/4/work-attributes/_Other1_",
+        "type": "INPUT_FIELD"
+      },
+      {
+        "key": "_Other2_",
+        "name": "Other attribute 2",
+        "required": false,
+        "self": "https://api.tempo.io/4/work-attributes/_Other2_",
+        "type": "INPUT_FIELD"
+      },
+      {
+        "key": "_Other3_",
+        "name": "Other attribute 3",
+        "required": false,
+        "self": "https://api.tempo.io/4/work-attributes/_Other3_",
+        "type": "INPUT_FIELD"
+      },
+      {
+        "key": "_JclPhase_",
+        "name": "JCL live: phase",
+        "names": {
+          "5c137a17-4820-4304-b7a5-944d952d02da": "review",
+          "70e9b90d-1257-4e8e-afe5-7991c7a96994": "analysis",
+          "c5b295d9-ea3a-45cc-990f-38969901323b": "build"
+        },
+        "required": true,
+        "self": "https://api.tempo.io/4/work-attributes/_JclPhase_",
+        "type": "STATIC_LIST",
+        "values": [
+          "70e9b90d-1257-4e8e-afe5-7991c7a96994",
+          "c5b295d9-ea3a-45cc-990f-38969901323b",
+          "5c137a17-4820-4304-b7a5-944d952d02da"
+        ]
+      },
+      {
+        "key": "_JclBillable_",
+        "name": "JCL live: billable",
+        "required": true,
+        "self": "https://api.tempo.io/4/work-attributes/_JclBillable_",
+        "type": "CHECKBOX"
+      },
+      {
+        "key": "_JclHours_",
+        "name": "JCL live: estimate hours",
+        "required": true,
+        "self": "https://api.tempo.io/4/work-attributes/_JclHours_",
+        "type": "INPUT_NUMERIC"
+      },
+      {
+        "key": "_JclAccount_",
+        "name": "JCL live: account",
+        "required": true,
+        "self": "https://api.tempo.io/4/work-attributes/_JclAccount_",
+        "type": "ACCOUNT"
+      }
+    ],
+    "self": "https://api.tempo.io/4/work-attributes?offset=0&limit=50"
+  },
+  "headers": {
+    "cache-control": [
+      "no-cache, no-store"
+    ],
+    "connection": [
+      "keep-alive"
+    ],
+    "content-length": [
+      "1481"
+    ],
+    "content-type": [
+      "application/json"
+    ],
+    "date": [
+      "Tue, 03 Nov 2026 10:00:50 GMT"
+    ],
+    "strict-transport-security": [
+      "max-age=31536000; includeSubdomains"
+    ],
+    "tempo-request-id": [
+      "7d49f0012a2f68af0085c31320b73971"
+    ]
+  },
+  "recorded_at": "2026-11-03",
+  "request": {
+    "method": "GET",
+    "path": "/4/work-attributes"
+  },
+  "status": 200
+}

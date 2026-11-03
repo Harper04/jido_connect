@@ -23,6 +23,7 @@ defmodule Jido.Connect.TempoTest do
              "tempo.worklogs.list_own",
              "tempo.worklog.create",
              "tempo.period.bookability.get",
+             "tempo.work_attribute.list",
              "tempo.account.list_for_project"
            ]
 
@@ -56,6 +57,7 @@ defmodule Jido.Connect.TempoTest do
       Jido.Connect.Tempo.Actions.ListOwnWorklogs,
       Jido.Connect.Tempo.Actions.CreateWorklog,
       Jido.Connect.Tempo.Actions.GetPeriodBookability,
+      Jido.Connect.Tempo.Actions.ListWorkAttributes,
       Jido.Connect.Tempo.Actions.ListAccountsForProject
     ]
 
@@ -127,6 +129,25 @@ defmodule Jido.Connect.TempoTest do
              Connect.action(Tempo.integration(), "tempo.period.bookability.get")
 
     assert action.scopes == ["tempo.periods.read", "tempo.approvals.read"]
+  end
+
+  test "the generated action carries the DSL metadata of the work attribute list" do
+    projection = Jido.Connect.Tempo.Actions.ListWorkAttributes.jido_connect_projection()
+
+    assert projection.action_id == "tempo.work_attribute.list"
+    assert projection.resource == :work_attribute
+    assert projection.verb == :list
+    assert projection.risk == :read
+    assert projection.auth_profiles == [:api_token, :oauth2_user]
+    assert projection.scope_resolver == Jido.Connect.Tempo.ScopeResolver
+    assert projection.policies == []
+    assert projection.input == []
+    assert Enum.map(projection.output, & &1.name) == [:attributes, :complete, :incomplete]
+
+    assert {:ok, %{mutation?: false, data_classification: :workspace_metadata} = action} =
+             Connect.action(Tempo.integration(), "tempo.work_attribute.list")
+
+    assert action.scopes == ["tempo.worklogs.read"]
   end
 
   test "the generated action carries the DSL metadata of the account list for a project" do

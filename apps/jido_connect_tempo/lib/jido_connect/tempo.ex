@@ -70,6 +70,7 @@ defmodule Jido.Connect.Tempo do
     fragments: [
       Jido.Connect.Tempo.Actions.Worklogs,
       Jido.Connect.Tempo.Actions.Periods,
+      Jido.Connect.Tempo.Actions.WorkAttributes,
       Jido.Connect.Tempo.Actions.Accounts
     ]
 
