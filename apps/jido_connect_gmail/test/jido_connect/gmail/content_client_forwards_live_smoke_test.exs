@@ -9,7 +9,9 @@ defmodule Jido.Connect.Gmail.ContentClientForwardsLiveSmokeTest do
 
   The four messages are real mail: they carry a person's name, signature,
   addresses and images. The tests therefore record nothing, also when the run
-  sets `JIDO_CONNECT_RECORD=1`, and look at text only for the marker lines,
+  sets `JIDO_CONNECT_RECORD=1`: a live test records only through
+  `LiveGmail.record/1`, which this module never calls. They look at text only
+  for the marker lines,
   the `JCL Quelle` subject and generic signs of correct decoding: a non-ASCII
   letter is present, and neither U+FFFD nor `Ã` or `Â` appears, the first
   character of a two-byte UTF-8 sequence read as Latin-1 or Windows-1252.
@@ -44,19 +46,6 @@ defmodule Jido.Connect.Gmail.ContentClientForwardsLiveSmokeTest do
   # for the letters and symbols of German text; U+FFFD replaces bytes that
   # were not decoded at all.
   @misdecoded ["\u{FFFD}", "Ã", "Â"]
-
-  # Recording stays off for this module, also when the run sets
-  # JIDO_CONNECT_RECORD=1: LiveSmoke.record/4 then does nothing.
-  setup do
-    case System.fetch_env("JIDO_CONNECT_RECORD") do
-      {:ok, value} ->
-        System.delete_env("JIDO_CONNECT_RECORD")
-        on_exit(fn -> System.put_env("JIDO_CONNECT_RECORD", value) end)
-
-      :error ->
-        :ok
-    end
-  end
 
   @tag env!(["GOOGLE_ACCESS_TOKEN", "GOOGLE_GMAIL_CLIENT_FORWARD_OUTLOOK_INLINE_ID"])
   test "Outlook Web inline forward: decoded text, no nested message, test.txt", %{env: env} do

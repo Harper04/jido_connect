@@ -64,7 +64,8 @@ loads.
 The four client forwards in `GOOGLE_GMAIL_CLIENT_FORWARD_*` are real mail
 with a person's name, signature, addresses and images. Their check reads them
 through the content and attachment actions and records nothing, also when the
-run sets `JIDO_CONNECT_RECORD=1`. It looks at text only for the marker lines,
+run sets `JIDO_CONNECT_RECORD=1`, because it never calls `LiveGmail.record/1`,
+the only way a live test records. It looks at text only for the marker lines,
 the `JCL Quelle` subject and signs of wrong decoding, and its assertions name
 the forward and the check instead of printing text. The shapes these forwards
 showed that no other recording had are rebuilt with synthetic content in the
