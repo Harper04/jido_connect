@@ -365,7 +365,7 @@ fixture for that response:
 ```elixir
 LiveSmoke.record({:jido_connect_tempo, :tempo_req_options}, :tempo, "accounts",
   transform: fn
-    "/4/accounts/" <> id, _body when id not in test_ids -> :skip
+    "/4/accounts/" <> id, body -> if id in test_ids, do: body, else: :skip
     _path, body -> body
   end
 )
