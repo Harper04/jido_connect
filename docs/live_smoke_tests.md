@@ -315,11 +315,14 @@ tests pin.
 The site is shared with real users, and Tempo returns their data in the
 same responses: every work attribute of the site and every global account
 with each project's links. The recordings leave it out with the
-`:transform` option: other attributes become `_Other1_` and onward with
-only their type and required flag, links of other accounts are left out
-with `metadata.count` adjusted, reads of those accounts are not recorded,
-and worklog values of other attributes are left out. The live assertions
-check only the test data and pass whatever else the site holds.
+`:transform` option that `LiveTempo.site_data/2` in
+`apps/jido_connect_tempo/test/support/live_tempo.ex` builds: other
+attributes keep Tempo's structure, with a neutral key `_Other1_` and
+onward, name, link, stored values and labels, and their type and required
+flag; links of other accounts are left out with `metadata.count` adjusted,
+reads of those accounts are not recorded, and worklog values of other
+attributes are left out. The live assertions check only the test data and
+pass whatever else the site holds.
 
 ### Confluence
 

@@ -26,7 +26,7 @@ defmodule Jido.Connect.Tempo.BookingLookupLiveSmokeTest do
   `work_attributes_optional`.
 
   Recordings leave out what the shared site returns besides the test data
-  (see `site_data/1`). The test user's account ID comes from Jira
+  (see `LiveTempo.site_data/2`). The test user's account ID comes from Jira
   `GET /rest/api/3/myself`; that call and the direct Tempo reads that the
   checks compare against are not recorded. ExUnit prints the arguments of a
   failing call, so checks that involve the account ID or the site's other
@@ -36,8 +36,20 @@ defmodule Jido.Connect.Tempo.BookingLookupLiveSmokeTest do
   use ExUnit.Case, async: false
   use Jido.Connect.TestSupport.LiveSmoke
 
-  alias Jido.Connect.{Connection, Context, CredentialLease, Error}
-  alias Jido.Connect.Tempo
+  import Jido.Connect.Tempo.TestSupport.LiveTempo,
+    only: [
+      context!: 3,
+      invoke: 5,
+      link_account_id: 1,
+      ok!: 2,
+      raw_get!: 3,
+      raw_get!: 4,
+      raw_worklogs!: 3,
+      request!: 3,
+      site_data: 2
+    ]
+
+  alias Jido.Connect.Error
   alias Jido.Connect.Tempo.Client.Transport
 
   @recorder {:jido_connect_tempo, :tempo_req_options}
@@ -67,13 +79,20 @@ defmodule Jido.Connect.Tempo.BookingLookupLiveSmokeTest do
     project = String.to_integer(env["TEMPO_JIRA_PROJECT_ID"])
     context = context!(env, :api_token, ["tempo.accounts.read"])
     raw = raw_test_accounts!(env, token, project)
-    LiveSmoke.record(@recorder, :tempo, "accounts_for_project", transform: site_data(raw))
+
+    LiveSmoke.record(@recorder, :tempo, "accounts_for_project",
+      transform: site_data(raw, @attribute_keys)
+    )
 
     result =
       ok!(
-        invoke(context, :api_token, token, "tempo.account.list_for_project", %{
-          project_id: project
-        }),
+        invoke(
+          context,
+          :api_token,
+          token,
+          %{project_id: project},
+          "tempo.account.list_for_project"
+        ),
         "the account read"
       )
 
@@ -107,7 +126,7 @@ defmodule Jido.Connect.Tempo.BookingLookupLiveSmokeTest do
 
   @tag env!(["TEMPO_API_TOKEN", "TEMPO_API_ORIGIN" | @jira])
   test "an unknown account gets Tempo's not-found answer", %{env: env} do
-    request = request!(env, env["TEMPO_API_TOKEN"])
+    request = request!(env, :api_token, env["TEMPO_API_TOKEN"])
     LiveSmoke.record(@recorder, :tempo, "account_not_found")
 
     assert {:error, %Error.ProviderError{reason: :not_found, status: 404, details: details}} =
@@ -123,19 +142,15 @@ defmodule Jido.Connect.Tempo.BookingLookupLiveSmokeTest do
     token = env["TEMPO_OAUTH_ACCESS_TOKEN"]
     context = context!(env, :oauth2_user, ["tempo.worklogs.read"])
     mode = env["TEMPO_WORK_ATTRIBUTES"]
-
-    required =
-      case mode do
-        "required" -> true
-        "optional" -> false
-        _other -> flunk("TEMPO_WORK_ATTRIBUTES must be required or optional")
-      end
-
+    required = required!(env)
     raw = raw_test_attributes!(env, token)
-    LiveSmoke.record(@recorder, :tempo, "work_attributes_" <> mode, transform: site_data(%{}))
+
+    LiveSmoke.record(@recorder, :tempo, "work_attributes_" <> mode,
+      transform: site_data(%{}, @attribute_keys)
+    )
 
     result =
-      ok!(invoke(context, :oauth2_user, token, "tempo.work_attribute.list", %{}), "the read")
+      ok!(invoke(context, :oauth2_user, token, %{}, "tempo.work_attribute.list"), "the read")
 
     attributes = Enum.filter(result.attributes, &(&1.key in @attribute_keys))
     assert attributes |> Enum.map(& &1.key) |> Enum.sort() == @attribute_keys
@@ -177,18 +192,26 @@ defmodule Jido.Connect.Tempo.BookingLookupLiveSmokeTest do
     day = %{from: "2026-10-01", to: "2026-10-01"}
 
     attributes =
-      ok!(invoke(context, :api_token, token, "tempo.work_attribute.list", %{}), "the read")
+      ok!(invoke(context, :api_token, token, %{}, "tempo.work_attribute.list"), "the read")
 
     accounts =
       ok!(
-        invoke(context, :api_token, token, "tempo.account.list_for_project", %{
-          project_id: project
-        }),
+        invoke(
+          context,
+          :api_token,
+          token,
+          %{project_id: project},
+          "tempo.account.list_for_project"
+        ),
         "the account read"
       )
 
-    LiveSmoke.record(@recorder, :tempo, "work_attribute_values", transform: site_data(%{}))
-    worklogs = ok!(invoke(context, :api_token, token, "tempo.worklogs.list_own", day), "the read")
+    LiveSmoke.record(@recorder, :tempo, "work_attribute_values",
+      transform: site_data(%{}, @attribute_keys)
+    )
+
+    worklogs =
+      ok!(invoke(context, :api_token, token, day, "tempo.worklogs.list_own"), "the read")
 
     values =
       for worklog <- worklogs.worklogs,
@@ -223,79 +246,14 @@ defmodule Jido.Connect.Tempo.BookingLookupLiveSmokeTest do
     assert Enum.sort(values) == Enum.sort(direct)
   end
 
-  # What the shared site returns besides the test data stays out of the
-  # fixtures, in four places: work attributes other than the four test
-  # attributes become neutral entries `_Other<n>_` that keep only their
-  # recorded type and required flag; links of accounts outside the test
-  # data are left out, and metadata.count counts the links that stay; reads
-  # of those accounts are not recorded; and worklog values of other
-  # attributes are left out. `test_accounts` maps the IDs of the test
-  # accounts, as strings, to their direct reads.
-  defp site_data(test_accounts) do
-    fn
-      "/4/accounts/" <> id, body ->
-        if Map.has_key?(test_accounts, id), do: body, else: :skip
-
-      "/4/account-links/project/" <> _project, %{"results" => links} = body
-      when is_list(links) ->
-        kept = Enum.filter(links, &Map.has_key?(test_accounts, link_account_id(&1)))
-
-        body
-        |> Map.put("results", kept)
-        |> Map.update("metadata", %{}, &Map.put(&1, "count", length(kept)))
-
-      "/4/work-attributes", %{"results" => attributes} = body when is_list(attributes) ->
-        %{body | "results" => neutral_attributes(attributes)}
-
-      "/4/worklogs/" <> _rest, %{"results" => worklogs} = body when is_list(worklogs) ->
-        %{body | "results" => Enum.map(worklogs, &test_values_only/1)}
-
-      _path, body ->
-        body
+  # The mode in which the test attributes exist for this run.
+  defp required!(env) do
+    case env["TEMPO_WORK_ATTRIBUTES"] do
+      "required" -> true
+      "optional" -> false
+      _other -> flunk("TEMPO_WORK_ATTRIBUTES must be required or optional")
     end
   end
-
-  defp neutral_attributes(attributes) do
-    attributes
-    |> Enum.map_reduce(1, fn
-      %{"key" => key} = attribute, n when key in @attribute_keys ->
-        {attribute, n}
-
-      attribute, n ->
-        key = "_Other#{n}_"
-
-        neutral = %{
-          "key" => key,
-          "name" => "Other attribute #{n}",
-          "type" => attribute["type"],
-          "required" => attribute["required"],
-          "self" => neutral_self(attribute["self"], key)
-        }
-
-        {neutral, n + 1}
-    end)
-    |> elem(0)
-  end
-
-  defp neutral_self(self, key) when is_binary(self) do
-    uri = URI.parse(self)
-    URI.to_string(%{uri | path: "/4/work-attributes/" <> key, query: nil, fragment: nil})
-  end
-
-  defp neutral_self(_self, _key), do: nil
-
-  defp test_values_only(%{"attributes" => %{"values" => values} = attributes} = worklog)
-       when is_list(values) do
-    kept = Enum.filter(values, &(&1["key"] in @attribute_keys))
-    %{worklog | "attributes" => %{attributes | "values" => kept}}
-  end
-
-  defp test_values_only(worklog), do: worklog
-
-  defp link_account_id(%{"account" => %{"self" => self}}) when is_binary(self),
-    do: self |> URI.parse() |> Map.get(:path, "") |> Path.basename()
-
-  defp link_account_id(_link), do: nil
 
   # The test accounts among the project's candidates, read directly,
   # outside the package and the recorder, by ID as a string.
@@ -321,91 +279,6 @@ defmodule Jido.Connect.Tempo.BookingLookupLiveSmokeTest do
 
       _other ->
         flunk("the direct work attribute read did not return one complete page")
-    end
-  end
-
-  defp raw_worklogs!(env, token, %{from: from, to: to}) do
-    path = "/4/worklogs/user/" <> URI.encode(account_id!(env), &URI.char_unreserved?/1)
-
-    case raw_get!(env, token, path, from: from, to: to, offset: 0, limit: 1000) do
-      %{"results" => results, "metadata" => metadata} when not is_map_key(metadata, "next") ->
-        results
-
-      _other ->
-        flunk("the direct worklog read did not return one complete page")
-    end
-  end
-
-  # The path can name the account ID or an account of the site's other
-  # data, so a failure names only the status.
-  defp raw_get!(env, token, path, params \\ []) do
-    case Req.get(env["TEMPO_API_ORIGIN"] <> path,
-           auth: {:bearer, token},
-           params: params,
-           retry: false
-         ) do
-      {:ok, %{status: 200, body: body}} -> body
-      {:ok, %{status: status}} -> flunk("a direct Tempo read got status #{status}")
-      _other -> flunk("a direct Tempo read failed")
-    end
-  end
-
-  defp ok!({:ok, value}, _step), do: value
-
-  defp ok!({:error, error}, step),
-    do:
-      flunk(
-        "#{step} failed: #{inspect(Map.get(error, :reason))}, status #{inspect(Map.get(error, :status))}"
-      )
-
-  defp invoke(%Context{connection: connection} = context, profile, token, action, input) do
-    field = if profile == :api_token, do: :api_token, else: :access_token
-
-    lease =
-      CredentialLease.from_connection!(connection, %{field => token},
-        expires_at: DateTime.add(DateTime.utc_now(), 300, :second)
-      )
-
-    Jido.Connect.invoke(Tempo, action, input, context: context, credential_lease: lease)
-  end
-
-  defp context!(env, profile, scopes) do
-    Context.new!(%{
-      tenant_id: "live",
-      actor: %{id: "live", type: :app_user},
-      connection: connection!(env, profile, scopes)
-    })
-  end
-
-  defp connection!(env, profile, scopes) do
-    Connection.new!(%{
-      id: "tempo_live_#{profile}",
-      provider: :tempo,
-      profile: profile,
-      tenant_id: "live",
-      owner_type: :app_user,
-      owner_id: "live",
-      subject: %{account_id: account_id!(env)},
-      status: :connected,
-      scopes: scopes,
-      metadata: %{api_origin: env["TEMPO_API_ORIGIN"]}
-    })
-  end
-
-  defp request!(env, token) do
-    case Tempo.Client.Request.new(connection!(env, :api_token, []), %{api_token: token}) do
-      {:ok, request} -> request
-      {:error, error} -> flunk("Tempo request rejected: #{inspect(error.reason)}")
-    end
-  end
-
-  defp account_id!(env) do
-    case Req.get(env["JIRA_SITE"] <> "/rest/api/3/myself",
-           auth: {:basic, "#{env["JIRA_EMAIL"]}:#{env["JIRA_API_TOKEN"]}"},
-           retry: false
-         ) do
-      {:ok, %{status: 200, body: %{"accountId" => id}}} when is_binary(id) -> id
-      _other -> flunk("Jira /rest/api/3/myself did not return an account ID")
     end
   end
 end
