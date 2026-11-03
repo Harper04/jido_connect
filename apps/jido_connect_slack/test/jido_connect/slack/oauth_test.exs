@@ -310,6 +310,50 @@ defmodule Jido.Connect.Slack.OAuthTest do
     end
   end
 
+  test "leases a token the host read back from JSON, with string or atom keys" do
+    stub_oauth("oauth_v2_access_token_rotation")
+    assert {:ok, token} = exchange("code")
+    soon = DateTime.add(DateTime.utc_now(), 600, :second)
+    json = token |> put_in([:authed_user, :expires_at], soon) |> Jason.encode!()
+
+    # An Ecto :map field gives string keys; keys: :atoms keeps the
+    # expiry an ISO 8601 string as well.
+    for stored <- [Jason.decode!(json), Jason.decode!(json, keys: :atoms)] do
+      assert {:ok, user} = OAuth.user_credential_lease(stored, %{tenant_id: "tenant_1"})
+      assert DateTime.compare(user.expires_at, soon) == :eq
+      assert user.connection_id == "slack-team-T9TK3CUKW-user-U1234"
+      assert user.owner_id == "U1234"
+      assert user.scopes == ["chat:write"]
+      assert user.fields.access_token == "xoxe.xoxp-synthetic-user"
+      assert user.metadata.app_id == "A0KRD7HC3"
+
+      assert {:ok, bot} = OAuth.bot_credential_lease(stored, %{tenant_id: "tenant_1"})
+      assert bot.connection_id == "slack-team-T9TK3CUKW"
+      assert bot.owner_id == "T9TK3CUKW"
+      assert bot.scopes == ["commands", "incoming-webhook"]
+      assert bot.fields.access_token == "xoxe.xoxb-synthetic-bot"
+      assert bot.metadata.bot_user_id == "U0KRQLJ9H"
+    end
+  end
+
+  test "an expires_at that is no DateTime or ISO 8601 string fails the user lease" do
+    stub_oauth("oauth_v2_access_token_rotation")
+    assert {:ok, token} = exchange("code")
+
+    for expires_at <- ["tomorrow", "2026-11-03T12:00:00", 1_793_628_631] do
+      assert {:error,
+              %Error.AuthError{
+                reason: :invalid_user_credential,
+                details: %{field: :expires_at}
+              } = error} =
+               token
+               |> put_in([:authed_user, :expires_at], expires_at)
+               |> OAuth.user_credential_lease(%{tenant_id: "tenant_1"})
+
+      refute inspect(error) =~ "synthetic"
+    end
+  end
+
   test "binds each lease to the host's connection of its profile" do
     stub_oauth("oauth_v2_access_bot_and_user")
     assert {:ok, token} = exchange("code")

@@ -81,8 +81,12 @@ for the `:bot` profile. `user_credential_lease/3` leases the user token for
 the `:user` profile: the lease is owned by the person (`owner_type: :user`,
 `owner_id` the Slack user ID), holds the user token as `access_token` and
 never the refresh token, and expires after an hour or at `:expires_at`,
-but never after the token's own `expires_at`. Pass `connection:` to bind a
-lease to the host's connection. A result without the token of the profile
+but never after the token's own `expires_at`. Both functions also take the
+result as a host reads it back from JSON, with string keys and
+`expires_at` as an ISO 8601 string; an `expires_at` in another form
+returns a `Jido.Connect.Error.AuthError` with reason
+`:invalid_user_credential`. Pass `connection:` to bind a lease to the
+host's connection. A result without the token of the profile
 returns a `Jido.Connect.Error.AuthError` with reason
 `:missing_bot_credential` or `:missing_user_credential`. A connection of
 another provider returns one with reason `:credential_connection_mismatch`.

@@ -85,6 +85,11 @@
   `:profile` of the other profile with reason `:unsupported_auth_profile`.
   Before, `bot_credential_lease/3` took the profile of any connection or
   `:profile`, so a lease could carry one token under the other profile.
+- Both lease functions read a token result with string keys, as from a
+  JSON column, and the user token's `expires_at` as an ISO 8601 string.
+  Any other `expires_at` returns `:invalid_user_credential` instead of
+  being ignored. `connection_id: nil` and `expires_at: nil` mean the
+  defaults.
 - `AppManifest.build/2` takes `:user_scopes` for
   `oauth_config.scopes.user` and `:user_events` for
   `settings.event_subscriptions.user_events`; user events need

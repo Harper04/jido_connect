@@ -84,7 +84,8 @@ defmodule Jido.Connect.Slack.OAuth do
 
   @doc """
   Builds a short-lived lease of the bot token from an `exchange_code/2`
-  result, for actions under the `:bot` profile.
+  result, for actions under the `:bot` profile. The result may also come
+  back from the host's storage with string keys.
 
   Pass `:connection` to bind the lease to the host's bot connection; the
   lease then takes that connection's ID, tenant and owner. A connection of
@@ -98,10 +99,10 @@ defmodule Jido.Connect.Slack.OAuth do
   without a bot token, such as one from a flow with only `user_scope`.
   """
   def bot_credential_lease(token, context, opts \\ []) when is_map(token) do
-    case Map.get(token, :access_token) do
+    case Data.get(token, :access_token) do
       access_token when is_binary(access_token) ->
         team_id = team_id(token)
-        scopes = Map.get(token, :scope, [])
+        scopes = Data.get(token, :scope, [])
 
         credential_lease(access_token, context, opts, %{
           connection_id: "slack-team-#{team_id}",
@@ -112,10 +113,10 @@ defmodule Jido.Connect.Slack.OAuth do
           token_expires_at: nil,
           metadata: %{
             context: context,
-            app_id: Map.get(token, :app_id),
-            bot_user_id: Map.get(token, :bot_user_id),
-            team: Map.get(token, :team),
-            enterprise: Map.get(token, :enterprise),
+            app_id: Data.get(token, :app_id),
+            bot_user_id: Data.get(token, :bot_user_id),
+            team: Data.get(token, :team),
+            enterprise: Data.get(token, :enterprise),
             scopes: scopes
           }
         })
@@ -137,6 +138,11 @@ defmodule Jido.Connect.Slack.OAuth do
   user ID), its scopes are the user token's, and it expires after an hour,
   or at `:expires_at`, but never after the token's own `expires_at`.
 
+  The result may also come back from the host's storage as JSON: with atom
+  or string keys, and the token's `expires_at` as a `DateTime` or an ISO
+  8601 string with offset. An `expires_at` in any other form returns an
+  `AuthError` with reason `:invalid_user_credential`.
+
   Pass `:connection` to bind the lease to the host's user connection; the
   lease then takes that connection's ID, tenant and owner. The connection's
   `owner_id` is the host's and is not compared with the Slack user ID. A
@@ -150,33 +156,62 @@ defmodule Jido.Connect.Slack.OAuth do
   result holds no user token, as after a flow without `user_scope`.
   """
   def user_credential_lease(token, context, opts \\ []) when is_map(token) do
-    case Map.get(token, :authed_user) do
-      %{access_token: access_token, id: user_id} = user
-      when is_binary(access_token) and is_binary(user_id) ->
-        team_id = team_id(token)
-        scopes = Map.get(user, :scope, [])
+    with {:ok, access_token, user_id, user} <- authed_user(token),
+         {:ok, token_expires_at} <- token_expires_at(Data.get(user, :expires_at)) do
+      team_id = team_id(token)
+      scopes = Data.get(user, :scope, [])
 
-        credential_lease(access_token, context, opts, %{
-          connection_id: "slack-team-#{team_id}-user-#{user_id}",
-          profile: :user,
-          owner_type: :user,
-          owner_id: user_id,
-          scopes: scopes,
-          token_expires_at: Map.get(user, :expires_at),
-          metadata: %{
-            context: context,
-            app_id: Map.get(token, :app_id),
-            user_id: user_id,
-            team: Map.get(token, :team),
-            enterprise: Map.get(token, :enterprise),
-            scopes: scopes
-          }
-        })
+      credential_lease(access_token, context, opts, %{
+        connection_id: "slack-team-#{team_id}-user-#{user_id}",
+        profile: :user,
+        owner_type: :user,
+        owner_id: user_id,
+        scopes: scopes,
+        token_expires_at: token_expires_at,
+        metadata: %{
+          context: context,
+          app_id: Data.get(token, :app_id),
+          user_id: user_id,
+          team: Data.get(token, :team),
+          enterprise: Data.get(token, :enterprise),
+          scopes: scopes
+        }
+      })
+    end
+  end
 
+  defp authed_user(token) do
+    with %{} = user <- Data.get(token, :authed_user),
+         access_token when is_binary(access_token) <- Data.get(user, :access_token),
+         user_id when is_binary(user_id) <- Data.get(user, :id) do
+      {:ok, access_token, user_id, user}
+    else
       _none ->
         {:error,
          Error.auth("Slack token response has no user token", reason: :missing_user_credential)}
     end
+  end
+
+  # `exchange_code/2` gives a DateTime. A host that stores the result as
+  # JSON reads it back as an ISO 8601 string.
+  defp token_expires_at(nil), do: {:ok, nil}
+  defp token_expires_at(%DateTime{} = expires_at), do: {:ok, expires_at}
+
+  defp token_expires_at(expires_at) when is_binary(expires_at) do
+    case DateTime.from_iso8601(expires_at) do
+      {:ok, datetime, _offset} -> {:ok, datetime}
+      {:error, _reason} -> invalid_token_expires_at()
+    end
+  end
+
+  defp token_expires_at(_other), do: invalid_token_expires_at()
+
+  defp invalid_token_expires_at do
+    {:error,
+     Error.auth("Slack user token has an unreadable expires_at",
+       reason: :invalid_user_credential,
+       details: %{field: :expires_at}
+     )}
   end
 
   # A lease bound to `:connection` takes that connection's ID unless
@@ -253,7 +288,7 @@ defmodule Jido.Connect.Slack.OAuth do
 
   defp not_after(expires_at, _no_limit), do: expires_at
 
-  defp team_id(token), do: get_in(token, [:team, "id"]) || get_in(token, [:team, :id])
+  defp team_id(token), do: token |> Data.get(:team) |> Data.get(:id)
 
   defp handle_token_response({:ok, %{status: status, body: %{"ok" => true} = body}})
        when status in 200..299 do
