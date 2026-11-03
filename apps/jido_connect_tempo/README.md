@@ -782,7 +782,7 @@ The booking lookup checks are in `booking_lookup_live_smoke_test.exs`:
 
 | Check | Path | Recording |
 | --- | --- | --- |
-| the account candidates of `TEMPO_JIRA_PROJECT_ID`: the four test accounts with name, status, global flag and one link each, `TEMPO_ACCOUNT_ID` as the only default link, each compared with a direct read | action, API token | `accounts_for_project` |
+| the account candidates of `TEMPO_JIRA_PROJECT_ID`: the four test accounts with name, status, global flag and one link each, `TEMPO_ACCOUNT_ID` as the only default link, each compared with a direct read | action, OAuth access token | `accounts_for_project` |
 | an unknown account ID gets Tempo's 404 `Invalid account` | transport, API token | `account_not_found` |
 | the four test work attributes with type, name, required flag, stored values and labels, compared with a direct read | action, OAuth access token | `work_attributes_required` or `work_attributes_optional` |
 | the seeded worklog of October 1 stores a stored value labelled build, `"true"`, `"1.5"` and the account key `JCL-PROJECT` | action, API token | `work_attribute_values` |

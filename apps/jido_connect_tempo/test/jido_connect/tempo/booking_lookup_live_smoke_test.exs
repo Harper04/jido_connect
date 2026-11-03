@@ -69,15 +69,15 @@ defmodule Jido.Connect.Tempo.BookingLookupLiveSmokeTest do
   }
 
   @tag env!([
-         "TEMPO_API_TOKEN",
+         "TEMPO_OAUTH_ACCESS_TOKEN",
          "TEMPO_API_ORIGIN",
          "TEMPO_JIRA_PROJECT_ID",
          "TEMPO_ACCOUNT_ID" | @jira
        ])
   test "the account candidates of the test project match the seeded accounts", %{env: env} do
-    token = env["TEMPO_API_TOKEN"]
+    token = env["TEMPO_OAUTH_ACCESS_TOKEN"]
     project = String.to_integer(env["TEMPO_JIRA_PROJECT_ID"])
-    context = context!(env, :api_token, ["tempo.accounts.read"])
+    context = context!(env, :oauth2_user, ["tempo.accounts.read"])
     raw = raw_test_accounts!(env, token, project)
 
     LiveSmoke.record(@recorder, :tempo, "accounts_for_project",
@@ -88,7 +88,7 @@ defmodule Jido.Connect.Tempo.BookingLookupLiveSmokeTest do
       ok!(
         invoke(
           context,
-          :api_token,
+          :oauth2_user,
           token,
           %{project_id: project},
           "tempo.account.list_for_project"
