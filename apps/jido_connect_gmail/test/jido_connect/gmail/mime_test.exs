@@ -59,10 +59,10 @@ defmodule Jido.Connect.Gmail.MIMETest do
       assert {:error,
               %Connect.Error.ValidationError{
                 reason: :invalid_header_value,
-                details: %{field: :subject} = details
-              }} = MIME.build_raw(%{@message | subject: "Hi\r\nBcc: x@example.com"})
+                details: %{field: :subject}
+              } = error} = MIME.build_raw(%{@message | subject: "Hi\r\nBcc: x@example.com"})
 
-      refute inspect(details) =~ "x@example.com"
+      refute inspect(error) =~ "x@example.com"
     end
 
     # The subject is trimmed before the check, the threading headers are not,
