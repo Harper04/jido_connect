@@ -66,6 +66,29 @@
   author. The generic `message` event and `normalize_event/1` now normalize
   both subtypes, so a verified edit or deletion carries a signal; the
   message triggers still reject them.
+- Add the authorizing user's view. `OAuth.authorize_url/1` takes
+  `:user_scope` and sends it as Slack's `user_scope`; without it the URL is
+  unchanged. `OAuth.exchange_code/2` keeps the bot credential and adds
+  `authed_user` when Slack returns a user token: `id`, `access_token`,
+  `token_type`, `scope` and, with token rotation, `refresh_token`,
+  `expires_in` and `expires_at`. A response with only a user token now
+  yields `authed_user` without the bot fields instead of
+  `:invalid_response`. `OAuth.user_credential_lease/3` leases the user
+  token for the `:user` profile, never past the token's `expires_at` and
+  without the refresh token.
+- `OAuth.bot_credential_lease/3` returns an `AuthError` with reason
+  `:missing_bot_credential` for a token without a bot token instead of
+  raising, and a lease bound to `:connection` now takes that connection's
+  ID instead of `slack-team-<team>`, so it matches the connection.
+- `AppManifest.build/2` takes `:user_scopes` for
+  `oauth_config.scopes.user` and `:user_events` for
+  `settings.event_subscriptions.user_events`; user events need
+  `include_events?: true`. Manifests without the options are unchanged.
+- Message signals of `slack.event.message.{channels,groups,im,mpim,thread_reply}`
+  and the signals of the eight edit and deletion triggers carry `view`
+  (`"bot"` or `"user"`) and `viewer` from the delivery's `authorizations`,
+  and `MessageChange` has both fields. `shared_messages` stays in both
+  views; a share is a handover to the app only in the bot view.
 
 ## 0.1.0
 
