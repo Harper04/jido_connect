@@ -1483,11 +1483,9 @@ defmodule Jido.Connect.GmailTest do
   end
 
   test "send and draft actions reject a line break in a header value before the client call" do
+    # gmail.compose satisfies send as well as the draft writes.
     {context, lease} =
-      context_and_lease(
-        scopes: send_scopes() ++ compose_scopes(),
-        gmail_client: ComposeSpyGmailClient
-      )
+      context_and_lease(scopes: compose_scopes(), gmail_client: ComposeSpyGmailClient)
 
     message = %{to: ["to@example.com"], subject: "Hello", body_text: "Body"}
 

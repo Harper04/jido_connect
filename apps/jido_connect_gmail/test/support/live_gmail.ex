@@ -160,8 +160,8 @@ defmodule Jido.Connect.Gmail.TestSupport.LiveGmail do
   Deletes `message_id` for good through messages.delete. A message that is
   already gone, 404, counts as deleted. A transient failure is retried up to
   five times within about 30 s: Gmail answered 500 to deleting a message
-  right after sending it and 204 a minute later. Any other failure raises
-  with the message ID and the HTTP status.
+  right after sending it and accepted the same delete a second later. Any
+  other failure raises with the message ID and the HTTP status.
   """
   def delete_message!(access_token, message_id) do
     case gmail_api(:delete, "/messages/#{message_id}", access_token,
