@@ -354,6 +354,17 @@ defmodule Jido.Connect.Slack.OAuthTest do
     end
   end
 
+  test "an :expires_at of nil leaves the lease at the default hour" do
+    stub_oauth("oauth_v2_access_token_rotation")
+    assert {:ok, token} = exchange("code")
+    before = DateTime.utc_now()
+
+    for lease_fun <- [&OAuth.bot_credential_lease/3, &OAuth.user_credential_lease/3] do
+      assert {:ok, lease} = lease_fun.(token, %{tenant_id: "tenant_1"}, expires_at: nil)
+      assert DateTime.diff(lease.expires_at, before) in 3599..3601
+    end
+  end
+
   test "a lease takes a given connection ID, else its connection's or its own" do
     stub_oauth("oauth_v2_access_bot_and_user")
     assert {:ok, token} = exchange("code")

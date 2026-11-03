@@ -183,9 +183,10 @@ defmodule Jido.Connect.Slack.OAuth do
   # `:connection_id` names another.
   defp credential_lease(access_token, context, opts, defaults) do
     expires_at =
-      opts
-      |> Keyword.get(:expires_at, DateTime.add(DateTime.utc_now(), 3600, :second))
-      |> not_after(defaults.token_expires_at)
+      not_after(
+        Keyword.get(opts, :expires_at) || DateTime.add(DateTime.utc_now(), 3600, :second),
+        defaults.token_expires_at
+      )
 
     fields = %{
       access_token: access_token,
