@@ -174,14 +174,8 @@ defmodule Jido.Connect.Gmail.SendLiveSmokeTest do
 
   defp delete_sent_on_exit(_access_token, _result), do: :ok
 
-  defp delete_draft_on_exit(access_token, {:ok, %{draft: %{draft_id: draft_id}}}) do
-    on_exit(fn ->
-      case LiveGmail.gmail_api(:delete, "/drafts/#{draft_id}", access_token) do
-        %{status: status} when status in 200..299 or status == 404 -> :ok
-        %{status: status} -> raise "cleanup could not delete live Gmail draft: HTTP #{status}"
-      end
-    end)
-  end
+  defp delete_draft_on_exit(access_token, {:ok, %{draft: %{draft_id: draft_id}}}),
+    do: on_exit(fn -> LiveGmail.delete_draft!(access_token, draft_id) end)
 
   defp delete_draft_on_exit(_access_token, _result), do: :ok
 

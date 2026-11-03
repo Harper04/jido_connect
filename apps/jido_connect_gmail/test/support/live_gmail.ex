@@ -163,16 +163,21 @@ defmodule Jido.Connect.Gmail.TestSupport.LiveGmail do
   right after sending it and accepted the same delete a second later. Any
   other failure raises with the message ID and the HTTP status.
   """
-  def delete_message!(access_token, message_id) do
-    case gmail_api(:delete, "/messages/#{message_id}", access_token,
-           retry: :transient,
-           max_retries: 5
-         ) do
-      %{status: status} when status in 200..299 or status == 404 ->
-        :ok
+  def delete_message!(access_token, message_id),
+    do: delete!(access_token, "/messages/#{message_id}", "message #{message_id}")
 
-      %{status: status} ->
-        raise "cleanup could not delete live Gmail message #{message_id}: HTTP #{status}"
+  @doc """
+  Deletes `draft_id` for good through drafts.delete, with the retry and the
+  404 rule of `delete_message!/2`, since a draft is deleted right after a
+  write as well.
+  """
+  def delete_draft!(access_token, draft_id),
+    do: delete!(access_token, "/drafts/#{draft_id}", "draft #{draft_id}")
+
+  defp delete!(access_token, path, name) do
+    case gmail_api(:delete, path, access_token, retry: :transient, max_retries: 5) do
+      %{status: status} when status in 200..299 or status == 404 -> :ok
+      %{status: status} -> raise "cleanup could not delete live Gmail #{name}: HTTP #{status}"
     end
   end
 

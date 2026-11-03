@@ -68,9 +68,9 @@ the same mailbox and sends nothing. Both tests read back what Gmail stores in
 `format=raw`, outside the connector and the recorder, and delete the
 sender's copies, the draft and an inserted message when they exit. Gmail
 answered 500 to deleting a message right after sending it, so
-`LiveGmail.delete_message!/2` retries transient failures. The recordings
-`message_send.json`, `message_send_reply.json`, `draft_create.json` and
-`draft_update.json` each hold the answer to one write.
+`LiveGmail.delete_message!/2` and `LiveGmail.delete_draft!/2` retry transient
+failures. The recordings `message_send.json`, `message_send_reply.json`,
+`draft_create.json` and `draft_update.json` each hold the answer to one write.
 
 ## Writing a Live Test
 
