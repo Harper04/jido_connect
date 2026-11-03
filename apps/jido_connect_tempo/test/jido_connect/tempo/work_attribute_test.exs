@@ -91,6 +91,32 @@ defmodule Jido.Connect.Tempo.WorkAttributeTest do
                WorkAttribute.normalize(Map.delete(phase, "names"))
     end
 
+    # Derived: every recorded attribute of another type, and one of a type
+    # the package does not describe, with an empty and with a filled choice
+    # list as Tempo could send them.
+    test "every type other than a static list has values nil, also with a choice list" do
+      [stored | _rest] = recorded_attribute(@page, "_JclPhase_")["values"]
+
+      others =
+        for attribute <- Fixture.recorded!(@page)["body"]["results"],
+            attribute["type"] != "STATIC_LIST",
+            do: attribute
+
+      unsupported = %{recorded_attribute(@page, "_JclHours_") | "type" => "DYNAMIC_DROPDOWN"}
+
+      for attribute <- [unsupported | others],
+          choices <- [
+            %{"values" => []},
+            %{"values" => [stored], "names" => %{stored => "build"}}
+          ] do
+        assert {:ok, %WorkAttribute{values: nil}} =
+                 WorkAttribute.normalize(Map.merge(attribute, choices))
+      end
+
+      assert others |> Enum.map(& &1["type"]) |> Enum.uniq() |> Enum.sort() ==
+               ["ACCOUNT", "CHECKBOX", "INPUT_FIELD", "INPUT_NUMERIC"]
+    end
+
     test "keys and types stay strings and create no atom" do
       novel = %{
         recorded_attribute(@page, "_JclHours_")

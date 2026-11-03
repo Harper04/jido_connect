@@ -164,6 +164,36 @@ defmodule Jido.Connect.Tempo.Client.AccountsTest do
       assert Enum.map(accounts, & &1.id) == [26, 28, 29]
     end
 
+    # Derived: two more links of JCL-SECONDARY (27), ID 30 scoped to project
+    # 10020 and ID 31 of scope type TEAM. Neither is evidence for the
+    # requested project.
+    test "an account keeps only the evidence of its candidate links" do
+      serve(
+        links: fn body ->
+          update_in(body, ["results"], fn links ->
+            secondary = Enum.at(links, 1)
+            other_project = secondary |> Map.put("id", 30) |> put_in(["scope", "id"], 10_020)
+            team = secondary |> Map.put("id", 31) |> put_in(["scope", "type"], "TEAM")
+            links ++ [other_project, team]
+          end)
+        end,
+        report: self()
+      )
+
+      assert {:ok, accounts} = Client.list_accounts_for_project(request(), @project)
+
+      assert %Account{links: [%{id: 25, default: false, scope_type: "PROJECT", scope_id: 10_882}]} =
+               Enum.find(accounts, &(&1.id == 27))
+
+      assert_received {:request, _host, "/4/account-links/project/10882", _query}
+
+      for id <- ["26", "27", "28", "29"] do
+        assert_received {:request, _host, "/4/accounts/" <> ^id, _query}
+      end
+
+      refute_received {:request, _host, _path, _query}
+    end
+
     # Derived: the recorded answer without links.
     test "a project without links returns no accounts" do
       serve(links: &Map.merge(&1, %{"results" => [], "metadata" => %{"count" => 0}}))
@@ -206,6 +236,7 @@ defmodule Jido.Connect.Tempo.Client.AccountsTest do
             "https://api.tempo.io/4/accounts/0",
             "https://api.tempo.io/4/worklogs/26",
             "https://api.tempo.io/4/accounts/26?redirect=https://collector.example.com",
+            "https://api.tempo.io/4/accounts/26#x",
             "https://api.tempo.io/4/accounts/%32%36",
             "/4/accounts/26"
           ] do
@@ -223,6 +254,31 @@ defmodule Jido.Connect.Tempo.Client.AccountsTest do
         assert_received {:request, "api.us.tempo.io", "/4/account-links/project/10882", _query}
         refute_received {:request, _host, _path, _query}
       end
+    end
+
+    # Derived: the last recorded link moved to project 10020 with a foreign
+    # reference. It is no candidate, and its reference is checked all the
+    # same.
+    test "when a link that is no candidate names a foreign origin, before any account read" do
+      serve(
+        links: fn body ->
+          body
+          |> relink(3, "https://collector.example.com/4/accounts/29")
+          |> update_in(["results"], fn links ->
+            List.update_at(links, 3, &put_in(&1, ["scope", "id"], 10_020))
+          end)
+        end,
+        report: self()
+      )
+
+      assert {:error,
+              %Error.ProviderError{
+                reason: :foreign_account_reference,
+                details: %{index: 3, link_id: 0}
+              }} = Client.list_accounts_for_project(request(), @project)
+
+      assert_received {:request, _host, "/4/account-links/project/10882", _query}
+      refute_received {:request, _host, _path, _query}
     end
 
     test "when an account read fails, with its status and reason" do
