@@ -86,11 +86,20 @@ defmodule Jido.Connect.Tempo.ScopeResolverTest do
              ) == ["tempo.periods.read", "tempo.approvals.read"]
     end
 
+    test "maps the account list for a project to the account read label only" do
+      assert ScopeResolver.required_scopes(
+               %{action_id: "tempo.account.list_for_project"},
+               %{},
+               nil
+             ) == ["tempo.accounts.read"]
+    end
+
     test "maps the worklog create to the worklog write label only" do
       assert ScopeResolver.operations() == %{
                "tempo.worklogs.list_own" => ["tempo.worklogs.read"],
                "tempo.worklog.create" => ["tempo.worklogs.write"],
-               "tempo.period.bookability.get" => ["tempo.periods.read", "tempo.approvals.read"]
+               "tempo.period.bookability.get" => ["tempo.periods.read", "tempo.approvals.read"],
+               "tempo.account.list_for_project" => ["tempo.accounts.read"]
              }
 
       assert ScopeResolver.required_scopes(%{action_id: "tempo.worklog.create"}, %{}, nil) ==

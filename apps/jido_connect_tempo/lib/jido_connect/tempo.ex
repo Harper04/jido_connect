@@ -67,7 +67,11 @@ defmodule Jido.Connect.Tempo do
   """
 
   use Jido.Connect,
-    fragments: [Jido.Connect.Tempo.Actions.Worklogs, Jido.Connect.Tempo.Actions.Periods]
+    fragments: [
+      Jido.Connect.Tempo.Actions.Worklogs,
+      Jido.Connect.Tempo.Actions.Periods,
+      Jido.Connect.Tempo.Actions.Accounts
+    ]
 
   defdelegate catalog_packs, to: Jido.Connect.Tempo.CatalogPacks, as: :all
 
