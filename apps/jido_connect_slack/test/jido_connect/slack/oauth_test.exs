@@ -2,8 +2,8 @@ defmodule Jido.Connect.Slack.OAuthTest do
   use ExUnit.Case, async: false
 
   alias Jido.Connect
-  alias Jido.Connect.Error
-  alias Jido.Connect.Slack.OAuth
+  alias Jido.Connect.{Error, Sanitizer}
+  alias Jido.Connect.Slack.{Client, OAuth}
   alias Jido.Connect.Slack.TestSupport.SyntheticFixture
 
   setup {Req.Test, :verify_on_exit!}
@@ -225,30 +225,139 @@ defmodule Jido.Connect.Slack.OAuthTest do
     assert Enum.sort(keys) == body |> Map.keys() |> Enum.sort()
   end
 
-  test "builds a redacted credential lease from a bot token response" do
-    token = %{
-      access_token: "xoxb-token",
-      bot_user_id: "U123",
-      app_id: "A123",
-      scope: ["channels:read", "chat:write"],
-      team: %{"id" => "T123", "name" => "Demo"}
-    }
+  test "builds a redacted bot lease from a response that also holds a user token" do
+    stub_oauth("oauth_v2_access_bot_and_user")
+    assert {:ok, token} = exchange("code")
 
     assert {:ok, %Connect.CredentialLease{} = lease} =
              OAuth.bot_credential_lease(token, %{tenant_id: "tenant_1"},
-               connection_id: "slack-team-T123"
+               connection_id: "slack-team-T9TK3CUKW"
              )
 
-    assert lease.connection_id == "slack-team-T123"
+    assert lease.connection_id == "slack-team-T9TK3CUKW"
     assert lease.provider == :slack
     assert lease.profile == :bot
     assert lease.tenant_id == "tenant_1"
     assert lease.owner_type == :tenant
-    assert lease.owner_id == "T123"
-    assert lease.scopes == ["channels:read", "chat:write"]
-    assert lease.fields.access_token == "xoxb-token"
-    assert lease.fields.slack_client == Jido.Connect.Slack.Client
-    refute inspect(lease) =~ "xoxb-token"
+    assert lease.owner_id == "T9TK3CUKW"
+    assert lease.scopes == ["commands", "incoming-webhook"]
+    assert lease.fields == %{access_token: "xoxb-synthetic-bot", slack_client: Client}
+    assert lease.metadata.bot_user_id == "U0KRQLJ9H"
+
+    for value <- [lease, Connect.CredentialLease.to_public_map(lease)],
+        secret <- ["xoxb-synthetic-bot", "xoxp-synthetic-user"] do
+      refute inspect(value) =~ secret
+    end
+  end
+
+  test "builds a redacted user lease from the authorizing user's token" do
+    stub_oauth("oauth_v2_access_bot_and_user")
+    assert {:ok, token} = exchange("code")
+    before = DateTime.utc_now()
+
+    assert {:ok, %Connect.CredentialLease{} = lease} =
+             OAuth.user_credential_lease(token, %{tenant_id: "tenant_1"})
+
+    assert lease.connection_id == "slack-team-T9TK3CUKW-user-U1234"
+    assert lease.provider == :slack
+    assert lease.profile == :user
+    assert lease.tenant_id == "tenant_1"
+    assert lease.owner_type == :user
+    assert lease.owner_id == "U1234"
+    assert lease.scopes == ["chat:write"]
+    assert lease.fields == %{access_token: "xoxp-synthetic-user", slack_client: Client}
+
+    assert %{
+             app_id: "A0KRD7HC3",
+             user_id: "U1234",
+             team: %{"id" => "T9TK3CUKW"},
+             enterprise: %{"id" => "E12345678"},
+             scopes: ["chat:write"]
+           } = lease.metadata
+
+    assert DateTime.diff(lease.expires_at, before) in 3599..3601
+
+    for value <- [
+          lease,
+          Connect.CredentialLease.to_public_map(lease),
+          Sanitizer.sanitize(token, :transport),
+          Sanitizer.sanitize(token, :telemetry)
+        ],
+        secret <- ["xoxp-synthetic-user", "xoxb-synthetic-bot"] do
+      refute inspect(value) =~ secret
+    end
+  end
+
+  test "a user lease never outlives a rotating user token and leaves its refresh token out" do
+    stub_oauth("oauth_v2_access_token_rotation")
+    assert {:ok, token} = exchange("code")
+    soon = DateTime.add(DateTime.utc_now(), 600, :second)
+    expiring = put_in(token, [:authed_user, :expires_at], soon)
+
+    assert {:ok, lease} = OAuth.user_credential_lease(expiring, %{tenant_id: "tenant_1"})
+    assert lease.expires_at == soon
+    assert lease.fields == %{access_token: "xoxe.xoxp-synthetic-user", slack_client: Client}
+
+    later = DateTime.add(DateTime.utc_now(), 7200, :second)
+
+    assert {:ok, %{expires_at: ^soon}} =
+             OAuth.user_credential_lease(expiring, %{tenant_id: "tenant_1"}, expires_at: later)
+
+    assert {:ok, lease} = OAuth.user_credential_lease(token, %{tenant_id: "tenant_1"})
+    assert DateTime.compare(lease.expires_at, token.authed_user.expires_at) == :lt
+
+    for secret <- ["xoxe.xoxp-synthetic-user", "xoxe-synthetic-user-refresh"] do
+      refute inspect(lease) =~ secret
+      refute inspect(Sanitizer.sanitize(token, :transport)) =~ secret
+    end
+  end
+
+  test "binds each lease to the host's connection of its profile" do
+    stub_oauth("oauth_v2_access_bot_and_user")
+    assert {:ok, token} = exchange("code")
+
+    for {profile, owner_type, owner_id, lease_fun, access_token} <- [
+          {:user, :user, "U1234", &OAuth.user_credential_lease/3, "xoxp-synthetic-user"},
+          {:bot, :tenant, "T9TK3CUKW", &OAuth.bot_credential_lease/3, "xoxb-synthetic-bot"}
+        ] do
+      connection =
+        Connect.Connection.new!(%{
+          id: "slack-#{profile}-connection",
+          provider: :slack,
+          profile: profile,
+          tenant_id: "tenant_1",
+          owner_type: owner_type,
+          owner_id: owner_id,
+          status: :connected,
+          scopes: ["chat:write"]
+        })
+
+      assert {:ok, lease} = lease_fun.(token, %{tenant_id: "tenant_1"}, connection: connection)
+      assert lease.connection_id == connection.id
+      assert Connect.CredentialLease.matches_connection?(lease, connection)
+      assert lease.fields.access_token == access_token
+    end
+  end
+
+  test "a lease needs the credential of its profile in the token response" do
+    stub_oauth("oauth_v2_access_bot_only")
+    assert {:ok, bot_only} = exchange("code")
+
+    assert {:error, %Error.AuthError{reason: :missing_user_credential} = error} =
+             OAuth.user_credential_lease(bot_only, %{tenant_id: "tenant_1"})
+
+    refute inspect(error) =~ "xoxb-synthetic-bot"
+
+    stub_oauth("oauth_v2_access_user_only")
+    assert {:ok, user_only} = exchange("code")
+
+    assert {:error, %Error.AuthError{reason: :missing_bot_credential} = error} =
+             OAuth.bot_credential_lease(user_only, %{tenant_id: "tenant_1"})
+
+    refute inspect(error) =~ "xoxp-synthetic-user"
+
+    assert {:ok, %{profile: :user, owner_id: "U065VRX1T0"}} =
+             OAuth.user_credential_lease(user_only, %{tenant_id: "tenant_1"})
   end
 
   defp stub_oauth(name) do

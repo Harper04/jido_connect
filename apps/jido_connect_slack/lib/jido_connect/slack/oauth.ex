@@ -46,6 +46,21 @@ defmodule Jido.Connect.Slack.OAuth do
   defp encode_scopes(nil), do: nil
   defp encode_scopes(scopes), do: Scope.encode(scopes, separator: ",")
 
+  @doc """
+  Exchanges a callback code through Slack `oauth.v2.access`.
+
+  The result keeps the bot credential at the top: `access_token`,
+  `token_type`, `scope` (a list), `bot_user_id`, `app_id`, `team` and
+  `enterprise`. When the flow asked for `user_scope`, `authed_user` holds the
+  authorizing user's credential: `id`, `access_token`, `token_type` and
+  `scope`, and with token rotation also `refresh_token`, `expires_in` and
+  `expires_at`. Without a user token the result has no `authed_user`. A
+  response with only a user token yields `app_id`, `team`, `enterprise` and
+  `authed_user`, without the bot fields.
+
+  The host stores both credentials; `bot_credential_lease/3` and
+  `user_credential_lease/3` turn them into leases.
+  """
   def exchange_code(code, opts \\ []) when is_binary(code) and is_list(opts) do
     client_id = CoreOAuth.fetch_required!(opts, :client_id, "SLACK_CLIENT_ID")
     client_secret = CoreOAuth.fetch_required!(opts, :client_secret, "SLACK_CLIENT_SECRET")
@@ -67,57 +82,132 @@ defmodule Jido.Connect.Slack.OAuth do
     |> handle_token_response()
   end
 
-  def bot_credential_lease(token, context, opts \\ []) when is_map(token) do
-    connection_id =
-      Keyword.get(opts, :connection_id) ||
-        "slack-team-#{get_in(token, [:team, "id"]) || get_in(token, [:team, :id])}"
+  @doc """
+  Builds a short-lived lease of the bot token from an `exchange_code/2`
+  result, for actions under the `:bot` profile.
 
-    expires_at = Keyword.get(opts, :expires_at, DateTime.add(DateTime.utc_now(), 3600, :second))
-    scopes = Map.get(token, :scope, [])
+  Returns an `AuthError` with reason `:missing_bot_credential` for a result
+  without a bot token, such as one from a flow with only `user_scope`.
+  """
+  def bot_credential_lease(token, context, opts \\ []) when is_map(token) do
+    case Map.get(token, :access_token) do
+      access_token when is_binary(access_token) ->
+        team_id = team_id(token)
+        scopes = Map.get(token, :scope, [])
+
+        credential_lease(access_token, context, opts, %{
+          connection_id: "slack-team-#{team_id}",
+          profile: :bot,
+          owner_type: :tenant,
+          owner_id: team_id,
+          scopes: scopes,
+          token_expires_at: nil,
+          metadata: %{
+            context: context,
+            app_id: Map.get(token, :app_id),
+            bot_user_id: Map.get(token, :bot_user_id),
+            team: Map.get(token, :team),
+            enterprise: Map.get(token, :enterprise),
+            scopes: scopes
+          }
+        })
+
+      _none ->
+        {:error,
+         Error.auth("Slack token response has no bot token", reason: :missing_bot_credential)}
+    end
+  end
+
+  @doc """
+  Builds a short-lived lease of the authorizing user's token from the
+  `authed_user` of an `exchange_code/2` result, for actions under the
+  `:user` profile, such as `slack.conversation.history` and
+  `slack.thread.replies`.
+
+  The lease carries the user token as `access_token`, never the refresh
+  token. It is owned by the user (`owner_type: :user`, `owner_id` the Slack
+  user ID), its scopes are the user token's, and it expires after an hour,
+  or at `:expires_at`, but never after the token's own `expires_at`. Pass
+  `:connection` to bind it to the host's user connection.
+
+  Returns an `AuthError` with reason `:missing_user_credential` when the
+  result holds no user token, as after a flow without `user_scope`.
+  """
+  def user_credential_lease(token, context, opts \\ []) when is_map(token) do
+    case Map.get(token, :authed_user) do
+      %{access_token: access_token, id: user_id} = user
+      when is_binary(access_token) and is_binary(user_id) ->
+        team_id = team_id(token)
+        scopes = Map.get(user, :scope, [])
+
+        credential_lease(access_token, context, opts, %{
+          connection_id: "slack-team-#{team_id}-user-#{user_id}",
+          profile: :user,
+          owner_type: :user,
+          owner_id: user_id,
+          scopes: scopes,
+          token_expires_at: Map.get(user, :expires_at),
+          metadata: %{
+            context: context,
+            app_id: Map.get(token, :app_id),
+            user_id: user_id,
+            team: Map.get(token, :team),
+            enterprise: Map.get(token, :enterprise),
+            scopes: scopes
+          }
+        })
+
+      _none ->
+        {:error,
+         Error.auth("Slack token response has no user token", reason: :missing_user_credential)}
+    end
+  end
+
+  # A lease bound to `:connection` takes that connection's ID unless
+  # `:connection_id` names another.
+  defp credential_lease(access_token, context, opts, defaults) do
+    expires_at =
+      opts
+      |> Keyword.get(:expires_at, DateTime.add(DateTime.utc_now(), 3600, :second))
+      |> not_after(defaults.token_expires_at)
 
     fields = %{
-      access_token: Map.fetch!(token, :access_token),
+      access_token: access_token,
       slack_client: Keyword.get(opts, :slack_client, Client)
     }
 
-    metadata = %{
-      context: context,
-      app_id: Map.get(token, :app_id),
-      bot_user_id: Map.get(token, :bot_user_id),
-      team: Map.get(token, :team),
-      enterprise: Map.get(token, :enterprise),
-      scopes: scopes
-    }
-
-    lease_opts = [
-      connection_id: connection_id,
-      expires_at: expires_at,
-      scopes: scopes,
-      metadata: metadata
-    ]
-
     case Keyword.get(opts, :connection) do
       %Connect.Connection{} = connection ->
-        Connect.CredentialLease.from_connection(connection, fields, lease_opts)
+        Connect.CredentialLease.from_connection(connection, fields,
+          connection_id: Keyword.get(opts, :connection_id, connection.id),
+          expires_at: expires_at,
+          scopes: defaults.scopes,
+          metadata: defaults.metadata
+        )
 
       _other ->
         Connect.CredentialLease.new(%{
-          connection_id: connection_id,
+          connection_id: Keyword.get(opts, :connection_id) || defaults.connection_id,
           provider: :slack,
-          profile: Keyword.get(opts, :profile, :bot),
+          profile: Keyword.get(opts, :profile, defaults.profile),
           tenant_id: Data.get(context, :tenant_id),
-          owner_type: Keyword.get(opts, :owner_type, :tenant),
-          owner_id:
-            Keyword.get(opts, :owner_id) ||
-              get_in(token, [:team, "id"]) ||
-              get_in(token, [:team, :id]),
-          scopes: scopes,
+          owner_type: Keyword.get(opts, :owner_type, defaults.owner_type),
+          owner_id: Keyword.get(opts, :owner_id) || defaults.owner_id,
+          scopes: defaults.scopes,
           expires_at: expires_at,
           fields: fields,
-          metadata: metadata
+          metadata: defaults.metadata
         })
     end
   end
+
+  defp not_after(expires_at, %DateTime{} = limit) do
+    if DateTime.compare(expires_at, limit) == :gt, do: limit, else: expires_at
+  end
+
+  defp not_after(expires_at, _no_limit), do: expires_at
+
+  defp team_id(token), do: get_in(token, [:team, "id"]) || get_in(token, [:team, :id])
 
   defp handle_token_response({:ok, %{status: status, body: %{"ok" => true} = body}})
        when status in 200..299 do
