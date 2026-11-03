@@ -217,9 +217,8 @@ defmodule Jido.Connect.Gmail.ContentTest do
                } = enclosed
              ] = message.messages
 
+      assert_enclosed_headers(recorded, message, enclosed, ~w(From Date))
       assert header(enclosed, "Subject") == "WG: jcl-live related original"
-      assert header(enclosed, "From") =~ ~r/^Person \d+ <person-\d+@example\.com>$/
-      assert is_binary(header(enclosed, "Date"))
 
       assert Enum.map(enclosed.text_parts, &{&1.part_id, &1.mime_type}) == [
                {"1.0.0.0", "text/plain"},
@@ -271,6 +270,8 @@ defmodule Jido.Connect.Gmail.ContentTest do
                } = enclosed
              ] = message.messages
 
+      # The seed gives the outer and the enclosed message the same sender.
+      assert_enclosed_headers(recorded, message, enclosed, ~w(Date Subject))
       assert header(enclosed, "Subject") == "Fwd: jcl-live untitled original"
 
       assert [%{part_id: "1.0.0.0", mime_type: "text/plain"} = plain, %{part_id: "1.0.0.1"}] =
@@ -922,6 +923,21 @@ defmodule Jido.Connect.Gmail.ContentTest do
 
   defp header(%{headers: headers}, name) do
     Enum.find_value(headers, fn header -> if header.name == name, do: header.value end)
+  end
+
+  # The nested message carries the headers that Gmail recorded on the root
+  # part inside its message/rfc822 part, not the outer ones: each header that
+  # `differing` names has a value that differs from the outer message's.
+  defp assert_enclosed_headers(recorded, message, enclosed, differing) do
+    assert [%{"parts" => [root | _rest]}] = get_in(recorded, part_path([enclosed.part_id]))
+
+    assert enclosed.headers ==
+             Enum.map(root["headers"], &%{name: &1["name"], value: &1["value"]})
+
+    for name <- differing do
+      assert is_binary(header(enclosed, name))
+      refute header(enclosed, name) == header(message, name)
+    end
   end
 
   defp context_and_lease do
