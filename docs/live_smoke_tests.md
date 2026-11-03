@@ -327,6 +327,27 @@ a shorter run no longer writes. Without `JIDO_CONNECT_RECORD=1` the call does
 nothing, so live tests keep the call in place. Recording refuses to start while
 the Req options contain `:plug`, because a plug replaces the network.
 
+A test account on a site that real users share returns their data next to the
+test data, and the sanitizer does not know which is which. The `:transform`
+option of `record/4` takes a function of the decoded request path and the
+decoded response body that returns the body to record, or `:skip` to write no
+fixture for that response:
+
+```elixir
+LiveSmoke.record({:jido_connect_tempo, :tempo_req_options}, :tempo, "accounts",
+  transform: fn
+    "/4/accounts/" <> id, _body when id not in test_ids -> :skip
+    _path, body -> body
+  end
+)
+```
+
+The transform runs before the sanitizer, so the leak guard checks its result.
+It changes only the fixture; the caller still gets the response as the provider
+sent it. A skipped response takes no number. Use it only to leave out or
+neutralize data that must not be committed, and say in the test what it
+changes, since the fixture then differs from the provider's answer.
+
 A fixture file holds the recording date, the request method and the decoded
 path without query, the status, the sanitized response headers and the
 sanitized body. A body that is not UTF-8, such as a file download, is stored as
