@@ -20,6 +20,7 @@ defmodule Jido.Connect.Slack.UserViewTest do
 
   @bot_user "U0CDHUEBVEJ"
   @authorizing_user "U0CDPFT1RDJ"
+  @bot_dm "D0CD4G48UFR"
 
   describe "message signals" do
     test "a captured user event from a channel the bot is not in normalizes through the public channel trigger" do
@@ -109,32 +110,42 @@ defmodule Jido.Connect.Slack.UserViewTest do
       end
     end
 
-    # Derived: the captured share into the bot DM, moved into the user's DM
-    # without the bot with that DM's captured authorization. No share in such
-    # a DM was captured.
-    test "a share keeps shared_messages in both views; only the bot view is a handover" do
+    # Derived: the captured share into the bot DM with the captured
+    # authorization of the user's DM without the bot, once in the bot DM and
+    # once moved into that DM. All 18 message deliveries captured from the
+    # bot DM named the bot, and no share in a DM without the bot was
+    # captured.
+    test "a share keeps shared_messages and its DM in both views, so the bot DM marks a handover" do
       user_view = payload!("message_im_user_view")
 
       assert {:ok, %WebhookDelivery{normalized_signal: handover}} =
                replay("message_im_shared_public")
 
-      assert %{view: "bot", viewer: @bot_user, shared_messages: [shared]} = handover
-
-      capture =
-        derive("message_im_shared_public", fn payload ->
-          payload
-          |> Map.put("authorizations", user_view["authorizations"])
-          |> put_in(["event", "channel"], "D0CDPKW29DJ")
-        end)
-
-      assert {:ok, %WebhookDelivery{normalized_signal: share}} = replay(capture)
-
       assert %{
-               channel: "D0CDPKW29DJ",
-               view: "user",
-               viewer: @authorizing_user,
-               shared_messages: [^shared]
-             } = share
+               view: "bot",
+               viewer: @bot_user,
+               conversation: %{id: @bot_dm},
+               shared_messages: [shared]
+             } = handover
+
+      for channel <- [@bot_dm, "D0CDPKW29DJ"] do
+        capture =
+          derive("message_im_shared_public", fn payload ->
+            payload
+            |> Map.put("authorizations", user_view["authorizations"])
+            |> put_in(["event", "channel"], channel)
+          end)
+
+        assert {:ok, %WebhookDelivery{normalized_signal: share}} = replay(capture)
+
+        assert %{
+                 channel: ^channel,
+                 conversation: %{id: ^channel},
+                 view: "user",
+                 viewer: @authorizing_user,
+                 shared_messages: [^shared]
+               } = share
+      end
     end
 
     # Derived from the captured user event.

@@ -84,9 +84,12 @@ keeps both views apart:
 Each message and change signal says whose view it comes from. `view` is
 `"bot"` or `"user"`, from `authorizations[].is_bot` of the delivery, and
 `viewer` is that authorization's `user_id`. Slack names only one
-installation per delivery, even when several can see the event. A share in
-a DM is a handover to the app only in the bot view. The package README
-describes the signals in its section "Bot view and user view".
+installation per delivery, even when several can see the event. A share is
+a handover to the app when it comes from the bot DM. `view: "bot"` proves
+that; with `view: "user"` the host compares `conversation.id` with the bot
+DM it knows, since the person sees the bot DM too and Slack does not
+document which view it names there. The package README describes the
+signals in its section "Bot view and user view".
 
 The tests of `exchange_code/2` use `oauth.v2.access` responses written from
 Slack's documentation, in

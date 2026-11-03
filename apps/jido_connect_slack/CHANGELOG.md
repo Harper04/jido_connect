@@ -98,7 +98,10 @@
   and the signals of the eight edit and deletion triggers carry `view`
   (`"bot"` or `"user"`) and `viewer` from the delivery's `authorizations`,
   and `MessageChange` has both fields. `shared_messages` stays in both
-  views; a share is a handover to the app only in the bot view.
+  views. A share with `view: "bot"` comes from the bot DM and hands the
+  message to the app; one with `view: "user"` does so only when its
+  `conversation.id` is the bot DM, since Slack does not document which
+  view it names there.
 
 ## 0.1.0
 

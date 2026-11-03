@@ -398,15 +398,19 @@ attachment:
 - `text`, its text,
 - `from_url`, Slack's link to it.
 
-A handover is a share into the bot DM in the bot view: a `message.im`
-signal with `view: "bot"` and `shared_messages`. In the bot view an `im`
-signal always comes from the bot's own DM, since the bot can see no other
-DM. With user events, a share in a DM between the authorizing person and a
-colleague arrives as `message.im` as well and keeps `shared_messages`, but
-says `view: "user"`; it hands nothing to the app. A host that acts on
-handovers checks `view` besides `shared_messages`. No share into a DM
-without the bot was captured; the tests derive one from the captured share
-into the bot DM.
+A handover is a share into the bot DM: a `message.im` signal with
+`shared_messages` from the bot's own DM. `view: "bot"` proves that, since
+the bot can see no other DM. With user events, a share in a DM between the
+authorizing person and a colleague arrives as `message.im` as well and
+keeps `shared_messages`, but says `view: "user"`; it hands nothing to the
+app. `view: "user"` does not rule out the bot DM, though: the person sees
+it too, and Slack does not document which of the two it names. All 18
+message deliveries captured from the bot DM named the bot. A host that acts
+on handovers takes a share with `view: "bot"`, and one with `view: "user"`
+only when `conversation.id` is the bot DM it knows, such as the `channel`
+that `slack.conversation.open` returns for the person under a bot lease. No
+share into a DM without the bot was captured; the tests derive one from
+the captured share into the bot DM.
 
 The app sees only the shared message, not the rest of its conversation or
 thread. An entry has no `thread_ts`: the package reads no thread from the
