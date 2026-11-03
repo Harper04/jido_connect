@@ -339,6 +339,55 @@ defmodule Jido.Connect.Slack.OAuthTest do
     end
   end
 
+  test "refuses a connection or profile other than the token's" do
+    stub_oauth("oauth_v2_access_bot_and_user")
+    assert {:ok, token} = exchange("code")
+    context = %{tenant_id: "tenant_1"}
+
+    for {profile, other, lease_fun} <- [
+          {:user, :bot, &OAuth.user_credential_lease/3},
+          {:bot, :user, &OAuth.bot_credential_lease/3}
+        ] do
+      connection_id = "slack-#{other}-connection"
+
+      assert {:error,
+              %Error.AuthError{
+                reason: :unsupported_auth_profile,
+                connection_id: ^connection_id,
+                details: %{profile: ^other, allowed_profiles: [^profile]}
+              } = error} = lease_fun.(token, context, connection: connection(other))
+
+      refute inspect(error) =~ "synthetic"
+
+      assert {:error,
+              %Error.AuthError{
+                reason: :unsupported_auth_profile,
+                connection_id: "host-lease",
+                details: %{profile: ^other, allowed_profiles: [^profile]}
+              }} = lease_fun.(token, context, profile: other, connection_id: "host-lease")
+
+      assert {:error,
+              %Error.AuthError{
+                reason: :credential_connection_mismatch,
+                connection_id: "github-connection",
+                details: %{
+                  field: :provider,
+                  expected: :github,
+                  actual: :slack,
+                  lease_connection_id: "github-connection"
+                }
+              }} =
+               lease_fun.(token, context,
+                 connection: connection(profile, id: "github-connection", provider: :github)
+               )
+
+      assert {:ok, %{profile: ^profile}} = lease_fun.(token, context, profile: profile)
+
+      assert {:ok, %{profile: ^profile}} =
+               lease_fun.(token, context, connection: connection(profile))
+    end
+  end
+
   test "a lease needs the credential of its profile in the token response" do
     stub_oauth("oauth_v2_access_bot_only")
     assert {:ok, bot_only} = exchange("code")
@@ -358,6 +407,29 @@ defmodule Jido.Connect.Slack.OAuthTest do
 
     assert {:ok, %{profile: :user, owner_id: "U065VRX1T0"}} =
              OAuth.user_credential_lease(user_only, %{tenant_id: "tenant_1"})
+  end
+
+  # A host connection for the token of the oauth_v2_access_bot_and_user
+  # response.
+  defp connection(profile, overrides \\ []) do
+    {owner_type, owner_id} =
+      case profile do
+        :user -> {:user, "U1234"}
+        :bot -> {:tenant, "T9TK3CUKW"}
+      end
+
+    %{
+      id: "slack-#{profile}-connection",
+      provider: :slack,
+      profile: profile,
+      tenant_id: "tenant_1",
+      owner_type: owner_type,
+      owner_id: owner_id,
+      status: :connected,
+      scopes: ["chat:write"]
+    }
+    |> Map.merge(Map.new(overrides))
+    |> Connect.Connection.new!()
   end
 
   defp stub_oauth(name) do

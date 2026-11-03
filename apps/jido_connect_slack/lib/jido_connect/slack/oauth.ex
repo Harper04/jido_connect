@@ -86,6 +86,14 @@ defmodule Jido.Connect.Slack.OAuth do
   Builds a short-lived lease of the bot token from an `exchange_code/2`
   result, for actions under the `:bot` profile.
 
+  Pass `:connection` to bind the lease to the host's bot connection; the
+  lease then takes that connection's ID, tenant and owner. A connection of
+  another provider returns an `AuthError` with reason
+  `:credential_connection_mismatch`. A connection of another profile, or a
+  `:profile` other than `:bot`, returns one with reason
+  `:unsupported_auth_profile`, since the lease would carry the bot token
+  under another profile.
+
   Returns an `AuthError` with reason `:missing_bot_credential` for a result
   without a bot token, such as one from a flow with only `user_scope`.
   """
@@ -127,8 +135,16 @@ defmodule Jido.Connect.Slack.OAuth do
   The lease carries the user token as `access_token`, never the refresh
   token. It is owned by the user (`owner_type: :user`, `owner_id` the Slack
   user ID), its scopes are the user token's, and it expires after an hour,
-  or at `:expires_at`, but never after the token's own `expires_at`. Pass
-  `:connection` to bind it to the host's user connection.
+  or at `:expires_at`, but never after the token's own `expires_at`.
+
+  Pass `:connection` to bind the lease to the host's user connection; the
+  lease then takes that connection's ID, tenant and owner. The connection's
+  `owner_id` is the host's and is not compared with the Slack user ID. A
+  connection of another provider returns an `AuthError` with reason
+  `:credential_connection_mismatch`. A connection of another profile, or a
+  `:profile` other than `:user`, returns one with reason
+  `:unsupported_auth_profile`, since the lease would carry the user token
+  under another profile.
 
   Returns an `AuthError` with reason `:missing_user_credential` when the
   result holds no user token, as after a flow without `user_scope`.
@@ -178,28 +194,57 @@ defmodule Jido.Connect.Slack.OAuth do
 
     case Keyword.get(opts, :connection) do
       %Connect.Connection{} = connection ->
-        Connect.CredentialLease.from_connection(connection, fields,
-          connection_id: Keyword.get(opts, :connection_id, connection.id),
-          expires_at: expires_at,
-          scopes: defaults.scopes,
-          metadata: defaults.metadata
-        )
+        connection_id = Keyword.get(opts, :connection_id, connection.id)
+
+        with :ok <- slack_connection(connection, connection_id),
+             :ok <- token_profile(connection.profile, connection.id, defaults.profile) do
+          Connect.CredentialLease.from_connection(connection, fields,
+            connection_id: connection_id,
+            expires_at: expires_at,
+            scopes: defaults.scopes,
+            metadata: defaults.metadata
+          )
+        end
 
       _other ->
-        Connect.CredentialLease.new(%{
-          connection_id: Keyword.get(opts, :connection_id) || defaults.connection_id,
-          provider: :slack,
-          profile: Keyword.get(opts, :profile, defaults.profile),
-          tenant_id: Data.get(context, :tenant_id),
-          owner_type: Keyword.get(opts, :owner_type, defaults.owner_type),
-          owner_id: Keyword.get(opts, :owner_id) || defaults.owner_id,
-          scopes: defaults.scopes,
-          expires_at: expires_at,
-          fields: fields,
-          metadata: defaults.metadata
-        })
+        connection_id = Keyword.get(opts, :connection_id) || defaults.connection_id
+        profile = Keyword.get(opts, :profile) || defaults.profile
+
+        with :ok <- token_profile(profile, connection_id, defaults.profile) do
+          Connect.CredentialLease.new(%{
+            connection_id: connection_id,
+            provider: :slack,
+            profile: profile,
+            tenant_id: Data.get(context, :tenant_id),
+            owner_type: Keyword.get(opts, :owner_type, defaults.owner_type),
+            owner_id: Keyword.get(opts, :owner_id) || defaults.owner_id,
+            scopes: defaults.scopes,
+            expires_at: expires_at,
+            fields: fields,
+            metadata: defaults.metadata
+          })
+        end
     end
   end
+
+  # The details follow `CredentialLease.validate_connection_binding/2`:
+  # `expected` is the connection's value, `actual` the lease's.
+  defp slack_connection(%Connect.Connection{provider: :slack}, _connection_id), do: :ok
+
+  defp slack_connection(%Connect.Connection{} = connection, connection_id) do
+    {:error,
+     Error.credential_connection_mismatch(connection.id, connection_id, %{
+       field: :provider,
+       expected: connection.provider,
+       actual: :slack
+     })}
+  end
+
+  # A bot token leases only under `:bot`, a user token only under `:user`.
+  defp token_profile(profile, _connection_id, profile), do: :ok
+
+  defp token_profile(profile, connection_id, token_profile),
+    do: {:error, Error.unsupported_auth_profile(connection_id, profile, [token_profile])}
 
   defp not_after(expires_at, %DateTime{} = limit) do
     if DateTime.compare(expires_at, limit) == :gt, do: limit, else: expires_at

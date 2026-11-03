@@ -80,6 +80,11 @@
   `:missing_bot_credential` for a token without a bot token instead of
   raising, and a lease bound to `:connection` now takes that connection's
   ID instead of `slack-team-<team>`, so it matches the connection.
+- Both lease functions refuse a `:connection` of another provider with
+  reason `:credential_connection_mismatch`, and a `:connection` or
+  `:profile` of the other profile with reason `:unsupported_auth_profile`.
+  Before, `bot_credential_lease/3` took the profile of any connection or
+  `:profile`, so a lease could carry one token under the other profile.
 - `AppManifest.build/2` takes `:user_scopes` for
   `oauth_config.scopes.user` and `:user_events` for
   `settings.event_subscriptions.user_events`; user events need

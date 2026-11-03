@@ -84,8 +84,12 @@ never the refresh token, and expires after an hour or at `:expires_at`,
 but never after the token's own `expires_at`. Pass `connection:` to bind a
 lease to the host's connection. A result without the token of the profile
 returns a `Jido.Connect.Error.AuthError` with reason
-`:missing_bot_credential` or `:missing_user_credential`. Refreshing a
-rotating token and storing it stay with the host.
+`:missing_bot_credential` or `:missing_user_credential`. A connection of
+another provider returns one with reason `:credential_connection_mismatch`.
+A connection of the other profile, or a `profile:` option other than the
+lease's, returns one with reason `:unsupported_auth_profile`: a bot lease
+never carries the user token, and a user lease never the bot token.
+Refreshing a rotating token and storing it stay with the host.
 
 `Jido.Connect.Slack.AppManifest.build/2` adds the user view to a manifest on
 request: `user_scopes:` under `oauth_config.scopes.user` and `user_events:`
