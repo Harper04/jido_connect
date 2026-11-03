@@ -118,13 +118,13 @@ defmodule Jido.Connect.Gmail.TestSupport.LiveGmail do
 
   @doc """
   Calls the Gmail API directly, outside the connector and the recorder, for
-  setup and cleanup.
+  setup, cleanup and reading back what Gmail stores. `opts` go to Req and
+  replace the defaults, such as `retry: false`.
   """
   def gmail_api(method, path, access_token, opts \\ []) do
-    Req.request!(
-      [method: method, url: @gmail_api <> path, auth: {:bearer, access_token}, retry: false] ++
-        opts
-    )
+    [method: method, url: @gmail_api <> path, auth: {:bearer, access_token}, retry: false]
+    |> Keyword.merge(opts)
+    |> Req.request!()
   end
 
   @doc """
@@ -158,11 +158,16 @@ defmodule Jido.Connect.Gmail.TestSupport.LiveGmail do
 
   @doc """
   Deletes `message_id` for good through messages.delete. A message that is
-  already gone, 404, counts as deleted; any other failure raises with the
-  message ID and the HTTP status.
+  already gone, 404, counts as deleted. A transient failure is retried up to
+  five times within about 30 s: Gmail answered 500 to deleting a message
+  right after sending it and 204 a minute later. Any other failure raises
+  with the message ID and the HTTP status.
   """
   def delete_message!(access_token, message_id) do
-    case gmail_api(:delete, "/messages/#{message_id}", access_token) do
+    case gmail_api(:delete, "/messages/#{message_id}", access_token,
+           retry: :transient,
+           max_retries: 5
+         ) do
       %{status: status} when status in 200..299 or status == 404 ->
         :ok
 
