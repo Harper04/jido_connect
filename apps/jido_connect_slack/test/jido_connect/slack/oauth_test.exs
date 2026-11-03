@@ -230,9 +230,7 @@ defmodule Jido.Connect.Slack.OAuthTest do
     assert {:ok, token} = exchange("code")
 
     assert {:ok, %Connect.CredentialLease{} = lease} =
-             OAuth.bot_credential_lease(token, %{tenant_id: "tenant_1"},
-               connection_id: "slack-team-T9TK3CUKW"
-             )
+             OAuth.bot_credential_lease(token, %{tenant_id: "tenant_1"})
 
     assert lease.connection_id == "slack-team-T9TK3CUKW"
     assert lease.provider == :slack
@@ -316,26 +314,43 @@ defmodule Jido.Connect.Slack.OAuthTest do
     stub_oauth("oauth_v2_access_bot_and_user")
     assert {:ok, token} = exchange("code")
 
-    for {profile, owner_type, owner_id, lease_fun, access_token} <- [
-          {:user, :user, "U1234", &OAuth.user_credential_lease/3, "xoxp-synthetic-user"},
-          {:bot, :tenant, "T9TK3CUKW", &OAuth.bot_credential_lease/3, "xoxb-synthetic-bot"}
+    for {profile, lease_fun, access_token, scopes, token_user} <- [
+          {:user, &OAuth.user_credential_lease/3, "xoxp-synthetic-user", ["chat:write"],
+           %{user_id: "U1234"}},
+          {:bot, &OAuth.bot_credential_lease/3, "xoxb-synthetic-bot",
+           ["commands", "incoming-webhook"], %{bot_user_id: "U0KRQLJ9H"}}
         ] do
-      connection =
-        Connect.Connection.new!(%{
-          id: "slack-#{profile}-connection",
-          provider: :slack,
-          profile: profile,
-          tenant_id: "tenant_1",
-          owner_type: owner_type,
-          owner_id: owner_id,
-          status: :connected,
-          scopes: ["chat:write"]
-        })
+      # The connection's scopes differ from the token's; the lease keeps
+      # the token's.
+      connection = connection(profile, scopes: ["channels:history", "chat:write"])
 
       assert {:ok, lease} = lease_fun.(token, %{tenant_id: "tenant_1"}, connection: connection)
       assert lease.connection_id == connection.id
       assert Connect.CredentialLease.matches_connection?(lease, connection)
       assert lease.fields.access_token == access_token
+      assert lease.scopes == scopes
+
+      assert %{
+               context: %{tenant_id: "tenant_1"},
+               app_id: "A0KRD7HC3",
+               team: %{"id" => "T9TK3CUKW"},
+               enterprise: %{"id" => "E12345678"},
+               scopes: ^scopes
+             } = lease.metadata
+
+      assert Map.take(lease.metadata, Map.keys(token_user)) == token_user
+    end
+  end
+
+  test "a lease ends at an :expires_at before the default hour" do
+    stub_oauth("oauth_v2_access_token_rotation")
+    assert {:ok, token} = exchange("code")
+    soon = DateTime.add(DateTime.utc_now(), 300, :second)
+
+    # The user token expires in 12 hours, the bot token never.
+    for lease_fun <- [&OAuth.bot_credential_lease/3, &OAuth.user_credential_lease/3] do
+      assert {:ok, %{expires_at: ^soon}} =
+               lease_fun.(token, %{tenant_id: "tenant_1"}, expires_at: soon)
     end
   end
 
