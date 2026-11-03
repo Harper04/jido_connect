@@ -5,8 +5,8 @@ defmodule Jido.Connect.Tempo.Client.WorkAttributesTest do
   alias Jido.Connect.Tempo.{Client, Fixture, WorkAttribute}
   alias Jido.Connect.Tempo.Client.Request
 
-  # Recorded on 2026-11-03 in a work-attribute window with the four test
-  # attributes optional: the site's seven attributes on one page, the three
+  # Recorded on 2026-11-03 in a work-attribute window with the five test
+  # attributes optional: the site's eight attributes on one page, the three
   # outside the test data neutralized to `_Other1_` to `_Other3_` with their
   # recorded type and required flag. The site has fewer than 50 attributes,
   # so pages of three are derived from that page: the same results in
@@ -19,7 +19,8 @@ defmodule Jido.Connect.Tempo.Client.WorkAttributesTest do
     "_JclPhase_",
     "_JclBillable_",
     "_JclHours_",
-    "_JclAccount_"
+    "_JclAccount_",
+    "_JclNote_"
   ]
 
   setup {Req.Test, :verify_on_exit!}
@@ -67,7 +68,7 @@ defmodule Jido.Connect.Tempo.Client.WorkAttributesTest do
       assert {:ok, attributes} = Client.list_work_attributes(request(), limit: 3)
       assert Enum.map(attributes, & &1.key) == @keys
 
-      assert [%WorkAttribute{key: "_JclAccount_", required: true}] =
+      assert [%WorkAttribute{key: "_JclNote_", required: true}] =
                Enum.filter(attributes, & &1.required)
 
       for offset <- ["0", "3", "6"] do

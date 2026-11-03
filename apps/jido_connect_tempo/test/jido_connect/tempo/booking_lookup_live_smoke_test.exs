@@ -13,17 +13,21 @@ defmodule Jido.Connect.Tempo.BookingLookupLiveSmokeTest do
   global accounts next to these; the checks assert nothing about those
   accounts beyond that the read succeeds.
 
-  The work attribute checks need the four test attributes `_JclPhase_`
+  The work attribute checks need the five test attributes `_JclPhase_`
   (STATIC_LIST with the labels analysis, build and review), `_JclBillable_`
-  (CHECKBOX), `_JclHours_` (INPUT_NUMERIC) and `_JclAccount_` (ACCOUNT).
-  They exist on the site only around a run: the seed script
-  `tempo_attributes.py up` creates them, required unless `--optional`, and
-  gives the seeded worklog of October 1, 2026 the values build, true, 1.5
-  and JCL-PROJECT; `down` deletes them. These checks run only with
-  `TEMPO_WORK_ATTRIBUTES` set to the mode of the run, `required` or
-  `optional`. The attribute check compares with that configured form and
+  (CHECKBOX), `_JclHours_` (INPUT_NUMERIC), `_JclAccount_` (ACCOUNT) and
+  `_JclNote_` (INPUT_FIELD). They exist on the site only around a run: the
+  seed script `tempo_attributes.py up` creates them, required unless
+  `--optional`, with `_JclNote_` optional in both modes, and gives the
+  seeded worklog of October 1, 2026 the values build, true, 1.5,
+  JCL-PROJECT and `JCL live note`; `down` deletes them. These checks run
+  only with `TEMPO_WORK_ATTRIBUTES` set to the mode of the run, `required`
+  or `optional`. The attribute check compares with that configured form and
   names the recording after the mode: `work_attributes_required` or
-  `work_attributes_optional`.
+  `work_attributes_optional`. The value check records
+  `work_attribute_values` in the optional mode only, so the recording
+  belongs to the window of `work_attributes_optional`, whose stored values
+  of `_JclPhase_` it holds; a run in the required mode leaves it alone.
 
   Recordings leave out what the shared site returns besides the test data
   (see `LiveTempo.site_data/2`). The test user's account ID comes from Jira
@@ -58,9 +62,13 @@ defmodule Jido.Connect.Tempo.BookingLookupLiveSmokeTest do
     "_JclPhase_" => {"STATIC_LIST", "JCL live: phase"},
     "_JclBillable_" => {"CHECKBOX", "JCL live: billable"},
     "_JclHours_" => {"INPUT_NUMERIC", "JCL live: estimate hours"},
-    "_JclAccount_" => {"ACCOUNT", "JCL live: account"}
+    "_JclAccount_" => {"ACCOUNT", "JCL live: account"},
+    "_JclNote_" => {"INPUT_FIELD", "JCL live: note"}
   }
   @attribute_keys @attributes |> Map.keys() |> Enum.sort()
+  # Optional in both modes, so a required window never forces other users
+  # of the site to fill it in.
+  @always_optional ["_JclNote_"]
   @accounts %{
     "JCL-PROJECT" => {"JCL live: project account", "OPEN", false},
     "JCL-SECONDARY" => {"JCL live: second project account", "OPEN", false},
@@ -135,7 +143,7 @@ defmodule Jido.Connect.Tempo.BookingLookupLiveSmokeTest do
     assert details.message == "Invalid account"
   end
 
-  # Needs the four test attributes, which exist only in a work-attribute
+  # Needs the five test attributes, which exist only in a work-attribute
   # window; see the moduledoc.
   @tag env!(["TEMPO_WORK_ATTRIBUTES", "TEMPO_OAUTH_ACCESS_TOKEN", "TEMPO_API_ORIGIN" | @jira])
   test "the work attributes match the configured time-entry form", %{env: env} do
@@ -158,7 +166,7 @@ defmodule Jido.Connect.Tempo.BookingLookupLiveSmokeTest do
     for attribute <- attributes do
       direct = raw[attribute.key]
       assert {attribute.type, attribute.name} == @attributes[attribute.key]
-      assert attribute.required == required
+      assert attribute.required == (required and attribute.key not in @always_optional)
 
       assert {attribute.key, attribute.name, attribute.type, attribute.required, attribute.self} ==
                {direct["key"], direct["name"], direct["type"], direct["required"], direct["self"]}
@@ -176,8 +184,9 @@ defmodule Jido.Connect.Tempo.BookingLookupLiveSmokeTest do
     assert consistent?, "complete does not match the incomplete requirements"
   end
 
-  # Needs the four test attributes; see the moduledoc. The worklog read is
-  # recorded after the attribute and account reads, which are not.
+  # Needs the five test attributes; see the moduledoc. Records only in the
+  # optional mode. The worklog read is recorded after the attribute and
+  # account reads, which are not.
   @tag env!([
          "TEMPO_WORK_ATTRIBUTES",
          "TEMPO_API_TOKEN",
@@ -206,9 +215,11 @@ defmodule Jido.Connect.Tempo.BookingLookupLiveSmokeTest do
         "the account read"
       )
 
-    LiveSmoke.record(@recorder, :tempo, "work_attribute_values",
-      transform: site_data(%{}, @attribute_keys)
-    )
+    unless required!(env) do
+      LiveSmoke.record(@recorder, :tempo, "work_attribute_values",
+        transform: site_data(%{}, @attribute_keys)
+      )
+    end
 
     worklogs =
       ok!(invoke(context, :api_token, token, day, "tempo.worklogs.list_own"), "the read")
@@ -230,8 +241,10 @@ defmodule Jido.Connect.Tempo.BookingLookupLiveSmokeTest do
 
     IO.puts("CHECKBOX value: #{inspect(stored["_JclBillable_"])}")
     IO.puts("INPUT_NUMERIC value: #{inspect(stored["_JclHours_"])}")
+    IO.puts("INPUT_FIELD value: #{inspect(stored["_JclNote_"])}")
     assert stored["_JclBillable_"] == "true"
     assert stored["_JclHours_"] == "1.5"
+    assert stored["_JclNote_"] == "JCL live note"
 
     project_account = Enum.find(accounts.accounts, &(&1.key == "JCL-PROJECT"))
     assert stored["_JclAccount_"] == project_account.key
@@ -269,7 +282,7 @@ defmodule Jido.Connect.Tempo.BookingLookupLiveSmokeTest do
         do: {id, account}
   end
 
-  # The four test attributes, read directly in one page, by key.
+  # The five test attributes, read directly in one page, by key.
   defp raw_test_attributes!(env, token) do
     case raw_get!(env, token, "/4/work-attributes", offset: 0, limit: 1000) do
       %{"results" => results, "metadata" => metadata} when not is_map_key(metadata, "next") ->

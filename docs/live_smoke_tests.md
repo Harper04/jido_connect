@@ -297,20 +297,24 @@ The Tempo booking lookup checks are in `booking_lookup_live_smoke_test.exs`.
 The account check relies on the seeded accounts alone: JCL-PROJECT
 (`TEMPO_ACCOUNT_ID`, the default link), JCL-SECONDARY and the closed
 JCL-CLOSED, linked to `TEMPO_JIRA_PROJECT_ID`, and the global JCL-GLOBAL.
-The work attribute checks need the four test attributes `_JclPhase_`,
-`_JclBillable_`, `_JclHours_` and `_JclAccount_`, which exist on the shared
-site only around a run, since every user's time-entry form shows them.
+The work attribute checks need the five test attributes `_JclPhase_`,
+`_JclBillable_`, `_JclHours_`, `_JclAccount_` and `_JclNote_`, which exist
+on the shared site only around a run, since every user's time-entry form
+shows them.
 `~/.config/jido_connect/live/seed/atlassian/tempo_attributes.py up` creates
-them, required unless `--optional`, and gives the seeded worklog of
-October 1, 2026 a value for each; `down` deletes them and their values.
+them, required unless `--optional`, with the free-text `_JclNote_` optional
+in both modes, and gives the seeded worklog of October 1, 2026 a value for
+each; `down` deletes them and their values.
 Those checks run only with `TEMPO_WORK_ATTRIBUTES` set to the mode of the
 run, `required` or `optional`, and are skipped without it. The attribute
 check compares every test attribute's required flag with that mode and
 names its recording after it, `work_attributes_required` or
-`work_attributes_optional`. Tempo assigns new stored values each time
-`up` creates `_JclPhase_`, so `work_attribute_values` must be recorded in
-the window of `work_attributes_required`, whose stored values the offline
-tests pin.
+`work_attributes_optional`. The value check records `work_attribute_values`
+in the optional mode only, so a required run never overwrites it. Tempo
+assigns new stored values each time `up` creates `_JclPhase_`, and the
+offline tests match the stored value in `work_attribute_values` against
+`work_attributes_optional`: record those two in the same optional run.
+`work_attributes_required` needs a required run of its own.
 
 The site is shared with real users, and Tempo returns their data in the
 same responses: every work attribute of the site and every global account

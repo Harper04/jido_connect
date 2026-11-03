@@ -4,15 +4,16 @@ defmodule Jido.Connect.Tempo.WorkAttributeTest do
   alias Jido.Connect.Tempo.{Fixture, WorkAttribute, Worklog}
 
   # Recorded on 2026-11-03 in two work-attribute windows of the test site.
-  # `work_attributes_optional` holds the site's seven attributes with the
-  # four test attributes optional, `work_attributes_required` the same with
-  # them required; the three attributes outside the test data were
-  # neutralized at record time to `_Other1_` to `_Other3_` with their
-  # recorded type INPUT_FIELD and required false. Tempo assigns new stored
-  # values each time the window creates `_JclPhase_`, so the two pages differ
-  # in them. `work_attribute_values` holds the five worklogs of the test user
-  # on October 1, 2026, read in the window of the required page; the seeded
-  # worklog 79097 carries a value for each test attribute.
+  # `work_attributes_optional` holds the site's eight attributes with the
+  # five test attributes optional, `work_attributes_required` the same with
+  # them required except `_JclNote_`, which is optional in both modes; the
+  # three attributes outside the test data were neutralized at record time
+  # to `_Other1_` to `_Other3_`, keeping their type INPUT_FIELD and required
+  # false. Tempo assigns new stored values each time the window creates
+  # `_JclPhase_`, so the two pages differ in them. `work_attribute_values`
+  # holds the five worklogs of the test user on October 1, 2026, read in the
+  # window of the optional page; the seeded worklog 79097 carries a value
+  # for each test attribute.
   @page "work_attributes_optional"
   @required "work_attributes_required"
 
@@ -27,17 +28,18 @@ defmodule Jido.Connect.Tempo.WorkAttributeTest do
                {"_JclPhase_", "STATIC_LIST", false},
                {"_JclBillable_", "CHECKBOX", false},
                {"_JclHours_", "INPUT_NUMERIC", false},
-               {"_JclAccount_", "ACCOUNT", false}
+               {"_JclAccount_", "ACCOUNT", false},
+               {"_JclNote_", "INPUT_FIELD", false}
              ]
 
       assert %WorkAttribute{
                name: "JCL live: account",
                self: "https://api.tempo.io/4/work-attributes/_JclAccount_",
                values: nil
-             } = List.last(attributes)
+             } = Enum.find(attributes, &(&1.key == "_JclAccount_"))
     end
 
-    test "the required page keeps required true for the test attributes only" do
+    test "the required page keeps required true for the test attributes only, not for the note" do
       assert Enum.map(normalized(@required), &{&1.key, &1.required}) == [
                {"_Other1_", false},
                {"_Other2_", false},
@@ -45,7 +47,8 @@ defmodule Jido.Connect.Tempo.WorkAttributeTest do
                {"_JclPhase_", true},
                {"_JclBillable_", true},
                {"_JclHours_", true},
-               {"_JclAccount_", true}
+               {"_JclAccount_", true},
+               {"_JclNote_", false}
              ]
     end
 
@@ -54,9 +57,9 @@ defmodule Jido.Connect.Tempo.WorkAttributeTest do
       assert {:ok, %WorkAttribute{values: values}} = WorkAttribute.normalize(phase)
 
       assert values == [
-               %{value: "d53fa1d2-c412-44b1-9fc8-ef3f259c4a39", label: "analysis"},
-               %{value: "8893d8e8-96df-40d2-b019-6dfaceaefd63", label: "build"},
-               %{value: "7ac36b2d-99c7-46ae-95c0-d2319bf44800", label: "review"}
+               %{value: "24af6b80-bc62-4e77-be00-af0e3d2dbee4", label: "analysis"},
+               %{value: "0be722c9-c4de-452b-a6bd-0a59e1b03c80", label: "build"},
+               %{value: "5cb990c1-1a3b-4851-af7a-0192b5a7e9bd", label: "review"}
              ]
     end
 
@@ -156,11 +159,12 @@ defmodule Jido.Connect.Tempo.WorkAttributeTest do
   end
 
   describe "value representation" do
-    # One recorded value per type on the seeded worklog 79097. Tempo stores
-    # every value as a string.
+    # One recorded value per type on the seeded worklog 79097, recorded in
+    # the window of the optional page, whose stored values of `_JclPhase_`
+    # it names. Tempo stores every value as a string.
     test "the recorded worklog shows the value each supported type stores" do
       values = recorded_values()
-      phase = Enum.find(normalized(@required), &(&1.key == "_JclPhase_"))
+      phase = normalized_attribute("_JclPhase_")
 
       # STATIC_LIST stores one of the attribute's stored values, not its label.
       assert %{value: stored, label: "build"} =
@@ -178,13 +182,14 @@ defmodule Jido.Connect.Tempo.WorkAttributeTest do
       refute values["_JclAccount_"] in [account["name"], Integer.to_string(account["id"])]
     end
 
-    # The test site has no INPUT_FIELD value of the test user; the type comes
-    # from the recorded page, the free text it stores is not recorded.
-    test "an input field is a supported type" do
-      assert {:ok, %{type: "INPUT_FIELD"} = attribute} =
-               WorkAttribute.normalize(recorded_attribute(@page, "_Other1_"))
+    # `_JclNote_` is the seeded INPUT_FIELD, optional in both window modes.
+    # The worklog stores the text it was given, unchanged.
+    test "an input field stores its free text unchanged" do
+      assert {:ok, %WorkAttribute{type: "INPUT_FIELD", required: false, values: nil} = note} =
+               WorkAttribute.normalize(recorded_attribute(@page, "_JclNote_"))
 
-      assert WorkAttribute.supported?(attribute)
+      assert WorkAttribute.supported?(note)
+      assert recorded_values()["_JclNote_"] == "JCL live note"
     end
   end
 
@@ -229,9 +234,9 @@ defmodule Jido.Connect.Tempo.WorkAttributeTest do
              required: false,
              self: "https://api.tempo.io/4/work-attributes/_JclPhase_",
              values: [
-               %{value: "d53fa1d2-c412-44b1-9fc8-ef3f259c4a39", label: "analysis"},
-               %{value: "8893d8e8-96df-40d2-b019-6dfaceaefd63", label: "build"},
-               %{value: "7ac36b2d-99c7-46ae-95c0-d2319bf44800", label: "review"}
+               %{value: "24af6b80-bc62-4e77-be00-af0e3d2dbee4", label: "analysis"},
+               %{value: "0be722c9-c4de-452b-a6bd-0a59e1b03c80", label: "build"},
+               %{value: "5cb990c1-1a3b-4851-af7a-0192b5a7e9bd", label: "review"}
              ]
            }
   end

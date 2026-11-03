@@ -357,7 +357,7 @@ on 2026-11-03 the seeded worklog stored, per type:
 | --- | --- |
 | `ACCOUNT` | the account key, `JCL-PROJECT`, not its name or numeric ID; the keys come from `tempo.account.list_for_project` |
 | `CHECKBOX` | `"true"` |
-| `INPUT_FIELD` | free text; the test site holds no such value of the test user |
+| `INPUT_FIELD` | the free text as entered, `"JCL live note"` |
 | `INPUT_NUMERIC` | `"1.5"` |
 | `STATIC_LIST` | one of the stored `values`, a UUID that Tempo assigns, not its label |
 
@@ -784,13 +784,15 @@ The booking lookup checks are in `booking_lookup_live_smoke_test.exs`:
 | --- | --- | --- |
 | the account candidates of `TEMPO_JIRA_PROJECT_ID`: the four test accounts with name, status, global flag and one link each, `TEMPO_ACCOUNT_ID` as the only default link, each compared with a direct read | action, OAuth access token | `accounts_for_project` |
 | an unknown account ID gets Tempo's 404 `Invalid account` | transport, API token | `account_not_found` |
-| the four test work attributes with type, name, required flag, stored values and labels, compared with a direct read | action, OAuth access token | `work_attributes_required` or `work_attributes_optional` |
-| the seeded worklog of October 1 stores a stored value labelled build, `"true"`, `"1.5"` and the account key `JCL-PROJECT` | action, API token | `work_attribute_values` |
+| the five test work attributes with type, name, required flag, stored values and labels, compared with a direct read; the free-text `_JclNote_` is optional in both modes | action, OAuth access token | `work_attributes_required` or `work_attributes_optional` |
+| the seeded worklog of October 1 stores a stored value labelled build, `"true"`, `"1.5"`, the account key `JCL-PROJECT` and the text `"JCL live note"` | action, API token | `work_attribute_values`, in the optional mode only |
 
 The work attribute checks need the test attributes, which exist on the test
 site only around a run. They run only with `TEMPO_WORK_ATTRIBUTES` set to
-`required` or `optional`, the mode in which the attributes were created;
-see the Tempo section of `docs/live_smoke_tests.md`.
+`required` or `optional`, the mode in which the attributes were created.
+`work_attribute_values` and `work_attributes_optional` come from the same
+optional run, since the offline tests match the stored value of the static
+list against that page; see the Tempo section of `docs/live_smoke_tests.md`.
 
 The successful code exchange and refresh are recorded in
 `oauth_exchange.json` and `oauth_refresh.json`, the rejections in

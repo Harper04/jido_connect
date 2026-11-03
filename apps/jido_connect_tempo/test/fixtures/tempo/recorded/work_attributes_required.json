@@ -1,7 +1,7 @@
 {
   "body": {
     "metadata": {
-      "count": 7,
+      "count": 8,
       "limit": 50,
       "offset": 0
     },
@@ -31,17 +31,17 @@
         "key": "_JclPhase_",
         "name": "JCL live: phase",
         "names": {
-          "5c137a17-4820-4304-b7a5-944d952d02da": "review",
-          "70e9b90d-1257-4e8e-afe5-7991c7a96994": "analysis",
-          "c5b295d9-ea3a-45cc-990f-38969901323b": "build"
+          "342a73c2-dc6d-4b3d-8a2d-a4ddc2199b7e": "review",
+          "bd1f09ac-29df-4899-aeb2-12f3a4dea6f3": "build",
+          "ebe26b07-f5d3-4550-91d9-7deb2fadaa3f": "analysis"
         },
         "required": true,
         "self": "https://api.tempo.io/4/work-attributes/_JclPhase_",
         "type": "STATIC_LIST",
         "values": [
-          "70e9b90d-1257-4e8e-afe5-7991c7a96994",
-          "c5b295d9-ea3a-45cc-990f-38969901323b",
-          "5c137a17-4820-4304-b7a5-944d952d02da"
+          "ebe26b07-f5d3-4550-91d9-7deb2fadaa3f",
+          "bd1f09ac-29df-4899-aeb2-12f3a4dea6f3",
+          "342a73c2-dc6d-4b3d-8a2d-a4ddc2199b7e"
         ]
       },
       {
@@ -64,6 +64,13 @@
         "required": true,
         "self": "https://api.tempo.io/4/work-attributes/_JclAccount_",
         "type": "ACCOUNT"
+      },
+      {
+        "key": "_JclNote_",
+        "name": "JCL live: note",
+        "required": false,
+        "self": "https://api.tempo.io/4/work-attributes/_JclNote_",
+        "type": "INPUT_FIELD"
       }
     ],
     "self": "https://api.tempo.io/4/work-attributes?offset=0&limit=50"
@@ -76,19 +83,19 @@
       "keep-alive"
     ],
     "content-length": [
-      "1481"
+      "1621"
     ],
     "content-type": [
       "application/json"
     ],
     "date": [
-      "Tue, 03 Nov 2026 10:00:50 GMT"
+      "Tue, 03 Nov 2026 12:21:52 GMT"
     ],
     "strict-transport-security": [
       "max-age=31536000; includeSubdomains"
     ],
     "tempo-request-id": [
-      "7d49f0012a2f68af0085c31320b73971"
+      "ec4fa933d7106be522fcab0c0597de22"
     ]
   },
   "recorded_at": "2026-11-03",

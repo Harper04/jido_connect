@@ -12,7 +12,11 @@
           "values": [
             {
               "key": "_JclPhase_",
-              "value": "c5b295d9-ea3a-45cc-990f-38969901323b"
+              "value": "0be722c9-c4de-452b-a6bd-0a59e1b03c80"
+            },
+            {
+              "key": "_JclNote_",
+              "value": "JCL live note"
             },
             {
               "key": "_JclHours_",
@@ -45,7 +49,7 @@
         "startTime": "09:00:00",
         "tempoWorklogId": 79097,
         "timeSpentSeconds": 5400,
-        "updatedAt": "2026-11-03T10:00:40Z"
+        "updatedAt": "2026-11-03T12:21:11Z"
       },
       {
         "attributes": {
@@ -154,19 +158,19 @@
       "keep-alive"
     ],
     "content-length": [
-      "3790"
+      "3834"
     ],
     "content-type": [
       "application/json"
     ],
     "date": [
-      "Tue, 03 Nov 2026 10:00:53 GMT"
+      "Tue, 03 Nov 2026 12:21:20 GMT"
     ],
     "strict-transport-security": [
       "max-age=31536000; includeSubdomains"
     ],
     "tempo-request-id": [
-      "710f26214fdbff968a2b2bd83ff6c189"
+      "6f934e247c885993afa52330bd0c6253"
     ]
   },
   "recorded_at": "2026-11-03",

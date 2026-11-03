@@ -324,9 +324,9 @@ defmodule Jido.Connect.Tempo.Client.WorklogsTest do
     end
 
     # Recorded in a work-attribute window on 2026-11-03: the seeded worklog
-    # 79097 of October 1 with a value for each test attribute, the first one
-    # a stored value of the static list `_JclPhase_`. The value without a
-    # string is derived from it.
+    # 79097 of October 1 with a value for each test attribute, in Tempo's
+    # order, the first one a stored value of the static list `_JclPhase_`.
+    # The value without a string is derived from it.
     test "work attribute values keep their key and value" do
       Req.Test.expect(__MODULE__, &Fixture.respond(&1, "work_attribute_values"))
 
@@ -336,7 +336,8 @@ defmodule Jido.Connect.Tempo.Client.WorklogsTest do
       assert worklog.tempo_worklog_id == 79_097
 
       assert worklog.work_attributes == [
-               %{key: "_JclPhase_", value: "c5b295d9-ea3a-45cc-990f-38969901323b"},
+               %{key: "_JclPhase_", value: "0be722c9-c4de-452b-a6bd-0a59e1b03c80"},
+               %{key: "_JclNote_", value: "JCL live note"},
                %{key: "_JclHours_", value: "1.5"},
                %{key: "_JclBillable_", value: "true"},
                %{key: "_JclAccount_", value: "JCL-PROJECT"}

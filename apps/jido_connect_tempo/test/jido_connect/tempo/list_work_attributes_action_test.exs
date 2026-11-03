@@ -3,8 +3,8 @@ defmodule Jido.Connect.Tempo.ListWorkAttributesActionTest do
 
   # `tempo.work_attribute.list` through the runtime and through the
   # generated Jido action, against the pages the live test recorded on
-  # 2026-11-03 in two work-attribute windows, with the four test attributes
-  # optional (`work_attributes_optional`) and required
+  # 2026-11-03 in two work-attribute windows, with the five test attributes
+  # optional (`work_attributes_optional`) and all but `_JclNote_` required
   # (`work_attributes_required`). The three attributes outside the test data
   # were neutralized at record time to `_Other1_` to `_Other3_`.
 
@@ -50,7 +50,7 @@ defmodule Jido.Connect.Tempo.ListWorkAttributesActionTest do
       assert {:ok, %{attributes: attributes, complete: true, incomplete: []} = result} =
                invoke(:api_token, %{})
 
-      assert length(attributes) == 7
+      assert length(attributes) == 8
       assert Enum.all?(attributes, &(&1.required == false))
       refute Enum.any?(attributes, &is_struct/1)
 
@@ -75,6 +75,9 @@ defmodule Jido.Connect.Tempo.ListWorkAttributesActionTest do
                {"_JclHours_", "INPUT_NUMERIC"},
                {"_JclAccount_", "ACCOUNT"}
              ]
+
+      assert %{type: "INPUT_FIELD", required: false} =
+               Enum.find(attributes, &(&1.key == "_JclNote_"))
     end
 
     # Derived: the recorded page with _JclPhase_ required and without its

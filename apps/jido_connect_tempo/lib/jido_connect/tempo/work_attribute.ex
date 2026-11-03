@@ -29,7 +29,7 @@ defmodule Jido.Connect.Tempo.WorkAttribute do
   | --- | --- |
   | `ACCOUNT` | the account `key`, such as `JCL-PROJECT`, not its name or numeric ID; see `tempo.account.list_for_project` |
   | `CHECKBOX` | `"true"` for a checked box |
-  | `INPUT_FIELD` | free text; no value was recorded |
+  | `INPUT_FIELD` | the free text as entered, such as `"JCL live note"` |
   | `INPUT_NUMERIC` | the number as a decimal string, such as `"1.5"` |
   | `STATIC_LIST` | one of the stored `values`, a Tempo-assigned ID such as a UUID, not its label |
 
