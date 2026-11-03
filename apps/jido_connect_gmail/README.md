@@ -120,9 +120,11 @@ Header values stay on one line. After trimming, a CR or LF in `subject`,
 `in_reply_to` or `references` returns a validation error with reason
 `:invalid_header_value` and the field, so the value cannot add a header such
 as `Bcc:`. `in_reply_to` and `references` are not trimmed, so a trailing break
-fails too. A recipient with a break inside fails the address pattern with
-`:invalid_recipient`. Either way the action makes no provider call, and the
-header error does not repeat the value.
+fails too. They must be `nil` or a string; `nil` and `""` leave the header out,
+and any other value, such as a list, fails with the same reason. A recipient
+with a break inside fails the address pattern with `:invalid_recipient`.
+Either way the action makes no provider call, and the header error does not
+repeat the value.
 
 ## Actions
 

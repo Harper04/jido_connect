@@ -65,6 +65,51 @@ defmodule Jido.Connect.Gmail.MIMETest do
       refute inspect(error) =~ "x@example.com"
     end
 
+    # build_raw/1 is public and does not rely on the action schema, which
+    # declares both threading fields as strings. Other values would reach the
+    # header block through String.Chars, line breaks included.
+    test "an in_reply_to or references that is not a string is rejected with the field" do
+      injected = "<a@example.com>\r\nBcc: x@example.com"
+
+      string_keys = %{
+        "to" => ["to@example.com"],
+        "subject" => "Hello",
+        "body_text" => "Body",
+        "references" => [injected]
+      }
+
+      for {field, input} <- [
+            references: Map.put(@message, :references, [injected]),
+            references:
+              Map.put(@message, :references, ["<a@example.com>", ["\r\n", "Bcc: x@example.com"]]),
+            references: string_keys,
+            in_reply_to: Map.put(@message, :in_reply_to, [injected]),
+            in_reply_to:
+              Map.put(@message, :in_reply_to, ~c"<a@example.com>\r\nBcc: x@example.com"),
+            in_reply_to:
+              Map.put(@message, :in_reply_to, :"<a@example.com>\r\nBcc: x@example.com"),
+            in_reply_to: Map.put(@message, :in_reply_to, 42)
+          ] do
+        assert {:error,
+                %Connect.Error.ValidationError{
+                  reason: :invalid_header_value,
+                  details: %{field: ^field}
+                } = error} = MIME.build_raw(input)
+
+        refute inspect(error) =~ "x@example.com"
+      end
+    end
+
+    test "a nil or empty in_reply_to or references leaves the header out" do
+      for value <- [nil, ""] do
+        input = Map.merge(@message, %{in_reply_to: value, references: value})
+        assert {:ok, raw} = MIME.build_raw(input)
+        assert {:ok, message} = Base.url_decode64(raw, padding: false)
+        refute message =~ "In-Reply-To:"
+        refute message =~ "References:"
+      end
+    end
+
     # The subject is trimmed before the check, the threading headers are not,
     # so a trailing break counts only in them.
     test "a bare CR or LF in subject, in_reply_to or references is rejected with the field" do

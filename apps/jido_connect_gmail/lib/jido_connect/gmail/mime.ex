@@ -10,11 +10,13 @@ defmodule Jido.Connect.Gmail.MIME do
   `subject`, `in_reply_to` or `references` fails with reason
   `:invalid_header_value` and the field in the details, because the break
   would start a header of its own, such as `Bcc:`. `in_reply_to` and
-  `references` are not trimmed, so a trailing break fails as well. A
-  recipient must match a plain address pattern without whitespace, so a
-  break inside one fails with `:invalid_recipient`. In both cases nothing is
-  encoded and the action makes no provider call. The header error does not
-  repeat the value, which is message content.
+  `references` are not trimmed, so a trailing break fails as well. They must
+  be `nil` or a string; `nil` and `""` leave the header out, and any other
+  value, such as a list, fails with the same reason. A recipient must match
+  a plain address pattern without whitespace, so a break inside one fails
+  with `:invalid_recipient`. In both cases nothing is encoded and the action
+  makes no provider call. The header error does not repeat the value, which
+  is message content.
   """
 
   alias Jido.Connect.{Data, Error}
@@ -57,8 +59,9 @@ defmodule Jido.Connect.Gmail.MIME do
   end
 
   defp put_header(headers, _name, value) when value in [nil, ""], do: headers
-  defp put_header(headers, _name, []), do: headers
-  defp put_header(headers, name, value), do: headers ++ ["#{name}: #{value}"]
+
+  defp put_header(headers, name, value) when is_binary(value),
+    do: headers ++ ["#{name}: #{value}"]
 
   defp body(input) do
     cond do
@@ -137,21 +140,28 @@ defmodule Jido.Connect.Gmail.MIME do
   defp require_text(field, _value),
     do: validation_error("Gmail #{field} is required", field: field, reason: :missing_field)
 
+  # The subject has passed require_text/2 here, so only the threading headers
+  # can be nil or something other than a string.
   defp single_line(values) do
-    case Enum.find(values, fn {_field, value} -> line_break?(value) end) do
+    case Enum.find(values, fn {_field, value} -> not single_line?(value) end) do
       nil ->
         :ok
 
+      {field, value} when is_binary(value) ->
+        invalid_header(field, "must not contain a line break")
+
       {field, _value} ->
-        validation_error("Gmail #{field} must not contain a line break",
-          field: field,
-          reason: :invalid_header_value
-        )
+        invalid_header(field, "must be a string")
     end
   end
 
-  defp line_break?(value) when is_binary(value), do: String.contains?(value, ["\r", "\n"])
-  defp line_break?(_value), do: false
+  defp single_line?(nil), do: true
+  defp single_line?(value) when is_binary(value), do: not String.contains?(value, ["\r", "\n"])
+  defp single_line?(_value), do: false
+
+  defp invalid_header(field, problem) do
+    validation_error("Gmail #{field} #{problem}", field: field, reason: :invalid_header_value)
+  end
 
   defp present?(value) when is_binary(value), do: String.trim(value) != ""
   defp present?(_value), do: false
