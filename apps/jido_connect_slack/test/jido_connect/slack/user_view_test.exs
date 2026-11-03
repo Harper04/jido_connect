@@ -1,8 +1,12 @@
 defmodule Jido.Connect.Slack.UserViewTest do
-  use ExUnit.Case, async: true
+  # Not async: the action tests point the package's Req options at a stub.
+  use ExUnit.Case, async: false
 
-  alias Jido.Connect.WebhookDelivery
-  alias Jido.Connect.Slack.Webhook
+  alias Jido.Connect
+  alias Jido.Connect.{Error, WebhookDelivery}
+  alias Jido.Connect.Slack.{OAuth, Webhook}
+  alias Jido.Connect.Slack.TestSupport.SyntheticFixture
+  alias Jido.Connect.TestSupport.LiveSmoke
 
   import Jido.Connect.Slack.TestSupport.CapturedDelivery,
     only: [payload!: 1, replay: 1, derive: 2]
@@ -207,6 +211,148 @@ defmodule Jido.Connect.Slack.UserViewTest do
                view: "user",
                viewer: @authorizing_user
              } = signal
+    end
+  end
+
+  describe "actions with a lease of each profile" do
+    setup {Req.Test, :verify_on_exit!}
+
+    setup do
+      Application.put_env(:jido_connect_slack, :slack_req_options, plug: {Req.Test, __MODULE__})
+
+      Application.put_env(:jido_connect_slack, :slack_oauth_req_options,
+        plug: {Req.Test, __MODULE__.OAuth}
+      )
+
+      on_exit(fn ->
+        Application.delete_env(:jido_connect_slack, :slack_req_options)
+        Application.delete_env(:jido_connect_slack, :slack_oauth_req_options)
+      end)
+
+      Req.Test.stub(__MODULE__.OAuth, fn conn ->
+        Req.Test.json(conn, SyntheticFixture.body!("oauth_v2_access_bot_and_user"))
+      end)
+
+      assert {:ok, token} =
+               OAuth.exchange_code("code",
+                 client_id: "client",
+                 client_secret: "secret",
+                 base_url: "https://slack.test"
+               )
+
+      # Slack's example grants other scopes than the history reads need; the
+      # host's grant here holds channels:history for both tokens.
+      token =
+        token
+        |> Map.put(:scope, ["channels:history"])
+        |> put_in([:authed_user, :scope], ["channels:history"])
+
+      %{token: token}
+    end
+
+    # The recordings are the user token's read of #jc-live-no-bot and the
+    # bot token's denial of the same channel, from the live smoke tests.
+    test "slack.conversation.history sends the user token under a user lease and the bot token under a bot lease",
+         %{token: token} do
+      input = %{channel: "C0CDDP1JEAX", conversation_type: "public_channel"}
+
+      stub_recording("Bearer xoxp-synthetic-user", "conversation_history_user_view")
+
+      assert {:ok, %{messages: messages, has_more: false}} =
+               Connect.invoke(
+                 Jido.Connect.Slack,
+                 "slack.conversation.history",
+                 input,
+                 runtime(:user, token)
+               )
+
+      assert_received {:slack_request, "/api/conversations.history", "Bearer xoxp-synthetic-user"}
+
+      recorded = LiveSmoke.fixture!(:slack, "conversation_history_user_view")["messages"]
+
+      assert Enum.map(messages, &{&1.ts, &1.user, &1.bot_id}) ==
+               Enum.map(recorded, &{&1["ts"], &1["user"], &1["bot_id"]})
+
+      assert Enum.any?(messages, &(&1.user == @authorizing_user and &1.bot_id == nil))
+      assert Enum.any?(messages, &(&1.user == @bot_user and &1.bot_id != nil))
+
+      stub_recording("Bearer xoxb-synthetic-bot", "conversation_history_not_in_channel")
+
+      assert {:error, %Error.ProviderError{reason: "not_in_channel"}} =
+               Connect.invoke(
+                 Jido.Connect.Slack,
+                 "slack.conversation.history",
+                 input,
+                 runtime(:bot, token)
+               )
+
+      assert_received {:slack_request, "/api/conversations.history", "Bearer xoxb-synthetic-bot"}
+    end
+
+    test "slack.thread.replies sends the token of the lease's profile", %{token: token} do
+      input = %{channel: "C0CEEB41FU0", ts: "1793371034.447499", limit: 2}
+
+      for {profile, authorization} <- [
+            user: "Bearer xoxp-synthetic-user",
+            bot: "Bearer xoxb-synthetic-bot"
+          ] do
+        stub_recording(authorization, "thread_replies_pages")
+
+        assert {:ok, %{thread_ts: "1793371034.447499"}} =
+                 Connect.invoke(
+                   Jido.Connect.Slack,
+                   "slack.thread.replies",
+                   input,
+                   runtime(profile, token)
+                 )
+
+        assert_received {:slack_request, "/api/conversations.replies", ^authorization}
+      end
+    end
+
+    defp stub_recording(authorization, fixture) do
+      test_pid = self()
+
+      Req.Test.stub(__MODULE__, fn conn ->
+        [sent] = Plug.Conn.get_req_header(conn, "authorization")
+        send(test_pid, {:slack_request, conn.request_path, sent})
+
+        if sent == authorization,
+          do: Req.Test.json(conn, LiveSmoke.fixture!(:slack, fixture)),
+          else: conn |> Plug.Conn.put_status(401) |> Req.Test.json(%{ok: false})
+      end)
+    end
+
+    defp runtime(profile, token) do
+      {owner_type, owner_id, lease_fun} =
+        case profile do
+          :user -> {:user, token.authed_user.id, &OAuth.user_credential_lease/3}
+          :bot -> {:tenant, token.team["id"], &OAuth.bot_credential_lease/3}
+        end
+
+      connection =
+        Connect.Connection.new!(%{
+          id: "slack-#{profile}",
+          provider: :slack,
+          profile: profile,
+          tenant_id: "tenant-1",
+          owner_type: owner_type,
+          owner_id: owner_id,
+          status: :connected,
+          scopes: ["channels:history"]
+        })
+
+      context =
+        Connect.Context.new!(%{
+          tenant_id: "tenant-1",
+          actor: %{id: "user-1", type: :user},
+          connection: connection
+        })
+
+      assert {:ok, lease} =
+               lease_fun.(token, %{tenant_id: "tenant-1"}, connection: connection)
+
+      [context: context, credential_lease: lease]
     end
   end
 end

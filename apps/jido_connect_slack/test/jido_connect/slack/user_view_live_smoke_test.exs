@@ -25,13 +25,26 @@ defmodule Jido.Connect.Slack.UserViewLiveSmokeTest do
   signed again with `LiveSmoke.replay_secret/0`. Their texts and links
   become placeholders: the offline tests need IDs, timestamps and
   authorizations, and the DM's text is a link into the workspace.
+
+  The second test reads `SLACK_NO_ACCESS_CHANNEL_ID` through
+  `slack.conversation.history` with a lease from
+  `Jido.Connect.Slack.OAuth.user_credential_lease/3` around
+  `SLACK_USER_TOKEN`. A single `conversations.history` call with Req
+  outside the package is the reference for `ts` order and authors. The
+  page must hold the bot message that the seed posted before the bot left
+  and a message of the authorizing user. A lease from
+  `bot_credential_lease/3` around `SLACK_BOT_TOKEN` gets `not_in_channel`.
+  With `JIDO_CONNECT_RECORD=1` the user's page becomes
+  `test/fixtures/slack/recorded/conversation_history_user_view.json`, with
+  its texts as placeholders. Neither test writes to Slack.
   """
 
   use ExUnit.Case, async: false
   use Jido.Connect.TestSupport.LiveSmoke
 
+  alias Jido.Connect
+  alias Jido.Connect.Slack.{Client, OAuth, Webhook}
   alias Jido.Connect.Slack.TestSupport.LiveSlack
-  alias Jido.Connect.Slack.Webhook
   alias Jido.Connect.WebhookDelivery
 
   @capture_env [
@@ -44,6 +57,8 @@ defmodule Jido.Connect.Slack.UserViewLiveSmokeTest do
 
   # Message texts and the links in their blocks.
   @capture_fields ["text", "url"]
+
+  @history_scopes ["channels:history", "groups:history", "im:history", "mpim:history"]
 
   @tag env!(@capture_env)
   test "captured user events from conversations without the bot verify and reach the message triggers",
@@ -96,6 +111,102 @@ defmodule Jido.Connect.Slack.UserViewLiveSmokeTest do
       )
     end
   end
+
+  @tag env!(["SLACK_BOT_TOKEN", "SLACK_USER_TOKEN", "SLACK_NO_ACCESS_CHANNEL_ID"])
+  test "a user lease reads the channel the bot left, where a bot lease is denied", %{env: env} do
+    channel = env["SLACK_NO_ACCESS_CHANNEL_ID"]
+
+    assert {:ok, %{"user_id" => user, "team_id" => team}} =
+             Client.auth_test(env["SLACK_USER_TOKEN"])
+
+    assert {:ok, %{"user_id" => bot_user}} = Client.auth_test(env["SLACK_BOT_TOKEN"])
+
+    # The shape that exchange_code/2 returns. The workspace's user token
+    # came from its own consent, not from this package's exchange.
+    token = %{
+      access_token: env["SLACK_BOT_TOKEN"],
+      token_type: "bot",
+      scope: @history_scopes,
+      bot_user_id: bot_user,
+      team: %{"id" => team},
+      authed_user: %{
+        id: user,
+        access_token: env["SLACK_USER_TOKEN"],
+        token_type: "user",
+        scope: @history_scopes
+      }
+    }
+
+    LiveSlack.record("conversation_history_user_view", fields: ["text"])
+    assert {:ok, %{messages: messages, has_more: false}} = history(:user, token, channel)
+
+    LiveSlack.skip_recording()
+
+    assert {:error, %Connect.Error.ProviderError{provider: :slack, reason: "not_in_channel"}} =
+             history(:bot, token, channel)
+
+    %{status: 200, body: %{"ok" => true, "has_more" => false, "messages" => reference}} =
+      LiveSlack.reference_request(env["SLACK_USER_TOKEN"], :get, "conversations.history",
+        params: [channel: channel, limit: 100]
+      )
+
+    assert Enum.map(messages, &identity/1) == Enum.map(reference, &identity/1)
+    assert Enum.all?(messages, &(&1.channel == channel))
+
+    assert Enum.any?(messages, &(&1.user == bot_user and &1.bot_id != nil)),
+           "no bot message from before the bot left"
+
+    assert Enum.any?(messages, &(&1.user == user and &1.bot_id == nil and &1.subtype == nil)),
+           "no message of the authorizing user"
+
+    authors = Enum.map_join(messages, " ", &"#{&1.ts}:#{&1.user}#{if &1.bot_id, do: "/bot"}")
+
+    IO.puts(
+      "live_smoke slack: user lease read #{length(messages)} messages in #{channel} " <>
+        "matching conversations.history (#{authors}); the bot lease got not_in_channel"
+    )
+  end
+
+  defp history(profile, token, channel) do
+    {owner_type, owner_id, lease_fun} =
+      case profile do
+        :user -> {:user, token.authed_user.id, &OAuth.user_credential_lease/3}
+        :bot -> {:tenant, token.team["id"], &OAuth.bot_credential_lease/3}
+      end
+
+    connection =
+      Connect.Connection.new!(%{
+        id: "slack-live-#{profile}",
+        provider: :slack,
+        profile: profile,
+        tenant_id: "live-smoke",
+        owner_type: owner_type,
+        owner_id: owner_id,
+        status: :connected,
+        scopes: @history_scopes
+      })
+
+    assert {:ok, lease} = lease_fun.(token, %{tenant_id: "live-smoke"}, connection: connection)
+
+    Connect.invoke(
+      Jido.Connect.Slack,
+      "slack.conversation.history",
+      %{channel: channel, conversation_type: "public_channel"},
+      context:
+        Connect.Context.new!(%{
+          tenant_id: "live-smoke",
+          actor: %{id: "live-smoke", type: :user},
+          connection: connection
+        }),
+      credential_lease: lease
+    )
+  end
+
+  defp identity(%{"ts" => ts} = message),
+    do: {ts, message["user"], message["bot_id"], message["app_id"], message["subtype"]}
+
+  defp identity(message),
+    do: {message.ts, message.user, message.bot_id, message.app_id, message.subtype}
 
   defp assert_kind(%{kind: :mention}, signal, captures, bot_user) do
     assert signal.text =~ "<@#{bot_user}>"
