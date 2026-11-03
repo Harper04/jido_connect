@@ -1,0 +1,418 @@
+{
+  "body": {
+    "historyId": "22755",
+    "id": "1a1970402bc8edb3",
+    "internalDate": "1793534985000",
+    "labelIds": [
+      "INBOX"
+    ],
+    "payload": {
+      "body": {
+        "size": 0
+      },
+      "filename": "",
+      "headers": [
+        {
+          "name": "Received",
+          "value": "from 000000000000 named unknown by gmailapi.google.com with HTTPREST; Tue, 3 Nov 2026 05:09:50 -0700"
+        },
+        {
+          "name": "From",
+          "value": "Person 1 <person-1@example.com>"
+        },
+        {
+          "name": "To",
+          "value": "Person 2 <person-2@example.com>"
+        },
+        {
+          "name": "Subject",
+          "value": "WG: jcl-live related original"
+        },
+        {
+          "name": "Date",
+          "value": "Sun, 01 Nov 2026 12:09:45 +0000"
+        },
+        {
+          "name": "Message-ID",
+          "value": "<person-3@example.com>"
+        },
+        {
+          "name": "MIME-Version",
+          "value": "1.0"
+        },
+        {
+          "name": "Content-Type",
+          "value": "multipart/mixed; boundary=\"jcl-mixed-5da5e5c1c5\""
+        }
+      ],
+      "mimeType": "multipart/mixed",
+      "partId": "",
+      "parts": [
+        {
+          "body": {
+            "size": 0
+          },
+          "filename": "",
+          "headers": [
+            {
+              "name": "Content-Type",
+              "value": "multipart/alternative; boundary=\"jcl-alternative-2234e48e1a\""
+            }
+          ],
+          "mimeType": "multipart/alternative",
+          "partId": "0",
+          "parts": [
+            {
+              "body": {
+                "data": "U2llaGUgQW5sYWdlLCBtYXJrZXIgamNsLW1hcmtlci1mb3J3YXJkLXJlbGF0ZWQuDQoNClZpZWxlIEdyw7zDn2UNCg==",
+                "size": 67
+              },
+              "filename": "",
+              "headers": [
+                {
+                  "name": "Content-Type",
+                  "value": "text/plain; charset=\"utf-8\""
+                },
+                {
+                  "name": "Content-Transfer-Encoding",
+                  "value": "quoted-printable"
+                }
+              ],
+              "mimeType": "text/plain",
+              "partId": "0.0"
+            },
+            {
+              "body": {
+                "size": 0
+              },
+              "filename": "",
+              "headers": [
+                {
+                  "name": "Content-Type",
+                  "value": "multipart/related; boundary=\"jcl-related-1cfc674e6f\""
+                }
+              ],
+              "mimeType": "multipart/related",
+              "partId": "0.1",
+              "parts": [
+                {
+                  "body": {
+                    "data": "PGh0bWw-PGJvZHk-PHA-U2llaGUgQW5sYWdlLCBtYXJrZXIgamNsLW1hcmtlci1mb3J3YXJkLXJlbGF0ZWQuPC9wPjxwPlZpZWxlIEdyJnV1bWw7JnN6bGlnO2U8L3A-PGltZyBzcmM9ImNpZDpqY2wtcmVsYXRlZC1sb2dvLTFAamNsLWxpdmUuaW52YWxpZCI-PGltZyBzcmM9ImNpZDpqY2wtcmVsYXRlZC1sb2dvLTJAamNsLWxpdmUuaW52YWxpZCI-PC9ib2R5PjwvaHRtbD4=",
+                    "size": 212
+                  },
+                  "filename": "",
+                  "headers": [
+                    {
+                      "name": "Content-Type",
+                      "value": "text/html; charset=\"utf-8\""
+                    },
+                    {
+                      "name": "Content-Transfer-Encoding",
+                      "value": "quoted-printable"
+                    }
+                  ],
+                  "mimeType": "text/html",
+                  "partId": "0.1.0"
+                },
+                {
+                  "body": {
+                    "attachmentId": "ANGjdJ8aVmWSP36OhvExCNGoHHdYlu-GOW-h7jvTSDWV93oXb1f2bqx3uX_lxUAb-U0jEfLfH-h3ucbOf6CH2qoAApAyEXZuWeqR-gnIDyRTOdO3doarsOt1IVwBjvB6Z0PXIwybNg9gqZto5V0KQJfJmiF-EFySNIJOmFHZKLPm4IlnQ2Mp_TO19jIZW0ew729O1nL-mL23b6J1r-O2wiGbGCfNj0h9KDQtYmXQLSDoOljzgHaN8vWRf2hjUHY7ST2K3vJqn5iqhaT7BOQbPgjUvO4Y2MMV-CEs1-UoNwQe3M48vu2PBsbBcB8Ezy1CbvUIcA_Jwcav9MTYz_14qMQm3H0MHuTEjfoiKiWjlTIyZoWt3CcJXEdiQThnb6d0DG62dxkcox8eqwdy-E0O",
+                    "size": 73
+                  },
+                  "filename": "jcl-logo-1.png",
+                  "headers": [
+                    {
+                      "name": "Content-Type",
+                      "value": "image/png; name=\"jcl-logo-1.png\""
+                    },
+                    {
+                      "name": "Content-Transfer-Encoding",
+                      "value": "base64"
+                    },
+                    {
+                      "name": "Content-ID",
+                      "value": "<person-4@example.com>"
+                    },
+                    {
+                      "name": "Content-Description",
+                      "value": "jcl-logo-1.png"
+                    },
+                    {
+                      "name": "Content-Disposition",
+                      "value": "inline; filename=\"jcl-logo-1.png\"; size=\"73\"; creation-date=\"Sun, 01 Nov 2026 10:09:45 +0000\"; modification-date=\"Sun, 01 Nov 2026 10:09:45 +0000\""
+                    }
+                  ],
+                  "mimeType": "image/png",
+                  "partId": "0.1.1"
+                },
+                {
+                  "body": {
+                    "attachmentId": "ANGjdJ9j_g9xz3mDmDBoEFtDWGsuoF2HeNPX40Lfqgg_1unmCMss_pQKELqXgjIEYm7lUz-XITOGKstn0bh-1AJk6npxL3mNjYxNIBatJBa6eQvbPI71jTZGPAAzRov6gcoQ8XPYz79sUmJA3mq3SmUp9dy0rD8AyyZBDzq8jiSBPaMiOJB0Otmi4T4B0U-LSvofqCm9x5EukwEHiPjQ1fVVoeTePuMVC2D_Cr-moFyYRQPn20YOO-eDuOhuwceRzVZgtRg3uiwGKHnN7DXQl9x3vhvZbyodPlDzx7QwsKKW3R-70fnbY2GgTktDxqBZH-qiEQcOSJhJw_OQEU4Ay5ZDBRA5yEcVoJWwI6oLcLyfWwuo2K_f7Xcx9Auf-BwdkJClkIEX76vOVb9W01VH",
+                    "size": 73
+                  },
+                  "filename": "jcl-logo-2.png",
+                  "headers": [
+                    {
+                      "name": "Content-Type",
+                      "value": "image/png; name=\"jcl-logo-2.png\""
+                    },
+                    {
+                      "name": "Content-Transfer-Encoding",
+                      "value": "base64"
+                    },
+                    {
+                      "name": "Content-ID",
+                      "value": "<person-5@example.com>"
+                    },
+                    {
+                      "name": "Content-Description",
+                      "value": "jcl-logo-2.png"
+                    },
+                    {
+                      "name": "Content-Disposition",
+                      "value": "inline; filename=\"jcl-logo-2.png\"; size=\"73\"; creation-date=\"Sun, 01 Nov 2026 10:09:45 +0000\"; modification-date=\"Sun, 01 Nov 2026 10:09:45 +0000\""
+                    }
+                  ],
+                  "mimeType": "image/png",
+                  "partId": "0.1.2"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "body": {
+            "attachmentId": "ANGjdJ-g52RHcQNoPD9mnN_LidUP-7VvKntlk7uGOubanvP139I0-fYeB2zvE8hE416AX74Ian0WuMSWN0gS56ixOY2qYQLjvzrVOVB3dhNqCcgdbyuDVsyVGu6I0jDgB2d6Z6oiMAXJkZI18LWOz4XXTWcgE6tbI6LRPC5A8URLyzEGPjlAr2powCfWCcfLbei5_jHo2SoWTFW63lH-IYUJ0D1Lwr-5Mqjx9GovSMoA1BV5_MFuSX8rh-ZlBGSsFKnokzFicZCrWAdHdcfmVBq1veKFtvEoAvAmkXgeypg2JbTIaE29vN4knwW_U4eErFgUIAoEe36pGgS6UKbLziLCynjK2Ecj72fV-G2PGVFaphTJLX64pvOXTvPQvbM",
+            "size": 2082
+          },
+          "filename": "WG: jcl-live related original.eml",
+          "headers": [
+            {
+              "name": "Content-Type",
+              "value": "message/rfc822"
+            },
+            {
+              "name": "Content-Disposition",
+              "value": "attachment; creation-date=\"Sun, 01 Nov 2026 10:09:45 +0000\"; modification-date=\"Sun, 01 Nov 2026 10:09:45 +0000\""
+            }
+          ],
+          "mimeType": "message/rfc822",
+          "partId": "1",
+          "parts": [
+            {
+              "body": {
+                "size": 0
+              },
+              "filename": "",
+              "headers": [
+                {
+                  "name": "From",
+                  "value": "Person 3 <person-6@example.com>"
+                },
+                {
+                  "name": "To",
+                  "value": "Person 4 <person-7@example.com>"
+                },
+                {
+                  "name": "Subject",
+                  "value": "WG: jcl-live related original"
+                },
+                {
+                  "name": "Date",
+                  "value": "Sun, 01 Nov 2026 10:09:45 +0000"
+                },
+                {
+                  "name": "Message-ID",
+                  "value": "<person-8@example.com>"
+                },
+                {
+                  "name": "MIME-Version",
+                  "value": "1.0"
+                },
+                {
+                  "name": "Content-Type",
+                  "value": "multipart/mixed; boundary=\"jcl-mixed-698e31921f\""
+                }
+              ],
+              "mimeType": "multipart/mixed",
+              "partId": "1.0",
+              "parts": [
+                {
+                  "body": {
+                    "size": 0
+                  },
+                  "filename": "",
+                  "headers": [
+                    {
+                      "name": "Content-Type",
+                      "value": "multipart/alternative; boundary=\"jcl-alternative-035e889211\""
+                    }
+                  ],
+                  "mimeType": "multipart/alternative",
+                  "partId": "1.0.0",
+                  "parts": [
+                    {
+                      "body": {
+                        "data": "R3LDvMOfZSBhdXMgS8O2bG4sIE1hw58gdW5kIEdyw7bDn2UuDQpFbmNsb3NlZCBmb3J3YXJkIHdpdGggbWFya2VyIGpjbC1tYXJrZXItcmVsYXRlZC1lbmNsb3NlZC4NCg==",
+                        "size": 97
+                      },
+                      "filename": "",
+                      "headers": [
+                        {
+                          "name": "Content-Type",
+                          "value": "text/plain; charset=\"utf-8\""
+                        },
+                        {
+                          "name": "Content-Transfer-Encoding",
+                          "value": "quoted-printable"
+                        }
+                      ],
+                      "mimeType": "text/plain",
+                      "partId": "1.0.0.0"
+                    },
+                    {
+                      "body": {
+                        "size": 0
+                      },
+                      "filename": "",
+                      "headers": [
+                        {
+                          "name": "Content-Type",
+                          "value": "multipart/related; boundary=\"jcl-related-58c2fcf362\""
+                        }
+                      ],
+                      "mimeType": "multipart/related",
+                      "partId": "1.0.0.1",
+                      "parts": [
+                        {
+                          "body": {
+                            "data": "PGh0bWw-PGJvZHk-PHA-R3ImdXVtbDsmc3psaWc7ZSBhdXMgSyZvdW1sO2xuLCBNYSZzemxpZzsgdW5kIEdyJm91bWw7JnN6bGlnO2UuPC9wPjxwPkVuY2xvc2VkIGZvcndhcmQgd2l0aCBtYXJrZXIgamNsLW1hcmtlci1yZWxhdGVkLWVuY2xvc2VkLjwvcD48aW1nIHNyYz0iY2lkOmpjbC1yZWxhdGVkLWVuY2xvc2VkQGpjbC1saXZlLmludmFsaWQiPjwvYm9keT48L2h0bWw-",
+                            "size": 213
+                          },
+                          "filename": "",
+                          "headers": [
+                            {
+                              "name": "Content-Type",
+                              "value": "text/html; charset=\"utf-8\""
+                            },
+                            {
+                              "name": "Content-Transfer-Encoding",
+                              "value": "quoted-printable"
+                            }
+                          ],
+                          "mimeType": "text/html",
+                          "partId": "1.0.0.1.0"
+                        },
+                        {
+                          "body": {
+                            "attachmentId": "ANGjdJ8Ob2fBnCahG70Ijq3VnH8B4nLOocweI5Zjidkcpzyl9Z4GZOaJ0AwrMuc6cowZox4VHlT_ugqbVmSfPMBwDh9I7zIa49FCg3HHSELVignZ26M8GSi3gukWO4IkAA9zdDeur1PqhguHIHp6wJfkys79yb0F4eArVToVIZkC7mLipO-dljj5AZmaessdIk68KdpiR5ydi9DWwd3i5l9iT1QWgNXXV8lyy3Ya-K7RAgJdpc3F62YvnY_xrWKnpDRqT6FDWwaljvFL5e3ermKn21TRBwaoP3Di-HshudOsNavfkl6NJpnvcDf3aRqzXNennR96PFRcQE8Tafnc7PLUMfXke7KoOYqx6sX_bQUMu9rttmTVm_XY8hK71f5RVmVRlcQg53FIep7D8nBD",
+                            "size": 73
+                          },
+                          "filename": "jcl-enclosed.png",
+                          "headers": [
+                            {
+                              "name": "Content-Type",
+                              "value": "image/png; name=\"jcl-enclosed.png\""
+                            },
+                            {
+                              "name": "Content-Transfer-Encoding",
+                              "value": "base64"
+                            },
+                            {
+                              "name": "Content-ID",
+                              "value": "<person-9@example.com>"
+                            },
+                            {
+                              "name": "Content-Description",
+                              "value": "jcl-enclosed.png"
+                            },
+                            {
+                              "name": "Content-Disposition",
+                              "value": "inline; filename=\"jcl-enclosed.png\"; size=\"73\"; creation-date=\"Sun, 01 Nov 2026 10:09:45 +0000\"; modification-date=\"Sun, 01 Nov 2026 10:09:45 +0000\""
+                            }
+                          ],
+                          "mimeType": "image/png",
+                          "partId": "1.0.0.1.1"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "body": {
+                    "attachmentId": "ANGjdJ8iVsQ1YnLZP2CY46eW4ezJUvLP7pdNDUH6hXPK3g7wCOYVRBqqZv_Zz7XNIdtk8Hcr46P6fN2A5DpbmHyf_NOfl2Aa6iglv0gvPBt3uO3RYNsUoKsbFVHv0qzkJhll7sfY9b9ZYx_bG4Sa1l1uVStHdZlQlnpG2wlJq5WxAaCm5xPPtRI7H2zPOcjJoN2ij0-8ic1osjrbQxREKWb4XvkKfZ3WaPt2lzlibXI3XLLyAanDABBPymyiiWlq3-VPbreDvaau3CGVQKoSXcscuz366Am7mTMQonRLna9Jmn8rvPzpYu9jT4fL4B3hBHkVdKHzsRfa57j_gGcFWkUnGVDOCgqVWF0Smb94R-v9WGUHGegwKl_Fk8JcKRMUT-AkqHWlRJ7oPMmpZS8W",
+                    "size": 36
+                  },
+                  "filename": "related-note.txt",
+                  "headers": [
+                    {
+                      "name": "Content-Type",
+                      "value": "text/plain; name=\"related-note.txt\""
+                    },
+                    {
+                      "name": "Content-Transfer-Encoding",
+                      "value": "base64"
+                    },
+                    {
+                      "name": "Content-Description",
+                      "value": "related-note.txt"
+                    },
+                    {
+                      "name": "Content-Disposition",
+                      "value": "attachment; filename=\"related-note.txt\"; size=\"36\"; creation-date=\"Sun, 01 Nov 2026 10:09:45 +0000\"; modification-date=\"Sun, 01 Nov 2026 10:09:45 +0000\""
+                    }
+                  ],
+                  "mimeType": "text/plain",
+                  "partId": "1.0.1"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "sizeEstimate": 4519,
+    "snippet": "Siehe Anlage, marker jcl-marker-forward-related. Viele Grüße",
+    "threadId": "1a1970402bc8edb3"
+  },
+  "headers": {
+    "accept-ranges": [
+      "none"
+    ],
+    "alt-svc": [
+      "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000"
+    ],
+    "content-type": [
+      "application/json; charset=UTF-8"
+    ],
+    "date": [
+      "Tue, 03 Nov 2026 12:11:43 GMT"
+    ],
+    "server": [
+      "ESF"
+    ],
+    "transfer-encoding": [
+      "chunked"
+    ],
+    "vary": [
+      "X-Origin",
+      "Referer",
+      "Origin,Accept-Encoding"
+    ],
+    "x-content-type-options": [
+      "nosniff"
+    ],
+    "x-frame-options": [
+      "SAMEORIGIN"
+    ],
+    "x-xss-protection": [
+      "0"
+    ]
+  },
+  "recorded_at": "2026-11-03",
+  "request": {
+    "method": "GET",
+    "path": "/gmail/v1/users/me/messages/1a1970402bc8edb3"
+  },
+  "status": 200
+}
