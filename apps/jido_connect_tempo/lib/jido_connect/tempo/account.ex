@@ -18,8 +18,8 @@ defmodule Jido.Connect.Tempo.Account do
 
   Each link is a map with `id`, the link ID, `default`, `scope_type` and
   `scope_id`. On the test site Tempo reports a global account as a link
-  with ID 0 on the requested project; a link of an account that is also
-  linked twice keeps both entries.
+  with ID 0 on the requested project. An account with two links of the
+  project keeps both entries.
 
   `status` is kept as Tempo sends it. Tempo documents `OPEN`, `CLOSED` and
   `ARCHIVED`; any other value stays the raw string. A closed or archived
