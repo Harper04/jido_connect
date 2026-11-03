@@ -51,4 +51,62 @@ defmodule Jido.Connect.Gmail.MIMETest do
     assert {:error, %Connect.Error.ValidationError{reason: :missing_body}} =
              MIME.build_raw(%{to: ["to@example.com"], subject: "Hello"})
   end
+
+  describe "header values" do
+    @message %{to: ["to@example.com"], subject: "Hello", body_text: "Body"}
+
+    test "a subject that carries a second header line is rejected" do
+      assert {:error,
+              %Connect.Error.ValidationError{
+                reason: :invalid_header_value,
+                details: %{field: :subject} = details
+              }} = MIME.build_raw(%{@message | subject: "Hi\r\nBcc: x@example.com"})
+
+      refute inspect(details) =~ "x@example.com"
+    end
+
+    # The subject is trimmed before the check, the threading headers are not,
+    # so a trailing break counts only in them.
+    test "a bare CR or LF in subject, in_reply_to or references is rejected with the field" do
+      for {field, value} <- [
+            subject: "Hi\rthere",
+            subject: "Hi\nthere",
+            in_reply_to: "<a@example.com>\r<b@example.com>",
+            in_reply_to: "<a@example.com>\n",
+            references: "<a@example.com>\n<b@example.com>",
+            references: "<a@example.com>\r"
+          ] do
+        assert {:error,
+                %Connect.Error.ValidationError{
+                  reason: :invalid_header_value,
+                  details: %{field: ^field}
+                }} = MIME.build_raw(Map.put(@message, field, value))
+      end
+    end
+
+    test "a subject followed only by a line break is trimmed and accepted" do
+      for subject <- ["Hello\n", "Hello\r\n"] do
+        assert {:ok, raw} = MIME.build_raw(%{@message | subject: subject})
+        assert {:ok, message} = Base.url_decode64(raw, padding: false)
+        assert message =~ "\r\nSubject: Hello\r\nMIME-Version: 1.0\r\n"
+      end
+    end
+
+    # Recipients are trimmed and must match the address pattern, which allows
+    # no whitespace, so a break inside one fails there.
+    test "a CR or LF inside a recipient is rejected as an invalid recipient" do
+      for field <- [:to, :cc, :bcc],
+          recipient <- [
+            "a@example.com\r\nBcc: x@example.com",
+            "a@example.com\rb@example.com",
+            "a@example.com\nb@example.com"
+          ] do
+        assert {:error,
+                %Connect.Error.ValidationError{
+                  reason: :invalid_recipient,
+                  details: %{field: ^field}
+                }} = MIME.build_raw(Map.put(@message, field, [recipient]))
+      end
+    end
+  end
 end

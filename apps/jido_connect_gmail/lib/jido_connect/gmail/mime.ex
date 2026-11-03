@@ -1,5 +1,21 @@
 defmodule Jido.Connect.Gmail.MIME do
-  @moduledoc "Builds and validates Gmail raw MIME payloads for send and draft actions."
+  @moduledoc """
+  Builds and validates Gmail raw MIME payloads for send and draft actions.
+
+  `build_raw/1` serves `google.gmail.message.send`, `google.gmail.draft.create`
+  and `google.gmail.draft.update`. It trims recipients, the subject and the
+  body, and emits one UTF-8 body part, HTML when both bodies are given.
+
+  Every header value stays on one line. After trimming, a CR or LF in
+  `subject`, `in_reply_to` or `references` fails with reason
+  `:invalid_header_value` and the field in the details, because the break
+  would start a header of its own, such as `Bcc:`. `in_reply_to` and
+  `references` are not trimmed, so a trailing break fails as well. A
+  recipient must match a plain address pattern without whitespace, so a
+  break inside one fails with `:invalid_recipient`. In both cases nothing is
+  encoded and the action makes no provider call. The header error does not
+  repeat the value, which is message content.
+  """
 
   alias Jido.Connect.{Data, Error}
 
@@ -11,6 +27,12 @@ defmodule Jido.Connect.Gmail.MIME do
          {:ok, cc} <- validate_optional_recipients(:cc, Data.get(input, :cc, [])),
          {:ok, bcc} <- validate_optional_recipients(:bcc, Data.get(input, :bcc, [])),
          {:ok, subject} <- require_text(:subject, Data.get(input, :subject)),
+         :ok <-
+           single_line(
+             subject: subject,
+             in_reply_to: Data.get(input, :in_reply_to),
+             references: Data.get(input, :references)
+           ),
          {:ok, body, content_type} <- body(input) do
       {:ok,
        input
@@ -114,6 +136,22 @@ defmodule Jido.Connect.Gmail.MIME do
 
   defp require_text(field, _value),
     do: validation_error("Gmail #{field} is required", field: field, reason: :missing_field)
+
+  defp single_line(values) do
+    case Enum.find(values, fn {_field, value} -> line_break?(value) end) do
+      nil ->
+        :ok
+
+      {field, _value} ->
+        validation_error("Gmail #{field} must not contain a line break",
+          field: field,
+          reason: :invalid_header_value
+        )
+    end
+  end
+
+  defp line_break?(value) when is_binary(value), do: String.contains?(value, ["\r", "\n"])
+  defp line_break?(_value), do: false
 
   defp present?(value) when is_binary(value), do: String.trim(value) != ""
   defp present?(_value), do: false
