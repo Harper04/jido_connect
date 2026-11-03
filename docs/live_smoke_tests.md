@@ -316,6 +316,13 @@ offline tests match the stored value in `work_attribute_values` against
 `work_attributes_optional`: record those two in the same optional run.
 `work_attributes_required` needs a required run of its own.
 
+While the test attributes exist, run only the booking lookup checks, and
+run `down` at once after them, also when a check fails or the run is
+interrupted. In a required run Tempo rejects every new worklog without a
+value for each required attribute, so the worklog create check fails
+there, and every other user of the site must fill them in for as long as
+they stay. Run the rest of the Tempo suite after `down`.
+
 The site is shared with real users, and Tempo returns their data in the
 same responses: every work attribute of the site and every global account
 with each project's links. The recordings leave it out with the

@@ -323,9 +323,12 @@ only when it is made.
 The read-only pack `:tempo_booking_lookup` holds two reads for a booking
 target that the host has already resolved: the work attributes Tempo
 requires and the account candidates of the target's Jira project. Neither
-calls Jira. The host finds the issue and its numeric project ID with
+calls Jira. The host finds the issue and its project ID with
 `jira.issue.search` of `jido_connect_jira`, requesting the `project` field.
-Choosing a target, an account or attribute values is the host's task.
+Jira returns that ID as a string, such as `"10882"`; the host converts it
+to an integer, since `project_id` takes a positive integer and rejects a
+string with a `Jido.Connect.Error.ValidationError`. Choosing a target, an
+account or attribute values is the host's task.
 
 ### Work Attributes
 
@@ -377,9 +380,9 @@ attribute fail the whole read; the attribute error has reason
 
 ### Account Candidates
 
-`tempo.account.list_for_project` takes `project_id`, the numeric Jira
-project ID, and returns the accounts the project offers for booking. It
-requires `tempo.accounts.read`:
+`tempo.account.list_for_project` takes `project_id`, the Jira project ID
+as a positive integer, and returns the accounts the project offers for
+booking. It requires `tempo.accounts.read`:
 
 ```elixir
 Jido.Connect.invoke(

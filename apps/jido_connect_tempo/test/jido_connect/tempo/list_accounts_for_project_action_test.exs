@@ -126,6 +126,8 @@ defmodule Jido.Connect.Tempo.ListAccountsForProjectActionTest do
       :ok
     end
 
+    # Jira returns a project ID as a string such as "10882"; the host
+    # converts it, the action does not.
     test "a missing, non-positive or non-integer project ID fails validation" do
       for input <- [
             %{},
@@ -133,6 +135,7 @@ defmodule Jido.Connect.Tempo.ListAccountsForProjectActionTest do
             %{project_id: -10_882},
             %{project_id: 1.5},
             %{project_id: "JCL"},
+            %{project_id: "10882"},
             %{project_id: 10_882, include_global_accounts: false},
             %{project_id: 10_882, account_id: 26}
           ] do

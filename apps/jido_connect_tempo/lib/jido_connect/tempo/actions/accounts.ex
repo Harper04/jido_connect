@@ -32,7 +32,9 @@ defmodule Jido.Connect.Tempo.Actions.Accounts do
           required?: true,
           minimum: 1,
           example: 10_001,
-          description: "Numeric Jira project ID of the booking target, not the project key."
+          description:
+            "Jira project ID of the booking target as a positive integer, not the project " <>
+              "key. Jira returns the ID as a string such as \"10882\"; the host converts it."
         )
       end
 
