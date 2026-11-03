@@ -31,6 +31,7 @@ defmodule Jido.Connect.Gmail.SendLiveSmokeTest do
   use ExUnit.Case, async: false
   use Jido.Connect.TestSupport.LiveSmoke
 
+  alias Jido.Connect.Gmail.MIME
   alias Jido.Connect.Gmail.TestSupport.LiveGmail
 
   # The writes run through the actions on the full grant, prepared and
@@ -117,14 +118,14 @@ defmodule Jido.Connect.Gmail.SendLiveSmokeTest do
     subject = "jcl-live draft #{run} Grüße aus Köln"
     original_header_id = "<jcl-live-draft-#{run}@example.org>"
 
-    # Gmail threads a draft only under a matching subject, so the inserted
-    # original carries its subject as one encoded word, as Gmail would store
-    # a raw UTF-8 subject garbled.
+    # Gmail threads a draft only under a matching subject and stored a raw
+    # UTF-8 subject garbled, so the inserted original carries its subject
+    # encoded and folded as MIME.build_raw/1 writes a subject.
     %{"id" => original_id, "threadId" => thread_id} =
       LiveGmail.insert_message!(
         access_token,
         [
-          {"Subject", "=?UTF-8?B?#{Base.encode64(subject)}?="},
+          {"Subject", encoded_subject(subject)},
           {"Message-ID", original_header_id}
         ],
         ["INBOX"]
@@ -191,6 +192,22 @@ defmodule Jido.Connect.Gmail.SendLiveSmokeTest do
     )
 
     assert thread_message_ids!(access_token, thread_id) == [original_id, message_id]
+  end
+
+  # The Subject value, encoded and folded, that MIME.build_raw/1 writes for
+  # `subject`, so no line of the inserted header exceeds 76 characters.
+  defp encoded_subject(subject) do
+    {:ok, raw} =
+      MIME.build_raw(%{
+        to: ["jcl-live.recipient@example.org"],
+        subject: subject,
+        body_text: "Synthetic message of a jcl-live check."
+      })
+
+    [_match, value] =
+      Regex.run(~r/\r\nSubject: (.*?)\r\n(?![ \t])/s, Base.url_decode64!(raw, padding: false))
+
+    value
   end
 
   # The draft as Gmail stores it holds `message_id`, carries DRAFT and not
