@@ -118,10 +118,11 @@ the body and emits one UTF-8 body part, HTML when both bodies are given. The
 body goes out as `8bit` under `charset=UTF-8`.
 
 A subject with a character outside ASCII goes out as RFC 2047 encoded words,
-`=?UTF-8?B?...?=`, each holding whole characters of at most 42 bytes, folded
-so that no header line exceeds 78 characters. An ASCII subject goes out
-unchanged. Gmail reads 8-bit header bytes in a single-byte charset and would
-store a raw UTF-8 subject garbled; the body keeps its bytes.
+`=?UTF-8?B?...?=`, each holding at most 39 bytes of whole UTF-8 code points,
+folded so that no line of the `Subject` header exceeds 76 characters. An
+ASCII subject goes out unchanged, on one line. Gmail reads 8-bit header bytes
+in a single-byte charset and would store a raw UTF-8 subject garbled; the body
+keeps its bytes.
 
 A header value in the input must not break the line. After trimming, a CR or
 LF in `subject`, `in_reply_to` or `references` returns a validation error with

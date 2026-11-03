@@ -8,11 +8,11 @@ defmodule Jido.Connect.Gmail.MIME do
   body goes out as `8bit` under `charset=UTF-8`.
 
   A subject with a character outside ASCII goes out as RFC 2047 encoded
-  words, `=?UTF-8?B?...?=`, each holding whole characters of at most 42
-  bytes, folded so that no header line exceeds 78 characters. An ASCII
-  subject goes out unchanged. Gmail reads 8-bit header bytes in a
-  single-byte charset and would store a raw UTF-8 subject garbled; the body
-  keeps its bytes.
+  words, `=?UTF-8?B?...?=`, each holding at most 39 bytes of whole UTF-8
+  code points, folded so that no line of the `Subject` header exceeds 76
+  characters. An ASCII subject goes out unchanged, on one line. Gmail reads
+  8-bit header bytes in a single-byte charset and would store a raw UTF-8
+  subject garbled; the body keeps its bytes.
 
   A header value in the input must not break the line. After trimming, a CR
   or LF in `subject`, `in_reply_to` or `references` fails with reason
@@ -66,10 +66,11 @@ defmodule Jido.Connect.Gmail.MIME do
     |> put_header("Content-Transfer-Encoding", "8bit")
   end
 
-  # RFC 2047 allows 75 characters per encoded word and RFC 5322 recommends 78
-  # per line. 42 bytes of UTF-8 make a word of 68 characters, which fits the
-  # first line after "Subject: " as well as every continuation line.
-  @encoded_word_bytes 42
+  # RFC 2047, section 2, limits an encoded word to 75 characters and each
+  # line of a header field that holds one to 76. 39 bytes of UTF-8 make a
+  # word of at most 64 characters, a first line of at most 73 after
+  # "Subject: " and continuation lines of at most 65.
+  @encoded_word_bytes 39
 
   defp encode_subject(subject) do
     if ascii?(subject) do
