@@ -317,9 +317,11 @@ defmodule Jido.Connect.Gmail.ContentLiveSmokeTest do
 
     # The HTML and its inline images sit in a multipart/related inside the
     # multipart/alternative, outside and in the enclosed forward. Gmail names
-    # the rfc822 part, whose disposition names no file, after its subject.
+    # the rfc822 part, whose disposition names no file, after the enclosed
+    # subject, not the outer one.
     assert Enum.map(live.text_parts, & &1.part_id) == ["0.0", "0.1.0"]
     assert Enum.map(live.attachments, & &1.part_id) == ["0.1.1", "0.1.2"]
+    assert live.subject == "WG: WG: jcl-live related original"
     assert [%{filename: "WG: jcl-live related original.eml"} = enclosed] = live.messages
     assert Enum.map(enclosed.text_parts, & &1.part_id) == ["1.0.0.0", "1.0.0.1.0"]
     assert Enum.map(enclosed.attachments, & &1.part_id) == ["1.0.0.1.1", "1.0.1"]

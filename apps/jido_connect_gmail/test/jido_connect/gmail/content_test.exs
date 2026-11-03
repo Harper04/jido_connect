@@ -174,6 +174,7 @@ defmodule Jido.Connect.Gmail.ContentTest do
       expect_full("/gmail/v1/users/me/messages/#{recorded["id"]}", recorded)
 
       assert {:ok, %{message: message}} = read_message(recorded["id"])
+      assert message.subject == "WG: WG: jcl-live related original"
 
       assert Enum.map(message.text_parts, &{&1.part_id, &1.mime_type}) == [
                {"0.0", "text/plain"},
@@ -183,8 +184,9 @@ defmodule Jido.Connect.Gmail.ContentTest do
       assert hd(message.text_parts).content ==
                "Siehe Anlage, marker jcl-marker-forward-related.\r\n\r\nViele Grüße\r\n"
 
-      # Outlook writes Content-IDs in the form of an address, which the
-      # recorder replaced like one.
+      # Outlook gives an inline image the Content-ID <file@hex.hex>, which
+      # the recorder does not take for an address: its last label starts
+      # with a digit.
       assert Enum.map(message.attachments, &Map.delete(&1, :attachment_id)) == [
                %{
                  part_id: "0.1.1",
@@ -192,7 +194,7 @@ defmodule Jido.Connect.Gmail.ContentTest do
                  mime_type: "image/png",
                  size: 73,
                  disposition: "inline",
-                 content_id: "<person-4@example.com>"
+                 content_id: "<jcl-logo-1.png@01DD4C2A.5B6E7F80>"
                },
                %{
                  part_id: "0.1.2",
@@ -200,13 +202,15 @@ defmodule Jido.Connect.Gmail.ContentTest do
                  mime_type: "image/png",
                  size: 73,
                  disposition: "inline",
-                 content_id: "<person-5@example.com>"
+                 content_id: "<jcl-logo-2.png@01DD4C2A.5B6E7F80>"
                }
              ]
 
       assert Enum.all?(message.attachments, &is_binary(&1.attachment_id))
+      assert cid_references(message) == [{"0.1.0", [1, 1]}]
 
-      # Gmail names the rfc822 part after the enclosed subject.
+      # Gmail names the rfc822 part, whose disposition names no file, after
+      # the enclosed subject and not the outer one.
       assert [
                %{
                  part_id: "1",
@@ -217,8 +221,10 @@ defmodule Jido.Connect.Gmail.ContentTest do
                } = enclosed
              ] = message.messages
 
-      assert_enclosed_headers(recorded, message, enclosed, ~w(From Date))
+      assert_enclosed_headers(recorded, message, enclosed, ~w(From Date Subject))
       assert header(enclosed, "Subject") == "WG: jcl-live related original"
+      assert enclosed.filename == header(enclosed, "Subject") <> ".eml"
+      refute enclosed.filename == message.subject <> ".eml"
 
       assert Enum.map(enclosed.text_parts, &{&1.part_id, &1.mime_type}) == [
                {"1.0.0.0", "text/plain"},
@@ -236,7 +242,9 @@ defmodule Jido.Connect.Gmail.ContentTest do
                ]
 
       assert Enum.map(enclosed.attachments, & &1.content_id) ==
-               ["<person-9@example.com>", nil]
+               ["<jcl-enclosed.png@01DD4C29.7C8D9E10>", nil]
+
+      assert cid_references(enclosed) == [{"1.0.0.1.0", [1]}]
     end
 
     test "a forward without a subject in Gmail Web's shape keeps the empty subject and Content-IDs" do
@@ -924,6 +932,30 @@ defmodule Jido.Connect.Gmail.ContentTest do
   defp header(%{headers: headers}, name) do
     Enum.find_value(headers, fn header -> if header.name == name, do: header.value end)
   end
+
+  # For each HTML part of `content`, by part ID, how many inline manifest
+  # entries beside it in its multipart/related carry the Content-ID that each
+  # of its cid: references names (RFC 2392); a host resolves the images of
+  # the HTML that way.
+  defp cid_references(content) do
+    for %{mime_type: "text/html", part_id: part_id, content: html} <- content.text_parts do
+      inline =
+        Enum.filter(
+          content.attachments,
+          &(&1.disposition == "inline" and parent_part_id(&1.part_id) == parent_part_id(part_id))
+        )
+
+      counts =
+        for [cid] <- Regex.scan(~r/cid:([^"'\s>]+)/, html, capture: :all_but_first) do
+          Enum.count(inline, &(&1.content_id == "<#{cid}>"))
+        end
+
+      {part_id, counts}
+    end
+  end
+
+  defp parent_part_id(part_id),
+    do: part_id |> String.split(".") |> Enum.drop(-1) |> Enum.join(".")
 
   # The nested message carries the headers that Gmail recorded on the root
   # part inside its message/rfc822 part, not the outer ones: each header that
