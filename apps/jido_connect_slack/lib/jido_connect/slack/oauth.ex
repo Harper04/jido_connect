@@ -194,7 +194,7 @@ defmodule Jido.Connect.Slack.OAuth do
 
     case Keyword.get(opts, :connection) do
       %Connect.Connection{} = connection ->
-        connection_id = Keyword.get(opts, :connection_id, connection.id)
+        connection_id = Keyword.get(opts, :connection_id) || connection.id
 
         with :ok <- slack_connection(connection, connection_id),
              :ok <- token_profile(connection.profile, connection.id, defaults.profile) do

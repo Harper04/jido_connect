@@ -339,6 +339,31 @@ defmodule Jido.Connect.Slack.OAuthTest do
     end
   end
 
+  test "a lease takes a given connection ID, else its connection's or its own" do
+    stub_oauth("oauth_v2_access_bot_and_user")
+    assert {:ok, token} = exchange("code")
+
+    for {profile, default_id, lease_fun} <- [
+          {:bot, "slack-team-T9TK3CUKW", &OAuth.bot_credential_lease/3},
+          {:user, "slack-team-T9TK3CUKW-user-U1234", &OAuth.user_credential_lease/3}
+        ] do
+      connection = connection(profile)
+
+      for {opts, connection_id} <- [
+            {[], default_id},
+            {[connection_id: nil], default_id},
+            {[connection_id: "host-lease"], "host-lease"},
+            {[connection: connection], connection.id},
+            {[connection: connection, connection_id: nil], connection.id},
+            {[connection: connection, connection_id: "host-lease"], "host-lease"}
+          ] do
+        assert {:ok, %{connection_id: ^connection_id}} =
+                 lease_fun.(token, %{tenant_id: "tenant_1"}, opts),
+               "#{profile} #{inspect(Keyword.delete(opts, :connection))}"
+      end
+    end
+  end
+
   test "refuses a connection or profile other than the token's" do
     stub_oauth("oauth_v2_access_bot_and_user")
     assert {:ok, token} = exchange("code")
