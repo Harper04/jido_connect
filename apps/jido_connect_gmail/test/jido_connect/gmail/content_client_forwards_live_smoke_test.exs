@@ -11,19 +11,20 @@ defmodule Jido.Connect.Gmail.ContentClientForwardsLiveSmokeTest do
   addresses and images. The tests therefore record nothing, also when the run
   sets `JIDO_CONNECT_RECORD=1`: a live test records only through
   `LiveGmail.record/1`, which this module never calls. They look at text only
-  for the marker lines,
-  the `JCL Quelle` subject and generic signs of correct decoding: a non-ASCII
-  letter is present, and neither U+FFFD nor `Ã` or `Â` appears, the first
-  character of a two-byte UTF-8 sequence read as Latin-1 or Windows-1252.
-  Every assertion is a condition with a message that names the forward and
-  the check, so a failure never prints message content.
+  for the marker lines, the `JCL Quelle` subject and generic signs of correct
+  decoding: a non-ASCII letter is present, and neither U+FFFD nor `Ã` or `Â`
+  appears, the first character of a two-byte UTF-8 sequence read as Latin-1
+  or Windows-1252. Every assertion is a condition with a message that names
+  the forward and the check, so a failure never prints message content.
 
   The inline forwards must return their text and no nested message; the
   Outlook inline forward carries neither a comment line nor a quoted
   original. The attached forwards must return the comment line in the outer
   text and exactly one nested message, the client's inline forward, with its
-  `From`, `Date` and `Subject` and its text. Every forward lists `test.txt`,
-  inside the nested message for the attached ones, and
+  text and with the part ID, `From`, `Date` and `Subject` that Gmail parsed
+  for the enclosed message; the tests read Gmail's parse with a direct
+  `messages.get` outside the connector and the recorder. Every forward lists
+  `test.txt`, inside the nested message for the attached ones, and
   `google.gmail.message.attachment.content.get` must return the same bytes for
   it as `google.gmail.message.attachment.get`.
 
@@ -87,7 +88,7 @@ defmodule Jido.Connect.Gmail.ContentClientForwardsLiveSmokeTest do
     assert_text_holds(forward, message.text_parts, "Kommentar Outlook Anlage")
     assert_no_misdecoding(forward, message.text_parts)
 
-    nested = single_nested_message!(forward, message)
+    nested = single_nested_message!(forward, message_id, message, access_token)
     assert_test_file("#{forward}, nested message", message_id, nested.attachments, access_token)
   end
 
@@ -103,7 +104,7 @@ defmodule Jido.Connect.Gmail.ContentClientForwardsLiveSmokeTest do
     assert_text_holds(forward, message.text_parts, "Kommentar Gmail Anhang")
     assert_no_misdecoding(forward, message.text_parts)
 
-    nested = single_nested_message!(forward, message)
+    nested = single_nested_message!(forward, message_id, message, access_token)
     assert_test_file("#{forward}, nested message", message_id, nested.attachments, access_token)
   end
 
@@ -114,15 +115,21 @@ defmodule Jido.Connect.Gmail.ContentClientForwardsLiveSmokeTest do
     end
   end
 
-  # The nested message is the client's inline forward: the headers that Gmail
-  # parsed from it, its text and its attachments.
-  defp single_nested_message!(forward, message) do
+  # The nested message is the client's inline forward: its part ID and its
+  # From, Date and Subject are those of Gmail's own parse, its text decodes.
+  defp single_nested_message!(forward, message_id, message, access_token) do
     assert length(message.messages) == 1, "#{forward}: exactly one nested message"
     [nested] = message.messages
+    {part_id, gmail_headers} = gmail_enclosed_message!(forward, message_id, access_token)
+
+    assert nested.part_id == part_id, "#{forward}: nested part ID matches Gmail's parse"
 
     for name <- ["From", "Date", "Subject"] do
       value = header(nested, name)
       assert is_binary(value) and value != "", "#{forward}: nested message has a #{name} header"
+
+      assert value == gmail_header(gmail_headers, name),
+             "#{forward}: nested #{name} matches Gmail's parse"
     end
 
     assert subject_names_source?(header(nested, "Subject")),
@@ -131,6 +138,36 @@ defmodule Jido.Connect.Gmail.ContentClientForwardsLiveSmokeTest do
     assert_decoded_text("#{forward}, nested message", nested.text_parts)
     nested
   end
+
+  # Gmail's parse of the forward, read with messages.get outside the
+  # connector and the recorder: the part ID of its single message/rfc822 part
+  # and the headers of the enclosed message, the root part inside it.
+  defp gmail_enclosed_message!(forward, message_id, access_token) do
+    case LiveGmail.gmail_api(:get, "/messages/#{message_id}", access_token,
+           params: [format: "full"]
+         ) do
+      %{status: 200, body: %{"payload" => payload}} ->
+        parts = rfc822_parts(payload)
+        assert length(parts) == 1, "#{forward}: Gmail returns one message/rfc822 part"
+        [part] = parts
+        roots = Map.get(part, "parts")
+        assert match?([%{} | _], roots), "#{forward}: Gmail parses the enclosed message"
+        [root | _rest] = roots
+        {Map.get(part, "partId"), Map.get(root, "headers")}
+
+      %{status: status} ->
+        flunk("#{forward}: messages.get format=full returned no payload, HTTP #{status}")
+    end
+  end
+
+  # The message/rfc822 parts outside any other, in part order, as the
+  # connector lists nested messages.
+  defp rfc822_parts(%{"mimeType" => "message/rfc822"} = part), do: [part]
+
+  defp rfc822_parts(%{"parts" => parts}) when is_list(parts),
+    do: Enum.flat_map(parts, &rfc822_parts/1)
+
+  defp rfc822_parts(_part), do: []
 
   # Plain text and HTML both arrive decoded, the plain text holds a non-ASCII
   # letter, and no text part shows a sign of wrong decoding. Outlook writes
@@ -236,4 +273,14 @@ defmodule Jido.Connect.Gmail.ContentClientForwardsLiveSmokeTest do
   defp header(%{headers: headers}, name) do
     Enum.find_value(headers, fn header -> if header.name == name, do: header.value end)
   end
+
+  # A header as Gmail's messages.get returns it, `%{"name" => _, "value" => _}`.
+  defp gmail_header(headers, name) when is_list(headers) do
+    Enum.find_value(headers, fn
+      %{"name" => ^name, "value" => value} -> value
+      _header -> nil
+    end)
+  end
+
+  defp gmail_header(_headers, _name), do: nil
 end
