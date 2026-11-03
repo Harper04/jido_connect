@@ -121,20 +121,19 @@ defmodule Jido.Connect.Slack.OAuth do
 
   defp handle_token_response({:ok, %{status: status, body: %{"ok" => true} = body}})
        when status in 200..299 do
-    with access_token when is_binary(access_token) <- Data.get(body, "access_token") do
-      {:ok,
-       %{
-         access_token: access_token,
-         token_type: Data.get(body, "token_type"),
-         scope: Data.get(body, "scope") |> Scope.parse(),
-         bot_user_id: Data.get(body, "bot_user_id"),
-         app_id: Data.get(body, "app_id"),
-         team: Data.get(body, "team") || %{},
-         enterprise: Data.get(body, "enterprise")
-       }}
-    else
-      _other ->
+    case {bot_credential(body), user_credential(Data.get(body, "authed_user"))} do
+      {nil, nil} ->
         invalid_success_response(body)
+
+      {bot, user} ->
+        {:ok,
+         %{
+           app_id: Data.get(body, "app_id"),
+           team: Data.get(body, "team") || %{},
+           enterprise: Data.get(body, "enterprise")
+         }
+         |> Map.merge(bot || %{})
+         |> maybe_put(:authed_user, user)}
     end
   end
 
@@ -166,6 +165,51 @@ defmodule Jido.Connect.Slack.OAuth do
        details: %{reason: reason}
      )}
   end
+
+  # The bot token sits at the top of the response. A response with only a
+  # user token, such as Sign in with Slack or a flow with only `user_scope`,
+  # has none.
+  defp bot_credential(body) do
+    with access_token when is_binary(access_token) <- Data.get(body, "access_token") do
+      %{
+        access_token: access_token,
+        token_type: Data.get(body, "token_type"),
+        scope: body |> Data.get("scope") |> Scope.parse(),
+        bot_user_id: Data.get(body, "bot_user_id")
+      }
+    else
+      _none -> nil
+    end
+  end
+
+  # Slack puts the user token of the person who authorized under
+  # `authed_user`, and only when the flow asked for `user_scope`. Without
+  # it, `authed_user` holds the user ID alone and yields no credential.
+  defp user_credential(%{} = authed_user) do
+    with access_token when is_binary(access_token) <- Data.get(authed_user, "access_token") do
+      Data.compact(%{
+        id: Data.get(authed_user, "id"),
+        access_token: access_token,
+        token_type: Data.get(authed_user, "token_type"),
+        scope: authed_user |> Data.get("scope") |> Scope.parse(),
+        refresh_token: Data.get(authed_user, "refresh_token")
+      })
+      |> Map.merge(expiry(Data.get(authed_user, "expires_in")))
+    else
+      _none -> nil
+    end
+  end
+
+  defp user_credential(_none), do: nil
+
+  # With token rotation, a user token expires after `expires_in` seconds.
+  defp expiry(seconds) when is_integer(seconds) and seconds > 0,
+    do: %{expires_in: seconds, expires_at: DateTime.add(DateTime.utc_now(), seconds, :second)}
+
+  defp expiry(_none), do: %{}
+
+  defp maybe_put(map, _key, nil), do: map
+  defp maybe_put(map, key, value), do: Map.put(map, key, value)
 
   defp invalid_success_response(body) do
     {:error,
