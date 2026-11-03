@@ -16,6 +16,10 @@ defmodule Jido.Connect.Gmail.SendLiveSmokeTest do
   same draft ID with a new message. Gmail must store both versions with their
   own body and the reply headers as a draft that was not sent.
 
+  Subjects and bodies hold umlauts and `ß`. The stored `Subject` header must
+  decode to the subject, and `google.gmail.message.content.get` must return
+  the subject and the body as sent, for both mails and for the first draft.
+
   The tests read `GOOGLE_ACCESS_TOKEN` and `GOOGLE_GMAIL_RECIPIENT` and run
   only with `GOOGLE_LIVE_DESTRUCTIVE=true`. Each run of the send test puts two
   mails into the recipient's mailbox, which stay there. When they exit, also
@@ -32,7 +36,11 @@ defmodule Jido.Connect.Gmail.SendLiveSmokeTest do
   # The writes run through the actions on the full grant, prepared and
   # committed with a host authorization as a host would run them. Each
   # recording holds the answer to one write. The checks read what Gmail
-  # stores directly, in format=raw, outside the connector and the recorder.
+  # stores directly, in format=raw, outside the connector and the recorder,
+  # and through google.gmail.message.content.get as a host reads it. Those
+  # reads record under names of their own, message_content_sent and
+  # message_content_draft, so a write's recording keeps its answer alone; no
+  # offline test uses them.
 
   @tag env!(["GOOGLE_ACCESS_TOKEN", "GOOGLE_GMAIL_RECIPIENT"])
   @tag write!(:google)
@@ -41,12 +49,12 @@ defmodule Jido.Connect.Gmail.SendLiveSmokeTest do
     access_token = env["GOOGLE_ACCESS_TOKEN"]
     grant = LiveGmail.write_grant(access_token)
     run = LiveGmail.run_id()
-    subject = "jcl-live send #{run}"
+    subject = "jcl-live send #{run} Grüße aus Köln, Prüfung der Umlaute äöü ÄÖÜ ß"
 
     original = %{
       to: [env["GOOGLE_GMAIL_RECIPIENT"]],
       subject: subject,
-      body_text: "Synthetic mail of a jcl-live send check, run #{run}. Grüße."
+      body_text: "Synthetic mail of a jcl-live send check, run #{run}. Grüße: äöü ÄÖÜ ß."
     }
 
     LiveGmail.record("message_send")
@@ -93,6 +101,10 @@ defmodule Jido.Connect.Gmail.SendLiveSmokeTest do
            } = stored_reply.headers
 
     assert thread_message_ids!(access_token, thread_id) == [original_id, reply_id]
+
+    LiveGmail.record("message_content_sent")
+    assert content!(grant, original_id) == %{subject: subject, texts: [original.body_text]}
+    assert content!(grant, reply_id) == %{subject: reply_subject, texts: [reply.body_text]}
   end
 
   @tag env!(["GOOGLE_ACCESS_TOKEN", "GOOGLE_GMAIL_RECIPIENT"])
@@ -102,13 +114,19 @@ defmodule Jido.Connect.Gmail.SendLiveSmokeTest do
     access_token = env["GOOGLE_ACCESS_TOKEN"]
     grant = LiveGmail.write_grant(access_token)
     run = LiveGmail.run_id()
-    subject = "jcl-live draft #{run}"
+    subject = "jcl-live draft #{run} Grüße aus Köln"
     original_header_id = "<jcl-live-draft-#{run}@example.org>"
 
+    # Gmail threads a draft only under a matching subject, so the inserted
+    # original carries its subject as one encoded word, as Gmail would store
+    # a raw UTF-8 subject garbled.
     %{"id" => original_id, "threadId" => thread_id} =
       LiveGmail.insert_message!(
         access_token,
-        [{"Subject", subject}, {"Message-ID", original_header_id}],
+        [
+          {"Subject", "=?UTF-8?B?#{Base.encode64(subject)}?="},
+          {"Message-ID", original_header_id}
+        ],
         ["INBOX"]
       )
 
@@ -117,7 +135,7 @@ defmodule Jido.Connect.Gmail.SendLiveSmokeTest do
     reply = %{
       to: [env["GOOGLE_GMAIL_RECIPIENT"]],
       subject: reply_subject,
-      body_text: "First version of a jcl-live draft check, run #{run}. Grüße.",
+      body_text: "First version of a jcl-live draft check, run #{run}. Grüße: äöü ÄÖÜ ß.",
       thread_id: thread_id,
       in_reply_to: original_header_id,
       references: original_header_id
@@ -137,10 +155,20 @@ defmodule Jido.Connect.Gmail.SendLiveSmokeTest do
 
     assert_unsent_reply_draft(access_token, draft_id, first_message_id, reply, original_header_id)
 
+    LiveGmail.record("message_content_draft")
+
+    assert content!(grant, first_message_id) == %{
+             subject: reply_subject,
+             texts: [reply.body_text]
+           }
+
     replacement =
       reply
       |> Map.put(:draft_id, draft_id)
-      |> Map.put(:body_text, "Replacement of a jcl-live draft check, run #{run}. Grüße.")
+      |> Map.put(
+        :body_text,
+        "Replacement of a jcl-live draft check, run #{run}. Grüße: äöü ÄÖÜ ß."
+      )
 
     LiveGmail.record("draft_update")
 
@@ -197,9 +225,9 @@ defmodule Jido.Connect.Gmail.SendLiveSmokeTest do
   defp delete_draft_on_exit(_access_token, _result), do: :ok
 
   # A message or draft as Gmail stores it: its message ID and labels, the
-  # subject, Message-ID and threading headers, and the SHA-256 of the body
-  # after the header block. Only these headers are kept, so a failed
-  # assertion shows no address.
+  # subject decoded from its encoded words, the Message-ID and threading
+  # headers, and the SHA-256 of the body after the header block. Only these
+  # headers are kept, so a failed assertion shows no address.
   defp stored_message!(access_token, message_id) do
     case LiveGmail.gmail_api(:get, "/messages/#{message_id}", access_token,
            params: [format: "raw"]
@@ -230,6 +258,7 @@ defmodule Jido.Connect.Gmail.SendLiveSmokeTest do
       |> Enum.map(&String.split(&1, ":", parts: 2))
       |> Enum.group_by(&String.downcase(hd(&1)), &String.trim(List.last(&1)))
       |> Map.take(["subject", "message-id", "in-reply-to", "references"])
+      |> Map.update("subject", [], fn subjects -> Enum.map(subjects, &decode_words/1) end)
 
     %{
       message_id: id,
@@ -237,6 +266,30 @@ defmodule Jido.Connect.Gmail.SendLiveSmokeTest do
       headers: headers,
       body_sha256: LiveGmail.sha256(body)
     }
+  end
+
+  # Decodes the UTF-8 B encoded words that MIME.build_raw/1 writes for a
+  # non-ASCII subject. The space that unfolding leaves between two words is
+  # dropped, as RFC 2047 requires.
+  defp decode_words(value) do
+    Regex.replace(
+      ~r/=\?UTF-8\?B\?([A-Za-z0-9+\/=]*)\?=(?:[ \t]+(?==\?UTF-8\?B\?))?/i,
+      value,
+      fn _word, data -> Base.decode64!(data) end
+    )
+  end
+
+  # The subject and the text of each text part of a message as
+  # google.gmail.message.content.get returns it. Only these are kept, so a
+  # failed assertion shows no address.
+  defp content!(grant, message_id) do
+    case LiveGmail.invoke(grant, "google.gmail.message.content.get", %{message_id: message_id}) do
+      {:ok, %{message: %{subject: subject, text_parts: parts}}} ->
+        %{subject: subject, texts: Enum.map(parts, & &1.content)}
+
+      {:error, error} ->
+        flunk("could not read the content of message #{message_id}: #{inspect(error.reason)}")
+    end
   end
 
   defp thread_message_ids!(access_token, thread_id) do
