@@ -292,6 +292,32 @@ for a range across two periods. That 400 names no account in its body, so
 it is recorded after the October approval, from whose `user` the sanitizer
 learns the account ID before it writes the request path.
 
+The Tempo booking lookup checks are in `booking_lookup_live_smoke_test.exs`.
+The account check relies on the seeded accounts alone: JCL-PROJECT
+(`TEMPO_ACCOUNT_ID`, the default link), JCL-SECONDARY and the closed
+JCL-CLOSED, linked to `TEMPO_JIRA_PROJECT_ID`, and the global JCL-GLOBAL.
+The work attribute checks need the four test attributes `_JclPhase_`,
+`_JclBillable_`, `_JclHours_` and `_JclAccount_`, which exist on the shared
+site only around a run, since every user's time-entry form shows them.
+`~/.config/jido_connect/live/seed/atlassian/tempo_attributes.py up` creates
+them, required unless `--optional`, and gives the seeded worklog of
+October 1, 2026 a value for each; `down` deletes them and their values.
+Without them those checks fail. The attribute check names its recording
+after the mode it observes, `work_attributes_required` or
+`work_attributes_optional`. Tempo assigns new stored values each time
+`up` creates `_JclPhase_`, so `work_attribute_values` must be recorded in
+the window of `work_attributes_required`, whose stored values the offline
+tests pin.
+
+The site is shared with real users, and Tempo returns their data in the
+same responses: every work attribute of the site and every global account
+with each project's links. The recordings leave it out with the
+`:transform` option: other attributes become `_Other1_` and onward with
+only their type and required flag, links of other accounts are left out
+with `metadata.count` adjusted, reads of those accounts are not recorded,
+and worklog values of other attributes are left out. The live assertions
+check only the test data and pass whatever else the site holds.
+
 ### Confluence
 
 | Variable | Kind | Meaning |
