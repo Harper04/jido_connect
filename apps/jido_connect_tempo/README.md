@@ -287,9 +287,9 @@ may read periods but not approvals gives `%{reason: :forbidden, status:
 gives `%{reason: :rate_limited, status: 429, retry_after: 30}`, and an
 approval of another user gives `%{reason: :foreign_approval_user, status:
 nil, retry_after: nil}`. Any other error, such as one of an injected
-provider client or a provider error whose `status` is not an integer, is
-`:approval_read_failed` with `status` and `retry_after` `nil`. Tempo's
-error text and the error details are not kept.
+provider client or a provider error whose `status` is neither an integer
+nor `nil`, is `:approval_read_failed` with `status` and `retry_after`
+`nil`. Tempo's error text and the error details are not kept.
 
 `complete` is `false` when Tempo's periods leave a day of the range
 uncovered or cover it twice, and when a segment has no `approval_status`.
