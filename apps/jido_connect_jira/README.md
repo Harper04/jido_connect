@@ -93,6 +93,9 @@ output carries `id`, `key`, `url` (the API `self` URL), `project`,
 `assignee`, `status`, `priority`, `labels`, the plain-text `description` with
 `description_unsupported_nodes`, the date-only `due_date` and the
 timestamps. A field that Jira returns as `null` is absent from the output.
+A description that renders to an empty text, such as a document without
+content, keeps `description: ""` in `jira.issue.get` and in the issues of
+`jira.issue.search`, apart from a `null` description.
 `missing_fields` lists the requested Jira field keys, such as `parent` on a
 top-level issue or a field that the site's field configuration hides, that the
 response does not contain at all, so an empty field and an unavailable one

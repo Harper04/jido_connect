@@ -81,6 +81,10 @@
   segment through `Request.issue_segment/1`, as the other issue actions do.
   A key with `/`, `?` or `#` no longer changes the request path or query, and
   an empty key, `.` and `..` fail before a request.
+- Keep `description: ""` on issues whose description renders to an empty
+  text, in `Issue`, `jira.issue.get` and the issues of `jira.issue.search`,
+  as `Comment` keeps `body: ""`. A `null` or missing description stays
+  `nil`, and `jira.issue.get` leaves it out.
 
 ## 0.1.0
 
