@@ -3,17 +3,28 @@ defmodule Jido.Connect.Google.Calendar.FixtureTest do
 
   alias Jido.Connect.Google.Calendar.Normalizer
   alias Jido.Connect.Google.TestSupport.ConnectorContracts
+  alias Jido.Connect.TestSupport.LiveSmoke
 
   test "normalizes common Google Calendar event fixture" do
-    payload = fixture!("event_common.json")
+    # events.get of the prepared meeting, recorded from the test account.
+    payload = LiveSmoke.fixture!(:google_calendar, "event_get")
 
     assert {:ok, event} = Normalizer.event(payload, calendar_id: "primary")
-    assert event.event_id == "event123"
+    assert event.event_id == "ndvt3dobe2f7dac8l940ha6iug"
     assert event.calendar_id == "primary"
-    assert event.summary == "Planning"
-    assert event.start == "2026-05-06T09:00:00-05:00"
-    assert event.end == "2026-05-06T10:00:00-05:00"
-    assert [%{email: "guest@example.com", response_status: "accepted"}] = event.attendees
+    assert event.summary == "jcl-live meeting with transcript"
+    assert event.start == "2026-10-30T17:55:00+01:00"
+    assert event.end == "2026-10-30T18:40:00+01:00"
+
+    assert [
+             %{
+               email: "person-1@example.com",
+               response_status: "needsAction",
+               organizer?: true,
+               self?: true
+             },
+             %{email: "person-2@example.com", response_status: "needsAction", organizer?: false}
+           ] = event.attendees
   end
 
   test "normalizes edge Google Calendar freebusy fixture" do
