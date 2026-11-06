@@ -782,27 +782,46 @@ defmodule Jido.Connect.Google.Drive.LiveSmokeTest do
     run = Base.encode16(:crypto.strong_rand_bytes(6), case: :lower)
     content = "jcl-live typed upload #{run}\n"
 
-    for mime_type <- [@google_doc_mime_type, @google_sheet_mime_type, @folder_mime_type] do
-      name = "jcl-live typed upload #{run} #{mime_type}"
-      on_exit(fn -> delete_uploads_named(token, folder_id, name) end)
+    answers =
+      for mime_type <- [
+            @google_doc_mime_type,
+            @google_sheet_mime_type,
+            @apps_script_json,
+            "Application/VND.Google-Apps.Document",
+            @folder_mime_type
+          ] do
+        name = "jcl-live typed upload #{run} #{mime_type}"
+        on_exit(fn -> delete_uploads_named(token, folder_id, name) end)
 
-      upload = %{name: name, content: content, mime_type: mime_type, parents: [folder_id]}
+        upload = %{name: name, content: content, mime_type: mime_type, parents: [folder_id]}
 
-      assert {:error,
-              %Connect.Error.ValidationError{reason: :unsupported_mime_type, subject: :mime_type}} =
-               invoke("google.drive.file.upload", upload, token)
+        assert {:error,
+                %Connect.Error.ValidationError{
+                  reason: :unsupported_mime_type,
+                  subject: :mime_type
+                }} = invoke("google.drive.file.upload", upload, token)
 
-      case {mime_type, external_upload(token, upload)} do
-        {@folder_mime_type, %{status: 200, body: %{"id" => id} = created}} ->
-          on_exit(fn -> delete_leftover(token, "/files/#{id}") end)
+        case external_upload(token, upload) do
+          %{status: 200, body: %{"id" => id} = created} ->
+            on_exit(fn -> delete_leftover(token, "/files/#{id}") end)
+            {mime_type, 200, Map.take(created, ["mimeType", "quotaBytesUsed", "size"])}
 
-          assert %{"mimeType" => @folder_mime_type, "quotaBytesUsed" => "0"} = created
-          refute Map.has_key?(created, "size")
-
-        {_document_type, response} ->
-          assert %{status: 400, body: %{"error" => %{"message" => "Bad Request"}}} = response
+          %{status: status, body: body} ->
+            {mime_type, status, get_in(body, ["error", "message"])}
+        end
       end
-    end
+
+    # Drive refuses the lower-case document types as a bad request and the
+    # upper-case Docs type as an invalid media type. The folder answer has no
+    # `size`: Drive stored none of the bytes.
+    assert answers == [
+             {@google_doc_mime_type, 400, "Bad Request"},
+             {@google_sheet_mime_type, 400, "Bad Request"},
+             {@apps_script_json, 400, "Bad Request"},
+             {"Application/VND.Google-Apps.Document", 400,
+              "Invalid MIME type provided for the uploaded content."},
+             {@folder_mime_type, 200, %{"mimeType" => @folder_mime_type, "quotaBytesUsed" => "0"}}
+           ]
   end
 
   # Drive imports an Apps Script project from its JSON form into My Drive,
