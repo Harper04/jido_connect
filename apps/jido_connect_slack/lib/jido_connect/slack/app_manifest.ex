@@ -7,6 +7,11 @@ defmodule Jido.Connect.Slack.AppManifest do
   interactivity URLs are opt-in so hosts can enable them after local routes are
   ready to answer Slack's verification requests.
 
+  Every manifest turns on the Messages tab of the app's App Home and keeps it
+  writable (`features.app_home`), so people can send the bot direct messages
+  and share messages into its DM. Without it, Slack offers no DM with the
+  app. The Home tab stays off, since the package publishes no Home view.
+
   The user view is opt-in as well. `:user_scopes` lists the scopes of the
   user token that the person who installs the app grants, under
   `oauth_config.scopes.user`, and `:user_events` the events the app receives
@@ -71,6 +76,11 @@ defmodule Jido.Connect.Slack.AppManifest do
         bot_user: %{
           display_name: Keyword.get(opts, :bot_display_name, "Jido Connect"),
           always_online: false
+        },
+        app_home: %{
+          home_tab_enabled: false,
+          messages_tab_enabled: true,
+          messages_tab_read_only_enabled: false
         }
       },
       oauth_config: %{
@@ -134,6 +144,8 @@ defmodule Jido.Connect.Slack.AppManifest do
 
   defp maybe_put_event_subscriptions(manifest, _base_url, false), do: manifest
 
+  # No `scope_denied`: it belonged to workspace apps, which Slack retired in
+  # August 2021.
   defp maybe_put_event_subscriptions(manifest, base_url, true) do
     put_in(manifest, [:settings, :event_subscriptions], %{
       request_url: events_url(base_url),
@@ -157,7 +169,6 @@ defmodule Jido.Connect.Slack.AppManifest do
         "file_change",
         "app_uninstalled",
         "tokens_revoked",
-        "scope_denied",
         "reaction_added",
         "reaction_removed"
       ]
