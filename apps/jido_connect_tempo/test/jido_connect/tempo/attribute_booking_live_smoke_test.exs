@@ -47,7 +47,9 @@ defmodule Jido.Connect.Tempo.AttributeBookingLiveSmokeTest do
     scope grants `worklogs:manage` and not `write`, and unless
     `TEMPO_OAUTH_ACCESS_TOKEN_EXPIRES_AT` lies within 10 seconds of the
     response's `date` plus its `expires_in`, which shows that this response
-    issued the stored token pair.
+    issued the stored token pair. After the booking it waits until Jira
+    lists it, so the attribute booking, in whichever order ExUnit runs the
+    checks, starts with no worklog of the run still on its way to Jira.
 
   The booking with an unknown account key must create nothing; if Tempo
   accepts it, the check stops at once and names the new ID. On 2026-11-06
@@ -63,11 +65,12 @@ defmodule Jido.Connect.Tempo.AttributeBookingLiveSmokeTest do
 
   Apart from the checks that stop it before it writes, every provider call
   of a check runs before its first assertion, so a failed assertion never
-  needs another booking to learn the rest. The checks print the IDs of the
-  worklogs they created and what they observed; they never print Tempo's
-  error text or an account ID. ExUnit prints the arguments of a failing
-  call, so checks that involve a token or the test user's account ID
-  compute a boolean first and fail with a fixed message.
+  needs another booking to learn the rest. A check prints the ID of each
+  worklog it created as soon as Tempo returns it, before it waits for Jira,
+  and then what it observed; it never prints Tempo's error text or an
+  account ID. ExUnit prints the arguments of a failing call, so checks that
+  involve a token or the test user's account ID compute a boolean first and
+  fail with a fixed message.
   """
 
   use ExUnit.Case, async: false
@@ -90,6 +93,12 @@ defmodule Jido.Connect.Tempo.AttributeBookingLiveSmokeTest do
   alias Jido.Connect.{Error, Scope}
   alias Jido.Connect.Tempo.{Fixture, ScopeResolver}
   alias Jido.Connect.Tempo.Client.Transport
+
+  # The attribute booking waits for Jira twice and the OAuth booking once,
+  # each wait up to 29 pauses of 2 s and 30 reads. ExUnit's default of 60 s
+  # would end a slow attribute booking in its second wait, after both of
+  # its worklogs exist and before its report.
+  @moduletag timeout: :timer.minutes(5)
 
   @recorder {:jido_connect_tempo, :tempo_req_options}
   @jira ["JIRA_SITE", "JIRA_EMAIL", "JIRA_API_TOKEN"]
@@ -143,6 +152,7 @@ defmodule Jido.Connect.Tempo.AttributeBookingLiveSmokeTest do
 
     initial = jira(env, issue_id, 0)
     seed = post_seed(seeder, seed_body(account_id, issue_id, attributes))
+    IO.puts("attribute booking: estimate seed #{seed_summary(seed)}")
     seeded = after_write(seed, env, issue_id, initial, 1)
 
     LiveSmoke.record(@recorder, :tempo, "worklog_create_attributes",
@@ -152,14 +162,15 @@ defmodule Jido.Connect.Tempo.AttributeBookingLiveSmokeTest do
 
     create = commit(context, :api_token, token, input)
     read = invoke(context, :api_token, token, %{from: @day, to: @day})
+    IO.puts("attribute booking: booking #{summary(create)}")
 
     booked =
       after_write(create, env, issue_id, initial, if(match?({:ok, _}, seed), do: 2, else: 1))
 
     IO.puts("""
-    attribute booking: estimate seed #{seed_summary(seed)}, booking #{summary(create)}
-    Jira worklog total and remaining estimate: before #{inspect(initial)}, \
-    after the seed #{inspect(seeded)}, after the booking #{inspect(booked)}\
+    attribute booking: Jira worklog total and remaining estimate before \
+    #{inspect(initial)}, after the seed #{inspect(seeded)}, after the booking \
+    #{inspect(booked)}\
     """)
 
     seed_id =
@@ -288,6 +299,8 @@ defmodule Jido.Connect.Tempo.AttributeBookingLiveSmokeTest do
       attributes: attributes
     }
 
+    before = jira(env, issue_id, 0)
+
     LiveSmoke.record(@recorder, :tempo, "worklog_create_oauth",
       accounts: [account_id],
       transform: site_data(%{}, @attribute_keys)
@@ -296,6 +309,15 @@ defmodule Jido.Connect.Tempo.AttributeBookingLiveSmokeTest do
     create = commit(context, :oauth2_user, token, input)
     read = invoke(context, :oauth2_user, token, %{from: @day, to: @day})
     IO.puts("OAuth booking: #{summary(create)}")
+
+    # The check ends only once Jira lists the booking, so the attribute
+    # booking never starts while it is still on its way to Jira.
+    synced = after_write(create, env, issue_id, before, 1)
+
+    IO.puts("""
+    OAuth booking: Jira worklog total and remaining estimate before \
+    #{inspect(before)}, after the booking #{inspect(synced)}\
+    """)
 
     %{worklog: created} = ok!(create, "the OAuth booking")
 
