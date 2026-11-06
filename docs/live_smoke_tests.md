@@ -355,6 +355,16 @@ reads of those accounts are not recorded, and worklog values of other
 attributes are left out. The live assertions check only the test data and
 pass whatever else the site holds.
 
+Of the current recordings, `work_attributes_required.json`,
+`work_attributes_optional.json` and `accounts_for_project.json` were
+changed this way. They carry `"transformed": true`, added by hand after the
+recording; a re-recording writes it itself. The account details
+`accounts_for_project.2.json` to `.5.json` are those of test accounts,
+which the transform keeps as sent. `work_attribute_values.json` carries no
+marker: its recorded `content-length` matches its body once the
+sanitizer's replacements of the account ID and the site host are counted
+back, so the transform removed no value there.
+
 ### Confluence
 
 | Variable | Kind | Meaning |
