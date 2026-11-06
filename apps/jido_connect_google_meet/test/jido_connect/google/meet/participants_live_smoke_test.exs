@@ -46,11 +46,8 @@ defmodule Jido.Connect.Google.Meet.ParticipantsLiveSmokeTest do
 
   @user_types ["signed_in_user", "anonymous_user", "phone_user"]
 
-  @tag LiveMeet.prepared!([
-         "GOOGLE_ACCESS_TOKEN",
-         "GOOGLE_MEET_CONFERENCE_RECORD",
-         "GOOGLE_MEET_TRANSCRIPT"
-       ])
+  @tag env!(["GOOGLE_ACCESS_TOKEN", "GOOGLE_MEET_CONFERENCE_RECORD", "GOOGLE_MEET_TRANSCRIPT"])
+  @tag LiveMeet.prepared!(["GOOGLE_MEET_CONFERENCE_RECORD", "GOOGLE_MEET_TRANSCRIPT"])
   @tag timeout: :timer.minutes(2)
   test "resolves every speaker of the prepared transcript entries", %{env: env} do
     token = env["GOOGLE_ACCESS_TOKEN"]
@@ -96,7 +93,8 @@ defmodule Jido.Connect.Google.Meet.ParticipantsLiveSmokeTest do
     assert {named.user_type, named.user, named.display_name} == {nil, nil, nil}
   end
 
-  @tag LiveMeet.prepared!(["GOOGLE_ACCESS_TOKEN", "GOOGLE_MEET_CONFERENCE_RECORD"])
+  @tag env!(["GOOGLE_ACCESS_TOKEN", "GOOGLE_MEET_CONFERENCE_RECORD"])
+  @tag LiveMeet.prepared!(["GOOGLE_MEET_CONFERENCE_RECORD"])
   @tag timeout: :timer.minutes(2)
   test "pages through the participants of the earlier prepared conference record", %{env: env} do
     token = env["GOOGLE_ACCESS_TOKEN"]
@@ -130,7 +128,8 @@ defmodule Jido.Connect.Google.Meet.ParticipantsLiveSmokeTest do
     end
   end
 
-  @tag LiveMeet.prepared!(["GOOGLE_ACCESS_TOKEN", "GOOGLE_MEET_CONFERENCE_RECORD"])
+  @tag env!(["GOOGLE_ACCESS_TOKEN", "GOOGLE_MEET_CONFERENCE_RECORD"])
+  @tag LiveMeet.prepared!(["GOOGLE_MEET_CONFERENCE_RECORD"])
   test "rejects a missing participant of the prepared conference record", %{env: env} do
     missing =
       env["GOOGLE_MEET_CONFERENCE_RECORD"] <>
