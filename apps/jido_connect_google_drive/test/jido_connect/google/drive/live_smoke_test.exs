@@ -253,9 +253,9 @@ defmodule Jido.Connect.Google.Drive.LiveSmokeTest do
   end
 
   # Drive declares no size for an export, so only the bytes it sends can stop
-  # one. Only the export under the large limit is recorded: the call under the
-  # small limit comes before recording starts, and the transform skips the
-  # calls at and one byte below the export's length.
+  # one. The exports under the small limit, under the large limit and one
+  # byte below the export's length run before recording starts; only the
+  # export at exactly its length is recorded.
   @tag env!(["GOOGLE_ACCESS_TOKEN", "GOOGLE_DOCS_TABBED_DOCUMENT_ID"])
   test "exports the tabbed document within max_bytes and stops below its length", %{env: env} do
     token = env["GOOGLE_ACCESS_TOKEN"]
@@ -268,23 +268,19 @@ defmodule Jido.Connect.Google.Drive.LiveSmokeTest do
     refute Connect.Error.retryable?(small)
     refute inspect(small) =~ @tab_marker
 
-    LiveSmoke.record(@req_options, :google_drive, "file_export_max_bytes", @masked)
-
     assert {:ok, %{file_content: %{size: size} = content}} =
              invoke("google.drive.file.export", Map.put(input, :max_bytes, @large_limit), token)
 
     assert size > @small_limit
     assert content.content =~ @tab_marker
 
-    LiveSmoke.record(@req_options, :google_drive, "file_export_max_bytes_unrecorded",
-      transform: fn _path, _body -> :skip end
-    )
+    assert {:error, %Connect.Error.ProviderError{reason: :limit_exceeded}} =
+             invoke("google.drive.file.export", Map.put(input, :max_bytes, size - 1), token)
+
+    LiveSmoke.record(@req_options, :google_drive, "file_export_max_bytes", @masked)
 
     assert {:ok, %{file_content: ^content}} =
              invoke("google.drive.file.export", Map.put(input, :max_bytes, size), token)
-
-    assert {:error, %Connect.Error.ProviderError{reason: :limit_exceeded}} =
-             invoke("google.drive.file.export", Map.put(input, :max_bytes, size - 1), token)
   end
 
   # The size read of a download with max_bytes is the only request when
