@@ -43,9 +43,10 @@ can answer Slack verification requests.
 Every manifest turns on the Messages tab of the app's App Home and keeps it
 writable, so people can send the bot direct messages and share messages into
 its DM. The Home tab stays off, since the package publishes no Home view. The
-bot scopes always include `im:write`, `mpim:write` and `chat:write`, which
+default bot scopes include `im:write`, `mpim:write` and `chat:write`, which
 `slack.conversation.open` and `slack.message.post` need to open a DM or group
-DM and post there.
+DM and post there. `build/2` with `scopes:` replaces the default list, so a
+list of its own needs these three for the same actions.
 
 An app that also receives direct messages and shares into the bot DM needs the
 events request URL:
