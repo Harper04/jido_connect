@@ -89,6 +89,28 @@ defmodule Jido.Connect.Google.Drive.PartialFieldsTest do
            } = signal
   end
 
+  # Caller fields that keep only `removed` leave no field that names a file, a
+  # drive or a time. The page is the recorded mixed page projected on what
+  # these fields ask for: `newStartPageToken` and each change's `removed`.
+  test "google.drive.file.changed returns no signal for changes that keep only removed" do
+    fields = "nextPageToken,newStartPageToken,changes(removed)"
+    recorded = LiveSmoke.fixture!(:google_drive, "file_changed_mixed")
+
+    page = %{
+      "newStartPageToken" => recorded["newStartPageToken"],
+      "changes" => Enum.map(recorded["changes"], &Map.take(&1, ["removed"]))
+    }
+
+    Req.Test.expect(__MODULE__, fn conn ->
+      assert conn.request_path == "/v3/changes"
+      assert conn.query_params["fields"] == fields
+      Req.Test.json(conn, page)
+    end)
+
+    assert {:ok, %{signals: [], checkpoint: "113"}} =
+             poll("google.drive.file.changed", %{fields: fields})
+  end
+
   # Drive creates the folder before it answers, so a failed answer would
   # report a folder that exists as not created.
   test "google.drive.folder.create returns a folder whose fields leave out name" do
