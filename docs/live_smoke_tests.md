@@ -60,7 +60,10 @@ end
 
 Gmail keeps its capability checks beside `live_smoke_test.exs` in
 `apps/jido_connect_gmail/test/jido_connect/gmail/`, one file per capability
-family: `discovery_live_smoke_test.exs` for inbox and archive discovery,
+family: `discovery_live_smoke_test.exs` for inbox and archive discovery and
+for the metadata reads of a message and its thread under the
+`gmail.metadata` grant, recorded as `message_metadata_subject` and
+`thread_metadata_subject`,
 `content_live_smoke_test.exs` for message and thread content and forwards,
 `content_client_forwards_live_smoke_test.exs` for forwards that Outlook Web
 and Gmail Web built, `attachments_live_smoke_test.exs` for attachment content,

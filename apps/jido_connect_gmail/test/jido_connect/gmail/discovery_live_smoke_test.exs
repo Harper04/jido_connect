@@ -1,7 +1,8 @@
 defmodule Jido.Connect.Gmail.DiscoveryLiveSmokeTest do
   @moduledoc """
-  Live checks of inbox and archive discovery against the prepared messages of
-  the Google Workspace test account.
+  Live checks of inbox and archive discovery and of metadata reads under a
+  `gmail.metadata` grant, against the prepared messages of the Google
+  Workspace test account.
 
       mix test --only live_smoke
 
@@ -11,7 +12,8 @@ defmodule Jido.Connect.Gmail.DiscoveryLiveSmokeTest do
   only. Google must reject a query search that the client sends with a token
   limited to `gmail.metadata`. Under that token, a metadata read of one
   message of the archive pair and of its thread that asks for the `Subject`
-  header must return that header only.
+  header must return that header only; these reads record
+  `message_metadata_subject` and `thread_metadata_subject`.
 
   The tests read `GOOGLE_ACCESS_TOKEN`, `GOOGLE_GMAIL_METADATA_ACCESS_TOKEN`,
   `GOOGLE_GMAIL_QUERY` and `GOOGLE_GMAIL_ARCHIVE_MESSAGE_ID`; see
