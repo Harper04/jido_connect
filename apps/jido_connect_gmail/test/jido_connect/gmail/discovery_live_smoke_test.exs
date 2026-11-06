@@ -9,11 +9,13 @@ defmodule Jido.Connect.Gmail.DiscoveryLiveSmokeTest do
   matches one message at a time and must find the prepared inbox and archived
   messages; the same query with the `INBOX` label must return the inbox ones
   only. Google must reject a query search that the client sends with a token
-  limited to `gmail.metadata`.
+  limited to `gmail.metadata`. Under that token, a metadata read of one
+  message of the archive pair and of its thread that asks for the `Subject`
+  header must return that header only.
 
-  The tests read `GOOGLE_ACCESS_TOKEN`, `GOOGLE_GMAIL_METADATA_ACCESS_TOKEN`
-  and `GOOGLE_GMAIL_QUERY`; see `docs/live_smoke_tests.md` for the variables
-  and the recording mode.
+  The tests read `GOOGLE_ACCESS_TOKEN`, `GOOGLE_GMAIL_METADATA_ACCESS_TOKEN`,
+  `GOOGLE_GMAIL_QUERY` and `GOOGLE_GMAIL_ARCHIVE_MESSAGE_ID`; see
+  `docs/live_smoke_tests.md` for the variables and the recording mode.
   """
 
   use ExUnit.Case, async: false
@@ -25,6 +27,7 @@ defmodule Jido.Connect.Gmail.DiscoveryLiveSmokeTest do
   alias Jido.Connect.Gmail.TestSupport.LiveGmail
 
   @max_pages 20
+  @metadata_scope "https://www.googleapis.com/auth/gmail.metadata"
 
   # Prepared data of the test account: GOOGLE_GMAIL_QUERY matches exactly these
   # messages. The seed script restores them, possibly under new IDs.
@@ -76,6 +79,50 @@ defmodule Jido.Connect.Gmail.DiscoveryLiveSmokeTest do
                %{query: env["GOOGLE_GMAIL_QUERY"], page_size: 1},
                env["GOOGLE_GMAIL_METADATA_ACCESS_TOKEN"]
              )
+  end
+
+  # Metadata reads of one message of the archive pair and of its thread,
+  # asking for one header, under the scope the metadata actions need. The
+  # offline client tests send the same requests. On 2026-11-06 Gmail answered
+  # them without a snippet, and each payload held only that header and an
+  # empty partId, no mimeType and no body.
+  @tag env!(["GOOGLE_GMAIL_METADATA_ACCESS_TOKEN", "GOOGLE_GMAIL_ARCHIVE_MESSAGE_ID"])
+  test "message.get and thread.get return only the requested Subject header under the metadata-only grant",
+       %{env: env} do
+    {context, lease} =
+      LiveGmail.grant(env["GOOGLE_GMAIL_METADATA_ACCESS_TOKEN"], [@metadata_scope])
+
+    message_id = env["GOOGLE_GMAIL_ARCHIVE_MESSAGE_ID"]
+    input = %{message_id: message_id, metadata_headers: ["Subject"]}
+
+    LiveGmail.record("message_metadata_subject")
+
+    assert {:ok, %{message: %{message_id: ^message_id, thread_id: thread_id} = message}} =
+             Connect.invoke(Gmail.integration(), "google.gmail.message.get", input,
+               context: context,
+               credential_lease: lease
+             )
+
+    assert [%{name: "Subject"}] = message.headers
+    refute Map.has_key?(message.payload_summary, :body_size)
+
+    LiveGmail.record("thread_metadata_subject")
+
+    assert {:ok, %{thread: %{thread_id: ^thread_id, messages: [_first, _second] = messages}}} =
+             Connect.invoke(
+               Gmail.integration(),
+               "google.gmail.thread.get",
+               %{thread_id: thread_id, metadata_headers: ["Subject"]},
+               context: context,
+               credential_lease: lease
+             )
+
+    assert message_id in Enum.map(messages, & &1.message_id)
+
+    for listed <- messages do
+      assert [%{name: "Subject"}] = listed.headers
+      refute Map.has_key?(listed.payload_summary, :body_size)
+    end
   end
 
   defp page_through(input, context, lease, pages \\ []) do
