@@ -444,7 +444,10 @@ defmodule Jido.Connect.Gmail.ClientTest do
     # message_received_history is the live poll of an inserted message and
     # its reply. Gmail lists each addition with its ID, thread and labels
     # only, beside the record's `messages` entry. The label and deletion
-    # records come from the change poll, in the next test.
+    # records come from the change poll's recording, message_changed_history:
+    # the next test reads the labelsRemoved record of its first page, and
+    # only the message changed poll tests in gmail_test.exs read labelsAdded
+    # and messagesDeleted, from its later pages.
     %{"history" => recorded_records, "historyId" => history_id} =
       page = LiveSmoke.fixture!(:gmail, "message_received_history")
 
