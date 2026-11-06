@@ -57,7 +57,7 @@ defmodule Jido.Connect.TestSupport.LiveSmoke.Sanitize do
   @email_placeholder ~r/^person-\d+@example\.com$/
   @name_placeholder ~r/^Person \d+$/
   @placeholder Regex.compile!(
-                 "person-\\d+@example\\.com|Person \\d+|account-\\d+|" <>
+                 "person-\\d+@example\\.com|Person \\d+|account-\\d+|user-\\d+|" <>
                    @host_placeholder_pattern
                )
   # A host in the shape of a placeholder is not learned either. A configured
@@ -72,6 +72,7 @@ defmodule Jido.Connect.TestSupport.LiveSmoke.Sanitize do
                  "(?<![A-Za-z0-9_.~-])(?:users|conferenceRecords/[^/\\s\"?#]+/participants)/" <>
                    "(\\d{#{@min_credential_bytes},})(?![A-Za-z0-9_.~-])"
                )
+  @google_user_id Regex.compile!("^\\d{#{@min_credential_bytes},}$")
   # Keys whose string values are Base64 content, such as Gmail's
   # `payload.body.data` and `raw`.
   @base64_keys ~w(data raw)
@@ -100,12 +101,12 @@ defmodule Jido.Connect.TestSupport.LiveSmoke.Sanitize do
 
   @doc """
   Builds a state from the `:fields`, `:name_keys`, `:keep_keys`, `:credentials`,
-  `:hosts`, `:accounts`, `:identifying` and `:project_numbers` options.
-  `:hosts` holds `{source, host}` pairs and `:accounts` holds account IDs that
-  get placeholders before any value is read; `:identifying` holds
-  `{source, value}` pairs that must not remain, such as configured emails;
-  `:project_numbers` holds `{source, number}` pairs whose number becomes
-  `000000000000` and must not remain either.
+  `:hosts`, `:accounts`, `:users`, `:identifying` and `:project_numbers`
+  options. `:hosts` holds `{source, host}` pairs, `:accounts` account IDs and
+  `:users` Google user IDs that get placeholders before any value is read;
+  `:identifying` holds `{source, value}` pairs that must not remain, such as
+  configured emails; `:project_numbers` holds `{source, number}` pairs whose
+  number becomes `000000000000` and must not remain either.
   """
   def new(opts) do
     hosts = Keyword.get(opts, :hosts, [])
@@ -122,7 +123,10 @@ defmodule Jido.Connect.TestSupport.LiveSmoke.Sanitize do
 
     state = Enum.reduce(hosts, state, fn {_source, host}, state -> add_host(state, host) end)
 
-    opts |> Keyword.get(:accounts, []) |> strings() |> Enum.reduce(state, &add_account(&2, &1))
+    state =
+      opts |> Keyword.get(:accounts, []) |> strings() |> Enum.reduce(state, &add_account(&2, &1))
+
+    opts |> Keyword.get(:users, []) |> strings() |> Enum.reduce(state, &add_known_user(&2, &1))
   end
 
   @doc """
@@ -403,11 +407,22 @@ defmodule Jido.Connect.TestSupport.LiveSmoke.Sanitize do
     end
   end
 
+  # A known Google user ID must have the form of a learned one. A shorter
+  # number, replaced wherever it stands as a whole number, would garble text.
+  defp add_known_user(state, id) do
+    unless Regex.match?(@google_user_id, id) do
+      raise ArgumentError,
+            "users: takes Google user IDs of #{@min_credential_bytes} or more digits"
+    end
+
+    add_user(state, id)
+  end
+
   defp add_user(state, id) do
     if Map.has_key?(state.users, id) do
       state
     else
-      put_in(state.users[id], "user-#{map_size(state.users) + 1}")
+      put_in(state.users[id], free_placeholder(state, :users, &"user-#{&1}"))
     end
   end
 

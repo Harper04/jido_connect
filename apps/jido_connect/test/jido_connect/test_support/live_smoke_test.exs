@@ -882,6 +882,55 @@ defmodule Jido.Connect.TestSupport.LiveSmokeTest do
       refute Exception.message(error) =~ id
     end
 
+    test "keeps user-<n> placeholders and gives new Google user IDs numbers none of them holds" do
+      # A later fixture of a Meet recording names user-1 already.
+      id = "123456789012345678901"
+
+      body = %{
+        "first" => "conferenceRecords/rec-1/participants/user-1",
+        "second" => %{"signedinUser" => %{"user" => "users/#{id}"}}
+      }
+
+      with_env(@no_sites, fn ->
+        assert LiveSmoke.sanitize(body) == %{
+                 "first" => "conferenceRecords/rec-1/participants/user-1",
+                 "second" => %{"signedinUser" => %{"user" => "users/user-2"}}
+               }
+      end)
+    end
+
+    test "treats Google user IDs in Base64 content and in users: like account IDs" do
+      id = "123456789012345678901"
+      known = "109876543210987654321"
+
+      body = %{
+        "payload" => %{
+          "parts" => [
+            %{"body" => %{"data" => Base.url_encode64("Joined as users/#{id} today")}},
+            %{"body" => %{"data" => Base.url_encode64("Organizer #{known}")}}
+          ]
+        },
+        "path" => "/v2/conferenceRecords/rec-1/participants/#{known}"
+      }
+
+      with_env(@no_sites, fn ->
+        sanitized = LiveSmoke.sanitize(body, users: [known])
+
+        assert [first, second] = sanitized["payload"]["parts"]
+        assert Base.url_decode64!(first["body"]["data"]) == "Joined as users/user-2 today"
+        assert Base.url_decode64!(second["body"]["data"]) == "Organizer user-1"
+        assert sanitized["path"] == "/v2/conferenceRecords/rec-1/participants/user-1"
+
+        for blob <- [Base.encode64("x#{known}"), Base.url_encode64("xy:#{known}")] do
+          assert_raise LeakError, ~r/a Google user ID/, fn ->
+            LiveSmoke.check_leaks!(%{"note" => blob}, users: [known])
+          end
+        end
+
+        assert LiveSmoke.check_leaks!(sanitized, users: [known]) == :ok
+      end)
+    end
+
     test "guards credential-shaped variables that the convention does not list" do
       secret = "seed-only-secret-value"
 
@@ -1312,6 +1361,7 @@ defmodule Jido.Connect.TestSupport.LiveSmokeTest do
 
       assert changed["transformed"] == true
       refute Map.has_key?(unchanged, "transformed")
+      assert LiveSmoke.sanitize_fixture(changed) == changed
       assert LiveSmoke.fixture!(:stub, "marked", root: tmp) == %{"results" => [1]}
     end
 

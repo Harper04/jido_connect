@@ -199,7 +199,8 @@ defmodule Jido.Connect.TestSupport.LiveSmoke do
   such as the test user's. They get their placeholders before the first
   response is read, so they are replaced in request paths and `self` links
   even when no response names them under an account key, as with an empty
-  first page of `GET /4/worklogs/user/{accountId}`.
+  first page of `GET /4/worklogs/user/{accountId}`. `:users` does the same
+  for Google user IDs, numbers of eight or more digits.
 
   `:transform` is a function of the decoded request path and the decoded
   response body. It returns the body to record, or `:skip` to write no
@@ -259,10 +260,10 @@ defmodule Jido.Connect.TestSupport.LiveSmoke do
   display names, site and tunnel hosts, Atlassian account IDs, Google user IDs
   and the Google project number with stable placeholders, and replaces the
   values under `:fields` with `<field>-<n>`. `:name_keys` adds keys that hold
-  display names; `:accounts` lists account IDs to replace even where no
-  account key names them. Raises `LeakError` when a credential value, a
-  configured host or email address, the Google project number, or a replaced
-  host, account ID or Google user ID remains.
+  display names; `:accounts` and `:users` list account IDs and Google user
+  IDs to replace even where nothing names them as such. Raises `LeakError`
+  when a credential value, a configured host or email address, the Google
+  project number, or a replaced host, account ID or Google user ID remains.
   """
   @spec sanitize(term(), keyword()) :: term()
   def sanitize(value, opts \\ []) do
@@ -289,8 +290,8 @@ defmodule Jido.Connect.TestSupport.LiveSmoke do
 
   @doc """
   Raises `LeakError` when `value`, as it is, holds a credential value, a
-  configured host or email address, the Google project number or an account
-  ID given as `:accounts`.
+  configured host or email address, the Google project number, or an account
+  ID or Google user ID given as `:accounts` or `:users`.
 
   Nothing is sanitized or learned first, so values under keys that the
   sanitizer redacts are checked too. Use it for fixtures written by hand.
