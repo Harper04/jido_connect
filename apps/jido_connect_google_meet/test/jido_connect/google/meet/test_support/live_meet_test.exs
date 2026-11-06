@@ -371,24 +371,70 @@ defmodule Jido.Connect.Google.Meet.TestSupport.LiveMeetTest do
 
       refute LiveMeet.expired?(LiveMeet.probe("GOOGLE_MEET_CONFERENCE_RECORD", @record, @token))
     end
+
+    # Each answer below is a recorded body with exactly one field changed, so
+    # that it meets one condition of the rule and fails the other.
+    test "reads a 403 as expired only without a reason and with the message of a missing record" do
+      unknown = LiveSmoke.fixture!(:google_meet, "conference_record_unknown")
+      scoped = LiveSmoke.fixture!(:google_meet, "conference_record_scope_insufficient")
+
+      for {label, body} <- [
+            # conference_record_scope_insufficient, its message replaced by
+            # that of conference_record_unknown: an ErrorInfo reason, but the
+            # message says the resource might not exist.
+            {"reason with might-not-exist message",
+             put_in(scoped, ["error", "message"], unknown["error"]["message"])},
+            # conference_record_unknown, its message replaced by that of
+            # conference_record_scope_insufficient: no ErrorInfo reason, but
+            # another message.
+            {"no reason with another message",
+             put_in(unknown, ["error", "message"], scoped["error"]["message"])}
+          ] do
+        serve(%{record: body})
+
+        refute LiveMeet.expired?(
+                 LiveMeet.probe("GOOGLE_MEET_CONFERENCE_RECORD", @record, @token)
+               ),
+               label
+      end
+    end
+
+    test "reads a 404 as expired only with error.status NOT_FOUND" do
+      # transcript_entries_not_found without its error.status.
+      body =
+        :google_meet
+        |> LiveSmoke.fixture!("transcript_entries_not_found")
+        |> update_in(["error"], &Map.delete(&1, "status"))
+
+      serve(%{entries: body})
+
+      assert {:ok, %{status: 404}} =
+               result = LiveMeet.probe("GOOGLE_MEET_TRANSCRIPT", @transcript, @token)
+
+      refute LiveMeet.expired?(result)
+    end
   end
 
   # Serves recorded responses by request: `:earlier` for conferenceRecords.get
   # of the earlier record, `:record` for that of any other record, `:entries`
-  # for transcripts.entries.list. The status comes from the body's
-  # `error.code`, as in the client tests, and is 200 without one.
+  # for transcripts.entries.list. A value names a recorded fixture or is a
+  # body built from one. The status comes from the body's `error.code`, as in
+  # the client tests, and is 200 without one.
   defp serve(fixtures) do
     test = self()
 
     Req.Test.stub(__MODULE__, fn conn ->
       send(test, {:request, conn.request_path, URI.decode_query(conn.query_string)})
-      body = LiveSmoke.fixture!(:google_meet, Map.fetch!(fixtures, kind(conn.request_path)))
+      body = fixtures |> Map.fetch!(kind(conn.request_path)) |> body()
 
       conn
       |> Plug.Conn.put_status(get_in(body, ["error", "code"]) || 200)
       |> Req.Test.json(body)
     end)
   end
+
+  defp body(fixture) when is_binary(fixture), do: LiveSmoke.fixture!(:google_meet, fixture)
+  defp body(body) when is_map(body), do: body
 
   defp kind("/v2/" <> @earlier), do: :earlier
 
