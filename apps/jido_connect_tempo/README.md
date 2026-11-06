@@ -325,7 +325,7 @@ target that the host has already resolved: the work attributes Tempo
 requires and the account candidates of the target's Jira project. Neither
 calls Jira. The host finds the issue and its project ID with
 `jira.issue.search` of `jido_connect_jira`, requesting the `project` field.
-Jira returns that ID as a string, such as `"10882"`; the host converts it
+Jira returns that ID as a string, such as `"10001"`; the host converts it
 to an integer, since `project_id` takes a positive integer and rejects a
 string with a `Jido.Connect.Error.ValidationError`. Choosing a target, an
 account or attribute values is the host's task.
