@@ -1585,6 +1585,13 @@ defmodule Jido.Connect.Google.Drive.ClientTest do
   end
 
   test "lists file changes" do
+    # The live change of the edited Google Doc under the client's default
+    # change fields, with the file's full metadata.
+    %{
+      "changes" => [%{"fileId" => file_id, "file" => recorded_file}],
+      "newStartPageToken" => new_start_page_token
+    } = page = LiveSmoke.fixture!(:google_drive, "file_changed_edited")
+
     Req.Test.stub(__MODULE__, fn conn ->
       assert conn.method == "GET"
       assert conn.request_path == "/v3/changes"
@@ -1594,25 +1601,10 @@ defmodule Jido.Connect.Google.Drive.ClientTest do
       assert conn.query_params["fields"] =~ "newStartPageToken,changes"
       refute conn.query_params["fields"] =~ "changeId"
 
-      Req.Test.json(conn, %{
-        "changes" => [
-          %{
-            "fileId" => "file123",
-            "removed" => false,
-            "time" => "2026-05-05T12:00:00Z",
-            "changeType" => "file",
-            "file" => %{
-              "id" => "file123",
-              "name" => "Budget.pdf",
-              "mimeType" => "application/pdf"
-            }
-          }
-        ],
-        "newStartPageToken" => "next-token"
-      })
+      Req.Test.json(conn, page)
     end)
 
-    assert {:ok, %{changes: [%Change{} = change], new_start_page_token: "next-token"}} =
+    assert {:ok, %{changes: [%Change{} = change], new_start_page_token: ^new_start_page_token}} =
              Client.list_changes(
                %{
                  page_token: "start-token",
@@ -1622,7 +1614,10 @@ defmodule Jido.Connect.Google.Drive.ClientTest do
                "token"
              )
 
-    assert change.file.file_id == "file123"
+    assert change.file_id == file_id
+    assert change.file.file_id == file_id
+    assert change.file.mime_type == recorded_file["mimeType"]
+    assert change.file.modified_time == recorded_file["modifiedTime"]
   end
 
   test "starts a changes watch channel" do
