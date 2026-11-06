@@ -413,8 +413,11 @@ changes, since the fixture then differs from the provider's answer.
 
 A fixture file holds the recording date, the request method and the decoded
 path without query, the status, the sanitized response headers and the
-sanitized body. A body that is not UTF-8, such as a file download, is stored as
-`"body": null` with `body_bytes` and `body_sha256`:
+sanitized body. When the transform returned a body other than the provider's,
+the file also holds `"transformed": true`; its headers, such as
+`content-length`, still describe the provider's response. A body that is not
+UTF-8, such as a file download, is stored as `"body": null` with `body_bytes`
+and `body_sha256`:
 
 ```json
 {
