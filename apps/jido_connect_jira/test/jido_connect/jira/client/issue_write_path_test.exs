@@ -69,6 +69,8 @@ defmodule Jido.Connect.Jira.Client.IssueWritePathTest do
   end
 
   test "add_comment/3 sends a key with reserved characters as one encoded path segment" do
+    # Derived: the first comment of the recorded `comment_list` page stands in
+    # for the answer to `POST …/comment`, which no live test recorded.
     %{"comments" => [comment | _rest]} = LiveSmoke.fixture!(:jira, "comment_list")
 
     expect_write("POST", "/rest/api/3/issue/#{@segment}/comment", [@key, "comment"], fn conn ->
