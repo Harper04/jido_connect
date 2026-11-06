@@ -9,17 +9,22 @@ defmodule Jido.Connect.Google.Meet.ParticipantsLiveSmokeTest do
   `GOOGLE_MEET_TRANSCRIPT` and its conference record
   `GOOGLE_MEET_CONFERENCE_RECORD`, and the earlier conference record in the
   same space, which ended in the same window between 16:00 and 18:00 UTC and
-  has two participants. Google deletes this data 30 days after the
-  conferences ended; from then on `LiveMeet.prepared!/1` skips the checks
-  that need it. The earlier record is found through the window and expires
-  with the prepared one, so its check is skipped on the prepared record's
-  answer. See `docs/live_smoke_tests.md` for the variables and the recording
-  mode.
+  has two participants. Google deletes a record 30 days after its conference
+  ended; from then on `LiveMeet.prepared!/1` skips the checks that need the
+  prepared record or transcript. The earlier record is found through the
+  window and has no variable of its own, so its check is skipped on the
+  prepared record's answer. It expires first, on 2026-11-29 at 16:54:56 UTC,
+  the prepared record at 17:19:37 UTC; a run in those 25 minutes fails the
+  check of the earlier record instead of skipping it. See
+  `docs/live_smoke_tests.md` for the variables and the recording mode.
 
   The earlier record's participants include a person outside the test
   account. The sanitizer replaces display names and Google user IDs in the
-  recordings; the assertions here compare resource names and never print a
-  display name.
+  recordings. A failing assertion here prints resource names at most, never
+  a display name: participants are compared with messages of their own, and
+  the actions run through `invoke!/3` and `refused!/3`, which reduce an
+  error to its type, provider, reason and status and print no successful
+  result.
   """
 
   use ExUnit.Case, async: false
@@ -61,36 +66,35 @@ defmodule Jido.Connect.Google.Meet.ParticipantsLiveSmokeTest do
 
     assert speakers != [], "the prepared transcript has no entries"
 
-    assert {:ok, %{participants: participants} = page} =
-             invoke("google.meet.participant.list", %{conference_record_name: record}, token)
-
-    refute Map.has_key?(page, :next_page_token)
-    names = Enum.map(participants, & &1.participant_name)
+    page = invoke!("google.meet.participant.list", %{conference_record_name: record}, token)
+    refute Map.has_key?(page, :next_page_token), "the participant list has a second page"
+    names = Enum.map(page.participants, & &1.participant_name)
     assert speakers -- names == []
 
     LiveSmoke.record(@req_options, :google_meet, "participant_get")
 
-    for speaker <- speakers do
-      assert {:ok, %{participant: participant}} =
-               invoke("google.meet.participant.get", %{participant_name: speaker}, token)
+    speakers
+    |> Enum.with_index(1)
+    |> Enum.each(fn {speaker, index} ->
+      %{participant: participant} =
+        invoke!("google.meet.participant.get", %{participant_name: speaker}, token)
 
-      assert participant == Enum.find(participants, &(&1.participant_name == speaker))
+      listed = Enum.find(page.participants, &(&1.participant_name == speaker))
+      assert participant == listed, "speaker #{index} differs between get and list"
       assert_identity(participant)
-    end
+    end)
 
     # A field projection leaves everything but the name out of the response.
     LiveSmoke.record(@req_options, :google_meet, "participant_get_name_only")
     [speaker | _rest] = speakers
 
-    assert {:ok, %{participant: named}} =
-             invoke(
-               "google.meet.participant.get",
-               %{participant_name: speaker, fields: "name"},
-               token
-             )
+    %{participant: named} =
+      invoke!("google.meet.participant.get", %{participant_name: speaker, fields: "name"}, token)
 
     assert named.participant_name == speaker
-    assert {named.user_type, named.user, named.display_name} == {nil, nil, nil}
+
+    assert is_nil(named.user_type) and is_nil(named.user) and is_nil(named.display_name),
+           "the name-only participant carries a user"
   end
 
   @tag env!(["GOOGLE_ACCESS_TOKEN", "GOOGLE_MEET_CONFERENCE_RECORD"])
@@ -100,14 +104,14 @@ defmodule Jido.Connect.Google.Meet.ParticipantsLiveSmokeTest do
     token = env["GOOGLE_ACCESS_TOKEN"]
     earlier = earlier_record!(env["GOOGLE_MEET_CONFERENCE_RECORD"], token)
 
-    assert {:ok, %{participants: reference} = page} =
-             invoke(
-               "google.meet.participant.list",
-               %{conference_record_name: earlier, page_size: 100},
-               token
-             )
+    reference =
+      invoke!(
+        "google.meet.participant.list",
+        %{conference_record_name: earlier, page_size: 100},
+        token
+      )
 
-    refute Map.has_key?(page, :next_page_token)
+    refute Map.has_key?(reference, :next_page_token), "the participant list has a second page"
 
     # The page token encodes the next participant's Google user ID in Base64,
     # where the sanitizer does not look, so the recording keeps a placeholder.
@@ -118,8 +122,8 @@ defmodule Jido.Connect.Google.Meet.ParticipantsLiveSmokeTest do
     names = Enum.map(participants, & &1.participant_name)
 
     assert length(pages) >= 2
-    assert Enum.all?(pages, &(length(&1.participants) == 1))
-    assert names == Enum.map(reference, & &1.participant_name)
+    assert Enum.map(pages, &length(&1.participants)) == List.duplicate(1, length(pages))
+    assert names == Enum.map(reference.participants, & &1.participant_name)
     assert Enum.uniq(names) == names
     assert Enum.all?(names, &String.starts_with?(&1, earlier <> "/participants/"))
 
@@ -137,8 +141,8 @@ defmodule Jido.Connect.Google.Meet.ParticipantsLiveSmokeTest do
 
     LiveSmoke.record(@req_options, :google_meet, "participant_not_found")
 
-    assert {:error, %ProviderError{provider: :google, reason: :http_error, status: 404}} =
-             invoke(
+    assert {ProviderError, :google, :http_error, 404} =
+             refused!(
                "google.meet.participant.get",
                %{participant_name: missing},
                env["GOOGLE_ACCESS_TOKEN"]
@@ -157,16 +161,16 @@ defmodule Jido.Connect.Google.Meet.ParticipantsLiveSmokeTest do
       fields: ["text"]
     )
 
-    assert {:error, %ProviderError{provider: :google, reason: :invalid_response, status: nil}} =
-             invoke("google.meet.participant.get", %{participant_name: entry.entry_name}, token)
+    assert {ProviderError, :google, :invalid_response, nil} =
+             refused!("google.meet.participant.get", %{participant_name: entry.entry_name}, token)
   end
 
   @tag env!(["GOOGLE_ACCESS_TOKEN"])
   test "rejects the participants of an invalid conference record", %{env: env} do
     LiveSmoke.record(@req_options, :google_meet, "participants_invalid_record")
 
-    assert {:error, %ProviderError{provider: :google, reason: :http_error, status: 400}} =
-             invoke(
+    assert {ProviderError, :google, :http_error, 400} =
+             refused!(
                "google.meet.participant.list",
                %{conference_record_name: "conferenceRecords/not-a-conference", page_size: 1},
                env["GOOGLE_ACCESS_TOKEN"]
@@ -175,7 +179,9 @@ defmodule Jido.Connect.Google.Meet.ParticipantsLiveSmokeTest do
 
   defp assert_identity(participant) do
     assert participant.user_type in @user_types
-    assert is_binary(participant.display_name) and participant.display_name != ""
+
+    assert is_binary(participant.display_name) and participant.display_name != "",
+           "a participant has no display name"
 
     if participant.user_type == "signed_in_user" do
       assert "users/" <> _id = participant.user
@@ -216,7 +222,7 @@ defmodule Jido.Connect.Google.Meet.ParticipantsLiveSmokeTest do
       %{conference_record_name: record, page_size: 1, page_token: page_token}
       |> Map.reject(fn {_key, value} -> is_nil(value) end)
 
-    assert {:ok, page} = invoke("google.meet.participant.list", input, token)
+    page = invoke!("google.meet.participant.list", input, token)
     pages = [page | pages]
 
     case page do
@@ -226,6 +232,31 @@ defmodule Jido.Connect.Google.Meet.ParticipantsLiveSmokeTest do
       _last ->
         Enum.reverse(pages)
     end
+  end
+
+  # The result of an action that succeeds. An error fails the test with the
+  # action and the error's outline.
+  defp invoke!(action_id, input, token) do
+    case invoke(action_id, input, token) do
+      {:ok, result} -> result
+      {:error, error} -> flunk("#{action_id} failed: #{inspect(outline(error))}")
+    end
+  end
+
+  # The outline of the error of an action that Google refuses. A success
+  # fails the test without the participants it returned.
+  defp refused!(action_id, input, token) do
+    case invoke(action_id, input, token) do
+      {:error, error} -> outline(error)
+      {:ok, _result} -> flunk("#{action_id} succeeded")
+    end
+  end
+
+  # An error's type, provider, reason and status, without its details, where
+  # Google's response body can hold a display name.
+  defp outline(error) do
+    {error.__struct__, Map.get(error, :provider), Map.get(error, :reason),
+     Map.get(error, :status)}
   end
 
   defp invoke(action_id, input, token) do
