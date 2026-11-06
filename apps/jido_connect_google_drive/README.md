@@ -354,8 +354,11 @@ names no file. Drive marks it with `changeType: "drive"` and sends it only when
 
 Drive writes a change to its change log with a delay. In the live checks of
 2026-11-02, edits through the Google Docs API appeared between 3 and about
-150 s after the edit. A poll in that window returns no signal for the change;
-a later poll from the returned checkpoint does.
+150 s after the edit. Read from a checkpoint taken before the edit, the change
+appeared once Drive had logged it; earlier reads from that checkpoint did not
+contain it. The live checks did not poll inside that window and go on from
+the checkpoint such a poll returns, so whether a later poll from that
+checkpoint returns the change is not verified.
 
 A host that waits for the signal of a change it made can match it only by
 `file_id`. The signal names the file, not the edit: Drive merges a file's
