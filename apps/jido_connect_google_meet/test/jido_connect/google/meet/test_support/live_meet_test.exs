@@ -70,20 +70,36 @@ defmodule Jido.Connect.Google.Meet.TestSupport.LiveMeetTest do
         LiveMeet.prepared!([:later_conference_record])
       end
     end
+  end
 
-    test "asks Google about a test of the file that a location filter names" do
-      ExUnit.configure(include: [location: {"test/jido_connect/google/meet/other_test.exs", 3}])
-      refuse_requests()
-      assert LiveMeet.prepared!(["GOOGLE_MEET_TRANSCRIPT"])[:skip] == nil
+  describe "prepared!/1 in a run with an include filter" do
+    # An include filter overrides the :live_smoke exclude, and the tag runs
+    # before ExUnit knows the test's name and describe. So every include
+    # filter asks, also one that selects another test or file.
+    test "asks Google, whichever filter the run includes" do
+      live_smoke = "test/jido_connect/google/meet/live_smoke_test.exs"
 
-      file = Path.relative_to_cwd(__ENV__.file)
-      ExUnit.configure(include: [location: {file, __ENV__.line}])
-      serve(%{entries: "transcript_entries_not_found"})
+      for include <- [
+            [:live_smoke],
+            [live_smoke: "true"],
+            [test: "test pages through transcript entries in meeting order"],
+            [describe: "google.meet.transcript.get"],
+            [location: {live_smoke, 72}],
+            [location: {"test/jido_connect/google/meet/other_test.exs", [3, 9]}],
+            [location: live_smoke]
+          ] do
+        ExUnit.configure(include: include)
+        LiveMeet.forget()
+        serve(%{entries: "transcript_entries_not_found"})
 
-      output = capture_io(fn -> assert LiveMeet.prepared!(["GOOGLE_MEET_TRANSCRIPT"])[:skip] end)
+        output =
+          capture_io(fn ->
+            assert LiveMeet.prepared!(["GOOGLE_MEET_TRANSCRIPT"])[:skip], inspect(include)
+          end)
 
-      assert output =~ "live_smoke skip #{file}:"
-      assert_received {:request, "/v2/" <> _path, _query}
+        assert output =~ "live_smoke skip #{Path.relative_to_cwd(__ENV__.file)}:"
+        assert_received {:request, "/v2/" <> _path, _query}, inspect(include)
+      end
     end
   end
 

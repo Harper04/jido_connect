@@ -268,13 +268,17 @@ tag. The tag lists the prepared items a test reads: the variables
 `GOOGLE_MEET_CONFERENCE_RECORD` and `GOOGLE_MEET_TRANSCRIPT`, and
 `:earlier_conference_record` for the earlier record, whose name is
 `@earlier_conference_record` in `LiveMeet`. Like `env!/1`, the tag runs when
-the test file compiles. In a run that can include the test, that is with
-`--only live_smoke`, `--include live_smoke` or a location in the test's file,
-it asks Google once per record or transcript with `GOOGLE_ACCESS_TOKEN`:
+the test file compiles, before ExUnit knows the test's name and describe. It
+therefore asks Google in every run with an include filter, because each one
+overrides the `:live_smoke` exclude for the tests it selects:
+`--only live_smoke`, `--include live_smoke`, `--only test:"..."`,
+`--only describe:"..."` or a location such as `mix test <file>:<line>`. It
+asks once per record or transcript and VM, so such a run costs at most one
+request per item and value. With `GOOGLE_ACCESS_TOKEN` it sends
 `conferenceRecords.get` with `fields=name` for `GOOGLE_MEET_CONFERENCE_RECORD`
 and the earlier record, and one page of `transcripts.entries.list` without
-entry text for `GOOGLE_MEET_TRANSCRIPT`. A plain `mix test` asks nothing. Two
-answers count as deleted data:
+entry text for `GOOGLE_MEET_TRANSCRIPT`. A plain `mix test` has no include
+filter and asks nothing. Two answers count as deleted data:
 
 - 404 with `error.status` `NOT_FOUND`, Google's answer for a missing
   transcript under a living record, recorded with the ErrorInfo reason

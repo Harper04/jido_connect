@@ -29,14 +29,19 @@ defmodule Jido.Connect.Google.Meet.TestSupport.LiveMeet do
   ExUnit decides skips from tags before any setup runs, so `prepared!/1`,
   like `env!/1`, runs when the test file compiles. It returns
   `[live_meet_prepared: items]` and adds `skip:` with a reason when an item
-  names deleted data. It asks Google only in a run that can include the test:
-  `--only live_smoke`, `--include live_smoke`, or `mix test` with a location
-  in the test's file. A plain `mix test` asks nothing, and neither does a run
-  without `GOOGLE_ACCESS_TOKEN` or with the variable unset, which `env!/1`
-  already skips. It checks the items in the given order and names the first
-  one whose data is gone. Each record or transcript is asked once per VM; the
-  cache key holds no token. Any other item raises `ArgumentError` when the
-  file compiles.
+  names deleted data. It asks Google in every run with an include filter,
+  such as `--only live_smoke`, `--include live_smoke`, `--only test:"..."`,
+  `--only describe:"..."` or a location like `mix test <file>:<line>`. Each
+  of them overrides the `:live_smoke` exclude for the tests it selects, and
+  the tag runs before ExUnit knows the test's name and describe, so it cannot
+  tell whether the filter selects this test. A plain `mix test` has no
+  include filter and asks nothing, and neither does a run without
+  `GOOGLE_ACCESS_TOKEN` or with the variable unset, which `env!/1` already
+  skips. It checks the items in the given order and names the first one whose
+  data is gone. Each record or transcript is asked once per VM, so a run with
+  an include filter costs at most one request per item and value; the cache
+  key holds no token. Any other item raises `ArgumentError` when the file
+  compiles.
 
   `probe/3` sends a variable's request with `GOOGLE_ACCESS_TOKEN`:
   `conferenceRecords.get` with `fields=name` for
@@ -99,7 +104,7 @@ defmodule Jido.Connect.Google.Meet.TestSupport.LiveMeet do
     Enum.each(items, &known_item!/1)
     tags = [live_meet_prepared: items]
 
-    case expired_item(items, env) do
+    case expired_item(items) do
       nil -> tags
       {item, answer} -> Keyword.put(tags, :skip, skip_reason(item, answer, env))
     end
@@ -147,10 +152,10 @@ defmodule Jido.Connect.Google.Meet.TestSupport.LiveMeet do
     |> Enum.map_join("/", &URI.encode(&1, fn char -> URI.char_unreserved?(char) end))
   end
 
-  defp expired_item(items, env) do
+  defp expired_item(items) do
     access_token = System.get_env("GOOGLE_ACCESS_TOKEN")
 
-    if live_run?(env) and not blank?(access_token) do
+    if live_run?() and not blank?(access_token) do
       Enum.find_value(items, fn item ->
         {variable, value} = subject(item)
 
@@ -188,18 +193,10 @@ defmodule Jido.Connect.Google.Meet.TestSupport.LiveMeet do
     end)
   end
 
-  # `--only live_smoke` and `--include live_smoke` include the tag;
-  # `mix test <file>:<line>` includes locations, with or without lines.
-  defp live_run?(env) do
-    include = ExUnit.configuration()[:include] || []
-
-    Enum.any?(include, fn
-      :live_smoke -> true
-      {:live_smoke, _value} -> true
-      {:location, {path, _lines}} -> String.ends_with?(env.file, path)
-      {:location, path} when is_binary(path) -> String.ends_with?(env.file, path)
-      _filter -> false
-    end)
+  # Any include filter can select a live test, and at tag time ExUnit does
+  # not know the test's name and describe to evaluate it.
+  defp live_run? do
+    (ExUnit.configuration()[:include] || []) != []
   end
 
   defp classify({:ok, %{status: 404, body: %{"error" => %{"status" => "NOT_FOUND"} = error}}}),
