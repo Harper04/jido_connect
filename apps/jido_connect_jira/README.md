@@ -79,6 +79,11 @@ mutation actions are needed.
 | `jira.issue.comment.create` | create | external_write | Add comment to issue |
 | `jira.issue.comment.list` | list | read | List an issue's comments, one page per call |
 
+Every action with an `issue_key` input sends the key or numeric ID as one
+percent-encoded path segment, so `/`, `?` and `#` stay inside it. An empty
+key, `.` and `..` fail with a `Jido.Connect.Error.ValidationError` before a
+request is sent.
+
 ### Issue Reads and Search
 
 `jira.issue.get` calls `GET /rest/api/3/issue/{issueIdOrKey}`. The

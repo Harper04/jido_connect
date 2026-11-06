@@ -76,6 +76,11 @@
   `normalized_signal`, cut at 512 bytes, instead of replacing them with
   `"[truncated]"`. The raw `payload` of the public map still shows them as
   `"[truncated]"`.
+- Send the issue key of `jira.issue.update`, `jira.issue.transition`,
+  `jira.issue.assign` and `jira.issue.comment.create` as one encoded path
+  segment through `Request.issue_segment/1`, as the other issue actions do.
+  A key with `/`, `?` or `#` no longer changes the request path or query, and
+  an empty key, `.` and `..` fail before a request.
 
 ## 0.1.0
 
