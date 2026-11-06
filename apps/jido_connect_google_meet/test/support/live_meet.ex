@@ -6,9 +6,16 @@ defmodule Jido.Connect.Google.Meet.TestSupport.LiveMeet do
   30 days after the conference ends. The prepared data of the test account
   dates from `@prepared_on`; once Google has deleted it, the live tests that
   read it cannot pass. A live test that reads prepared data adds a
-  `prepared!/1` tag after its `env!/1` tag and lists the prepared variables it
-  reads. A recording lives under its conference record, so a test of a
-  recording lists `GOOGLE_MEET_CONFERENCE_RECORD`.
+  `prepared!/1` tag after its `env!/1` tag and lists the prepared items it
+  reads. An item is one of the variables `GOOGLE_MEET_CONFERENCE_RECORD` and
+  `GOOGLE_MEET_TRANSCRIPT`, or `:earlier_conference_record`, the earlier
+  conference prepared on `@prepared_on` in the space of
+  `GOOGLE_MEET_CONFERENCE_RECORD`. No variable names that record; its name is
+  `@earlier_conference_record`. A recording lives under its conference
+  record, so a test of a recording lists `GOOGLE_MEET_CONFERENCE_RECORD`. A
+  test that also needs the earlier record lists `:earlier_conference_record`
+  after `GOOGLE_MEET_CONFERENCE_RECORD`; Google deletes the earlier record
+  first, and once both are gone the skip names the variable.
 
       alias Jido.Connect.Google.Meet.TestSupport.LiveMeet
       require LiveMeet
@@ -21,38 +28,41 @@ defmodule Jido.Connect.Google.Meet.TestSupport.LiveMeet do
 
   ExUnit decides skips from tags before any setup runs, so `prepared!/1`,
   like `env!/1`, runs when the test file compiles. It returns
-  `[live_meet_prepared: variables]` and adds `skip:` with a reason when a
-  variable names deleted data. It asks Google only in a run that can include
-  the test: `--only live_smoke`, `--include live_smoke`, or `mix test` with a
-  location in the test's file. A plain `mix test` asks nothing, and neither
-  does a run without `GOOGLE_ACCESS_TOKEN` or with the variable unset, which
-  `env!/1` already skips. It checks the variables in the given order and names
-  the first one whose data is gone. Each variable and value is asked once per
-  VM; the cache key holds no token. Any variable other than the two below
-  raises `ArgumentError` when the file compiles.
+  `[live_meet_prepared: items]` and adds `skip:` with a reason when an item
+  names deleted data. It asks Google only in a run that can include the test:
+  `--only live_smoke`, `--include live_smoke`, or `mix test` with a location
+  in the test's file. A plain `mix test` asks nothing, and neither does a run
+  without `GOOGLE_ACCESS_TOKEN` or with the variable unset, which `env!/1`
+  already skips. It checks the items in the given order and names the first
+  one whose data is gone. Each record or transcript is asked once per VM; the
+  cache key holds no token. Any other item raises `ArgumentError` when the
+  file compiles.
 
   `probe/3` sends a variable's request with `GOOGLE_ACCESS_TOKEN`:
   `conferenceRecords.get` with `fields=name` for
   `GOOGLE_MEET_CONFERENCE_RECORD`, and one page of `transcripts.entries.list`
-  with the entry names only, no text, for `GOOGLE_MEET_TRANSCRIPT`. It
-  returns Google's answer as Req returns it, because the Meet client's
-  `ProviderError` keeps neither Google's `error.status` nor the ErrorInfo
-  reason.
+  with the entry names only, no text, for `GOOGLE_MEET_TRANSCRIPT`. The
+  earlier record gets the request of `GOOGLE_MEET_CONFERENCE_RECORD`.
+  `probe/3` returns Google's answer as Req returns it, because the Meet
+  client's `ProviderError` keeps neither Google's `error.status` nor the
+  ErrorInfo reason.
 
   `expired?/1` reads two answers as deleted data: 404 `NOT_FOUND`, and 403
   `PERMISSION_DENIED` without an ErrorInfo reason whose message says the
   resource might not exist, Google's answer for a conference record that does
   not exist. Every other answer, among them success, 401, a 403 with
   `ACCESS_TOKEN_SCOPE_INSUFFICIENT`, 400, 5xx and transport errors, leaves the
-  test to run and fail. The skip reason names the variable, `@prepared_on`,
-  the status, Google's `error.status` and the ErrorInfo reason or else
-  Google's message. A run that asked Google prints it as the harness prints
-  `env!/1` skips:
+  test to run and fail. The skip reason names the variable, or the earlier
+  record as such, `@prepared_on`, the status, Google's `error.status` and the
+  ErrorInfo reason or else Google's message. A run that asked Google prints
+  it as the harness prints `env!/1` skips:
 
-      live_smoke skip test/jido_connect/google/meet/live_smoke_test.exs:70: GOOGLE_MEET_CONFERENCE_RECORD, prepared on 2026-10-30, has expired: Google answered 403 PERMISSION_DENIED "Permission denied on resource Conference (or it might not exist)"; see "Prepared Meet data" in docs/live_smoke_tests.md
+      live_smoke skip test/jido_connect/google/meet/live_smoke_test.exs:72: GOOGLE_MEET_CONFERENCE_RECORD, prepared on 2026-10-30, has expired: Google answered 403 PERMISSION_DENIED "Permission denied on resource Conference (or it might not exist)"; see "Prepared Meet data" in docs/live_smoke_tests.md
+      live_smoke skip test/jido_connect/google/meet/live_smoke_test.exs:152: conferenceRecords/6EMiOc40YJH2mjvfx8U6DxIUOBEQAjIGCIoCIAAYAwg, the earlier conference prepared on 2026-10-30 in the space of GOOGLE_MEET_CONFERENCE_RECORD, has expired: Google answered 403 PERMISSION_DENIED "Permission denied on resource Conference (or it might not exist)"; see "Prepared Meet data" in docs/live_smoke_tests.md
 
-  With fresh meeting data, change `@prepared_on`; "Prepared Meet data" in
-  `docs/live_smoke_tests.md` lists what else changes with it.
+  With fresh meeting data, change `@prepared_on` and
+  `@earlier_conference_record`; "Prepared Meet data" in
+  `docs/live_smoke_tests.md` lists what else changes with them.
   """
 
   alias Jido.Connect.Google.Meet.Client.Transport
@@ -60,28 +70,38 @@ defmodule Jido.Connect.Google.Meet.TestSupport.LiveMeet do
   # The day the prepared Meet data was created. Change it with fresh data.
   @prepared_on ~D[2026-10-30]
 
+  # The earlier conference prepared on @prepared_on in the space of
+  # GOOGLE_MEET_CONFERENCE_RECORD, which the window, transcript list and
+  # meeting code checks expect. No variable names it. Change it with fresh
+  # data.
+  @earlier_conference_record "conferenceRecords/6EMiOc40YJH2mjvfx8U6DxIUOBEQAjIGCIoCIAAYAwg"
+
   @variables ~w(GOOGLE_MEET_CONFERENCE_RECORD GOOGLE_MEET_TRANSCRIPT)
+  @items @variables ++ [:earlier_conference_record]
   @error_info "type.googleapis.com/google.rpc.ErrorInfo"
   @docs ~s(see "Prepared Meet data" in docs/live_smoke_tests.md)
 
   @doc """
-  Returns the tags of a live test that reads the prepared Meet `variables`,
-  with `skip:` when Google has deleted the data of one of them.
+  Returns the tags of a live test that reads the prepared Meet `items`, with
+  `skip:` when Google has deleted the data of one of them.
+
+  An item is `"GOOGLE_MEET_CONFERENCE_RECORD"`, `"GOOGLE_MEET_TRANSCRIPT"` or
+  `:earlier_conference_record`.
   """
-  defmacro prepared!(variables) do
+  defmacro prepared!(items) do
     quote do
-      Jido.Connect.Google.Meet.TestSupport.LiveMeet.prepared_tags(unquote(variables), __ENV__)
+      Jido.Connect.Google.Meet.TestSupport.LiveMeet.prepared_tags(unquote(items), __ENV__)
     end
   end
 
   @doc false
-  def prepared_tags(variables, %Macro.Env{} = env) when is_list(variables) do
-    Enum.each(variables, &known_variable!/1)
-    tags = [live_meet_prepared: variables]
+  def prepared_tags(items, %Macro.Env{} = env) when is_list(items) do
+    Enum.each(items, &known_item!/1)
+    tags = [live_meet_prepared: items]
 
-    case expired_variable(variables, env) do
+    case expired_item(items, env) do
       nil -> tags
-      {variable, answer} -> Keyword.put(tags, :skip, skip_reason(variable, answer, env))
+      {item, answer} -> Keyword.put(tags, :skip, skip_reason(item, answer, env))
     end
   end
 
@@ -127,22 +147,28 @@ defmodule Jido.Connect.Google.Meet.TestSupport.LiveMeet do
     |> Enum.map_join("/", &URI.encode(&1, fn char -> URI.char_unreserved?(char) end))
   end
 
-  defp expired_variable(variables, env) do
+  defp expired_item(items, env) do
     access_token = System.get_env("GOOGLE_ACCESS_TOKEN")
 
     if live_run?(env) and not blank?(access_token) do
-      Enum.find_value(variables, fn variable ->
-        value = System.get_env(variable)
+      Enum.find_value(items, fn item ->
+        {variable, value} = subject(item)
 
         with false <- blank?(value),
              {:expired, answer} <- cached(variable, value, access_token) do
-          {variable, answer}
+          {item, answer}
         else
           _not_expired -> nil
         end
       end)
     end
   end
+
+  # The variable whose probe an item takes, and the name the probe asks about.
+  defp subject(:earlier_conference_record),
+    do: {"GOOGLE_MEET_CONFERENCE_RECORD", @earlier_conference_record}
+
+  defp subject(variable), do: {variable, System.get_env(variable)}
 
   # Test files compile in parallel, so the lock keeps a second file from
   # asking while the first waits for Google. The key holds no token.
@@ -206,21 +232,25 @@ defmodule Jido.Connect.Google.Meet.TestSupport.LiveMeet do
   defp might_not_exist?(message) when is_binary(message), do: message =~ "might not exist"
   defp might_not_exist?(_message), do: false
 
-  defp skip_reason(variable, answer, env) do
-    reason =
-      "#{variable}, prepared on #{Date.to_iso8601(@prepared_on)}, has expired: " <>
-        "Google answered #{answer}; #{@docs}"
-
+  defp skip_reason(item, answer, env) do
+    reason = "#{expired_data(item)}, has expired: Google answered #{answer}; #{@docs}"
     IO.puts("live_smoke skip #{Path.relative_to_cwd(env.file)}:#{env.line}: #{reason}")
     reason
   end
 
-  defp known_variable!(variable) when variable in @variables, do: :ok
+  defp expired_data(:earlier_conference_record) do
+    "#{@earlier_conference_record}, the earlier conference prepared on " <>
+      "#{Date.to_iso8601(@prepared_on)} in the space of GOOGLE_MEET_CONFERENCE_RECORD"
+  end
 
-  defp known_variable!(variable) do
+  defp expired_data(variable), do: "#{variable}, prepared on #{Date.to_iso8601(@prepared_on)}"
+
+  defp known_item!(item) when item in @items, do: :ok
+
+  defp known_item!(item) do
     raise ArgumentError,
-          "#{inspect(variable)} is not prepared Meet data that prepared!/1 can check; " <>
-            "use #{Enum.join(@variables, " or ")}"
+          "#{inspect(item)} is not prepared Meet data that prepared!/1 can check; use " <>
+            Enum.map_join(@variables, ", ", &inspect/1) <> " or :earlier_conference_record"
   end
 
   defp blank?(value), do: value in [nil, ""]

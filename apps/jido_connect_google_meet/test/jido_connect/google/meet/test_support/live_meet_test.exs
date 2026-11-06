@@ -11,6 +11,10 @@ defmodule Jido.Connect.Google.Meet.TestSupport.LiveMeetTest do
   @record "conferenceRecords/tjT2Egxvkox7JrzCoRAODxIUOBEQAjIGCIoCIAAYAwg"
   @transcript @record <> "/transcripts/611a3327-9048-414c-ae74-bab9ecc3b02c"
 
+  # The earlier conference in the prepared space, as recorded in
+  # conference_records_window.2.json.
+  @earlier "conferenceRecords/6EMiOc40YJH2mjvfx8U6DxIUOBEQAjIGCIoCIAAYAwg"
+
   @token "live-meet-test-token"
 
   @prepared %{
@@ -42,19 +46,28 @@ defmodule Jido.Connect.Google.Meet.TestSupport.LiveMeetTest do
   end
 
   describe "prepared!/1 outside a live run" do
-    test "asks Google nothing when the run does not include live tests" do
+    test "asks Google nothing when the run has no include filter" do
       ExUnit.configure(include: [])
       refuse_requests()
 
-      assert LiveMeet.prepared!(["GOOGLE_MEET_CONFERENCE_RECORD", "GOOGLE_MEET_TRANSCRIPT"]) ==
-               [live_meet_prepared: ["GOOGLE_MEET_CONFERENCE_RECORD", "GOOGLE_MEET_TRANSCRIPT"]]
+      items = [
+        "GOOGLE_MEET_CONFERENCE_RECORD",
+        "GOOGLE_MEET_TRANSCRIPT",
+        :earlier_conference_record
+      ]
+
+      assert LiveMeet.prepared!(items) == [live_meet_prepared: items]
     end
 
-    test "rejects a variable it has no probe for, in every run" do
+    test "rejects an item it has no probe for, in every run" do
       ExUnit.configure(include: [])
 
       assert_raise ArgumentError, ~r/GOOGLE_MEET_RECORDING/, fn ->
         LiveMeet.prepared!(["GOOGLE_MEET_CONFERENCE_RECORD", "GOOGLE_MEET_RECORDING"])
+      end
+
+      assert_raise ArgumentError, ~r/:later_conference_record/, fn ->
+        LiveMeet.prepared!([:later_conference_record])
       end
     end
 
@@ -84,8 +97,13 @@ defmodule Jido.Connect.Google.Meet.TestSupport.LiveMeetTest do
       for token <- [nil, ""] do
         put_env(%{"GOOGLE_ACCESS_TOKEN" => token})
 
-        assert LiveMeet.prepared!(["GOOGLE_MEET_CONFERENCE_RECORD"]) ==
-                 [live_meet_prepared: ["GOOGLE_MEET_CONFERENCE_RECORD"]]
+        assert LiveMeet.prepared!(["GOOGLE_MEET_CONFERENCE_RECORD", :earlier_conference_record]) ==
+                 [
+                   live_meet_prepared: [
+                     "GOOGLE_MEET_CONFERENCE_RECORD",
+                     :earlier_conference_record
+                   ]
+                 ]
       end
     end
 
@@ -189,24 +207,106 @@ defmodule Jido.Connect.Google.Meet.TestSupport.LiveMeetTest do
     end
 
     test "leaves the test to run on the recorded answers of living data" do
-      serve(%{record: "conference_record_get_start_only", entries: "transcript_entries"})
+      # The earlier record gets the recorded 200 of the prepared one; no
+      # recording of conferenceRecords.get exists for it, and prepared!/1
+      # reads only whether Google answered that the data is gone.
+      serve(%{
+        record: "conference_record_get_start_only",
+        entries: "transcript_entries",
+        earlier: "conference_record_get_start_only"
+      })
+
+      items = [
+        "GOOGLE_MEET_CONFERENCE_RECORD",
+        "GOOGLE_MEET_TRANSCRIPT",
+        :earlier_conference_record
+      ]
 
       output =
-        capture_io(fn ->
-          assert LiveMeet.prepared!(["GOOGLE_MEET_CONFERENCE_RECORD", "GOOGLE_MEET_TRANSCRIPT"]) ==
-                   [
-                     live_meet_prepared: [
-                       "GOOGLE_MEET_CONFERENCE_RECORD",
-                       "GOOGLE_MEET_TRANSCRIPT"
-                     ]
-                   ]
-        end)
+        capture_io(fn -> assert LiveMeet.prepared!(items) == [live_meet_prepared: items] end)
 
       assert output == ""
       assert_received {:request, record_path, %{"fields" => "name"}}
       assert record_path == "/v2/#{@record}"
       assert_received {:request, entries_path, _query}
       assert entries_path == "/v2/#{@transcript}/entries"
+      assert_received {:request, earlier_path, %{"fields" => "name"}}
+      assert earlier_path == "/v2/#{@earlier}"
+    end
+
+    test "skips on the recorded 403 for the earlier record and names that record" do
+      serve(%{earlier: "conference_record_unknown"})
+
+      output =
+        capture_io(fn ->
+          reason = LiveMeet.prepared!([:earlier_conference_record])[:skip]
+
+          assert String.starts_with?(
+                   reason,
+                   "#{@earlier}, the earlier conference prepared on 2026-10-30 in the space " <>
+                     "of GOOGLE_MEET_CONFERENCE_RECORD, has expired: Google answered 403 " <>
+                     ~s(PERMISSION_DENIED "Permission denied on resource Conference ) <>
+                     ~s[(or it might not exist)"]
+                 )
+
+          assert reason =~ "docs/live_smoke_tests.md"
+        end)
+
+      assert output =~
+               "live_smoke skip test/jido_connect/google/meet/test_support/live_meet_test.exs:"
+
+      assert output =~ @earlier
+      refute output =~ @token
+
+      assert_received {:request, path, %{"fields" => "name"}}
+      assert path == "/v2/#{@earlier}"
+    end
+
+    # The recorded expireTime of the earlier record is 2026-11-29T16:54:56Z,
+    # that of the prepared record 17:19:37Z. In between, Google answers for
+    # the prepared record and its transcript as recorded, and for the earlier
+    # record as for a record that does not exist.
+    test "skips while only the earlier record is gone, replayed from the recordings" do
+      serve(%{
+        record: "conference_record_get_start_only",
+        entries: "transcript_entries",
+        earlier: "conference_record_unknown"
+      })
+
+      capture_io(fn ->
+        reason =
+          LiveMeet.prepared!([
+            "GOOGLE_MEET_CONFERENCE_RECORD",
+            "GOOGLE_MEET_TRANSCRIPT",
+            :earlier_conference_record
+          ])[:skip]
+
+        assert String.starts_with?(reason, "#{@earlier}, the earlier conference")
+
+        refute LiveMeet.prepared!(["GOOGLE_MEET_CONFERENCE_RECORD", "GOOGLE_MEET_TRANSCRIPT"])[
+                 :skip
+               ]
+      end)
+    end
+
+    test "names the variable once the prepared record is gone as well" do
+      serve(%{record: "conference_record_unknown", earlier: "conference_record_unknown"})
+
+      capture_io(fn ->
+        reason =
+          LiveMeet.prepared!(["GOOGLE_MEET_CONFERENCE_RECORD", :earlier_conference_record])[:skip]
+
+        assert String.starts_with?(
+                 reason,
+                 "GOOGLE_MEET_CONFERENCE_RECORD, prepared on 2026-10-30"
+               )
+
+        refute reason =~ @earlier
+      end)
+
+      assert_received {:request, path, _query}
+      assert path == "/v2/#{@record}"
+      refute_received {:request, _path, _query}
     end
 
     test "asks Google once per variable and value" do
@@ -257,21 +357,27 @@ defmodule Jido.Connect.Google.Meet.TestSupport.LiveMeetTest do
     end
   end
 
-  # Serves recorded responses by request: `:record` for conferenceRecords.get,
-  # `:entries` for transcripts.entries.list. The status comes from the body's
+  # Serves recorded responses by request: `:earlier` for conferenceRecords.get
+  # of the earlier record, `:record` for that of any other record, `:entries`
+  # for transcripts.entries.list. The status comes from the body's
   # `error.code`, as in the client tests, and is 200 without one.
   defp serve(fixtures) do
     test = self()
 
     Req.Test.stub(__MODULE__, fn conn ->
       send(test, {:request, conn.request_path, URI.decode_query(conn.query_string)})
-      kind = if String.ends_with?(conn.request_path, "/entries"), do: :entries, else: :record
-      body = LiveSmoke.fixture!(:google_meet, Map.fetch!(fixtures, kind))
+      body = LiveSmoke.fixture!(:google_meet, Map.fetch!(fixtures, kind(conn.request_path)))
 
       conn
       |> Plug.Conn.put_status(get_in(body, ["error", "code"]) || 200)
       |> Req.Test.json(body)
     end)
+  end
+
+  defp kind("/v2/" <> @earlier), do: :earlier
+
+  defp kind(path) do
+    if String.ends_with?(path, "/entries"), do: :entries, else: :record
   end
 
   defp refuse_requests do

@@ -250,23 +250,31 @@ as seed input belong to the scripts that create the test data.
 The Meet live tests read a meeting held on 2026-10-30 in the Meet space of
 `GOOGLE_CALENDAR_EVENT_ID`: its conference record
 `GOOGLE_MEET_CONFERENCE_RECORD`, its transcript `GOOGLE_MEET_TRANSCRIPT` and
-its recording `GOOGLE_MEET_RECORDING`. Google deletes a conference record 30
-days after the conference ends
+its recording `GOOGLE_MEET_RECORDING`. The window, transcript list and
+meeting code checks also expect the conference held a few minutes earlier in
+the same space, `conferenceRecords/6EMiOc40YJH2mjvfx8U6DxIUOBEQAjIGCIoCIAAYAwg`;
+no variable names it. Google deletes a conference record 30 days after the
+conference ends
 ([`expireTime`](https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords)),
 and transcript entries after the same 30 days
 ([Meet artifacts](https://developers.google.com/workspace/meet/api/guides/artifacts)).
-The prepared records expire on 2026-11-29. From that day, the Meet live tests
-that read them are skipped with a reason instead of failing.
+The recorded `expireTime` is 2026-11-29T16:54:56Z for the earlier record and
+2026-11-29T17:19:37Z for `GOOGLE_MEET_CONFERENCE_RECORD`. From then on, the
+Meet live tests that read them are skipped with a reason instead of failing.
 
 Those tests carry `LiveMeet.prepared!/1` from
 `apps/jido_connect_google_meet/test/support/live_meet.ex` after their `env!/1`
-tag. Like `env!/1`, it runs when the test file compiles. In a run that can
-include the test, that is with `--only live_smoke`, `--include live_smoke` or a
-location in the test's file, it asks Google once per variable with
-`GOOGLE_ACCESS_TOKEN`: `conferenceRecords.get` with `fields=name` for
-`GOOGLE_MEET_CONFERENCE_RECORD`, and one page of `transcripts.entries.list`
-without entry text for `GOOGLE_MEET_TRANSCRIPT`. A plain `mix test` asks
-nothing. Two answers count as deleted data:
+tag. The tag lists the prepared items a test reads: the variables
+`GOOGLE_MEET_CONFERENCE_RECORD` and `GOOGLE_MEET_TRANSCRIPT`, and
+`:earlier_conference_record` for the earlier record, whose name is
+`@earlier_conference_record` in `LiveMeet`. Like `env!/1`, the tag runs when
+the test file compiles. In a run that can include the test, that is with
+`--only live_smoke`, `--include live_smoke` or a location in the test's file,
+it asks Google once per record or transcript with `GOOGLE_ACCESS_TOKEN`:
+`conferenceRecords.get` with `fields=name` for `GOOGLE_MEET_CONFERENCE_RECORD`
+and the earlier record, and one page of `transcripts.entries.list` without
+entry text for `GOOGLE_MEET_TRANSCRIPT`. A plain `mix test` asks nothing. Two
+answers count as deleted data:
 
 - 404 with `error.status` `NOT_FOUND`, Google's answer for a missing
   transcript under a living record, recorded with the ErrorInfo reason
@@ -284,18 +292,24 @@ deleted record no longer exists, so its tests get the same answer. Every
 other answer leaves the test to run and fail: success, 401, a 403 with the
 ErrorInfo reason `ACCESS_TOKEN_SCOPE_INSUFFICIENT` (recorded as
 `conference_record_scope_insufficient`), 400, 5xx and transport errors. The
-skip reason names the variable, the preparation date, the status, Google's
-`error.status` and the ErrorInfo reason or else Google's message, and the run
-prints it like an `env!/1` skip:
+tag checks the items in the given order and skips on the first one whose data
+is gone. The skip reason names the variable, or the earlier record as such,
+the preparation date, the status, Google's `error.status` and the ErrorInfo
+reason or else Google's message, and the run prints it like an `env!/1` skip:
 
 ```text
-live_smoke skip test/jido_connect/google/meet/live_smoke_test.exs:70: GOOGLE_MEET_CONFERENCE_RECORD, prepared on 2026-10-30, has expired: Google answered 403 PERMISSION_DENIED "Permission denied on resource Conference (or it might not exist)"; see "Prepared Meet data" in docs/live_smoke_tests.md
+live_smoke skip test/jido_connect/google/meet/live_smoke_test.exs:72: GOOGLE_MEET_CONFERENCE_RECORD, prepared on 2026-10-30, has expired: Google answered 403 PERMISSION_DENIED "Permission denied on resource Conference (or it might not exist)"; see "Prepared Meet data" in docs/live_smoke_tests.md
+live_smoke skip test/jido_connect/google/meet/live_smoke_test.exs:152: conferenceRecords/6EMiOc40YJH2mjvfx8U6DxIUOBEQAjIGCIoCIAAYAwg, the earlier conference prepared on 2026-10-30 in the space of GOOGLE_MEET_CONFERENCE_RECORD, has expired: Google answered 403 PERMISSION_DENIED "Permission denied on resource Conference (or it might not exist)"; see "Prepared Meet data" in docs/live_smoke_tests.md
 ```
 
 Another Meet live test that reads prepared data adopts the tag with the
-prepared variables it reads. Anything under the conference record, such as a
+prepared items it reads. Anything under the conference record, such as a
 recording or participants, counts as `GOOGLE_MEET_CONFERENCE_RECORD`; other
-variables fail when the file compiles. A test without prepared data stays
+items fail when the file compiles. A test that also expects the earlier
+record lists `:earlier_conference_record` after
+`GOOGLE_MEET_CONFERENCE_RECORD`: Google deletes the earlier record about 25
+minutes before the prepared one, which skips the test in between, and once
+both are gone the skip names the variable. A test without prepared data stays
 untagged.
 
 ```elixir
@@ -316,7 +330,8 @@ recorded, transcribed meeting with Gemini notes in the Meet space of
 `GOOGLE_MEET_CONFERENCE_RECORD`, `GOOGLE_MEET_TRANSCRIPT` and
 `GOOGLE_MEET_RECORDING`; set `GOOGLE_MEET_RECORDING_FILE_ID` and
 `GOOGLE_MEET_NOTES_DOCUMENT_ID` by hand. With the new meeting, change the
-preparation date `@prepared_on` in `LiveMeet`, the window
+preparation date `@prepared_on` and the earlier record
+`@earlier_conference_record` in `LiveMeet`, the window
 `@prepared_window_start` and `@prepared_window_end` in the Meet
 `live_smoke_test.exs`, and the occurrence `@scheduled_start` and
 `@scheduled_end` in the Meet `live_meeting_lookup_test.exs` and the Calendar

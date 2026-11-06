@@ -20,8 +20,10 @@ defmodule Jido.Connect.Google.Meet.LiveMeetingLookupTest do
   a tolerance around the scheduled times. Google deletes a conference record
   30 days after the conference ended; every check here reads the prepared
   record or its transcript and carries `LiveMeet.prepared!/1`, which skips it
-  with a reason once Google answers that the data is gone. See "Prepared Meet
-  data" in `docs/live_smoke_tests.md`.
+  with a reason once Google answers that the data is gone. The meeting code
+  check expects the earlier conference among the space's records and lists
+  it as `:earlier_conference_record`. See "Prepared Meet data" in
+  `docs/live_smoke_tests.md`.
 
   The Drive live tests download `GOOGLE_MEET_RECORDING_FILE_ID` and export
   `GOOGLE_MEET_NOTES_DOCUMENT_ID`; the checks here tie both IDs to the
@@ -69,7 +71,7 @@ defmodule Jido.Connect.Google.Meet.LiveMeetingLookupTest do
            "GOOGLE_CALENDAR_CONFERENCE_ID",
            "GOOGLE_MEET_CONFERENCE_RECORD"
          ])
-    @tag LiveMeet.prepared!(["GOOGLE_MEET_CONFERENCE_RECORD"])
+    @tag LiveMeet.prepared!(["GOOGLE_MEET_CONFERENCE_RECORD", :earlier_conference_record])
     test "finds the prepared record by the event's conference ID, its space's meeting code", %{
       env: env
     } do
