@@ -32,6 +32,10 @@
   with missing scopes, although Google answers a Docs read under `drive`.
   `drive.readonly` and `drive.file` still satisfy no read, and writes still
   require `documents`.
+- The `:user` profile lists `drive` in `scopes` and `optional_scopes`, not
+  in `default_scopes`. Before, the resolver accepted `drive` for reads, but
+  catalog discovery and filtering by `drive` returned no Docs entry.
+  `drive.readonly` and `drive.file` are not declared.
 - The `include_tabs_content` description and the README state that an
   omitted value returns the same as `false`, checked live, and the README
   states that a Drive `text/plain` export holds every tab, nested tabs

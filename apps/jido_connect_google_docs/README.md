@@ -132,24 +132,30 @@ catalog.
 
 ## OAuth Scopes
 
-The provider declares the shared Google identity scopes plus Docs product
-scopes:
+The provider declares the shared Google identity scopes, the Docs product
+scopes and `drive`:
 
 - `openid`
 - `email`
 - `profile`
 - `https://www.googleapis.com/auth/documents.readonly`
 - `https://www.googleapis.com/auth/documents`
+- `https://www.googleapis.com/auth/drive`
+
+`openid`, `email` and `profile` are the default scopes. The two Docs scopes
+and `drive` are optional.
 
 Read-only operations should use `documents.readonly` when possible. Document
 creation and mutation should require `documents`.
 
 A connection that holds `drive` can also read documents. On 2026-11-06
 Google returned a multi-tab document to an access token that held only
-`drive`, and the scope resolver accepts it for reads. The provider does not
-declare `drive`; a host that reads documents through a Drive grant requests
-the scope itself. `drive.readonly` and `drive.file` are not accepted and were
-not checked live. Finer Drive grants are left to the host.
+`drive`, and the scope resolver accepts it for reads. The provider declares
+`drive` as an optional scope so that catalog discovery and filtering by
+`drive` find Docs. Declaring it requests nothing: the host decides whether
+to ask for `drive`. `drive.readonly` and `drive.file` are neither declared
+nor accepted, and were not checked live. Finer Drive grants are left to the
+host.
 
 ## Data Classification
 
