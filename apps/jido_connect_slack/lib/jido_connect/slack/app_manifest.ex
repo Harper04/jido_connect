@@ -19,7 +19,8 @@ defmodule Jido.Connect.Slack.AppManifest do
   For the authorizing user's messages these are `channels:history`,
   `groups:history`, `im:history` and `mpim:history`, and `message.channels`,
   `message.groups`, `message.im` and `message.mpim`. User events need
-  `include_events?: true`, which adds the events request URL. Without the two
+  `include_events?: true`, which adds the events request URL, and Slack
+  rejects a user event whose scope `:user_scopes` lacks. Without the two
   options the manifest has neither key.
   """
 
