@@ -212,7 +212,9 @@ defmodule Jido.Connect.GmailTest do
     # so their messages have no snippet and no history ID. The pages, the
     # repeated message and the page token loop are derived: the recorded
     # polls returned one page of distinct messages. runtime_test.exs polls
-    # the recorded page through the real client.
+    # the recorded page through the real client. The repeated msg123 lacks
+    # UNREAD, so the drain test sees that the poll keeps the first signal
+    # per message, not the last.
     def list_history(
           %{
             start_history_id: "123",
@@ -237,7 +239,7 @@ defmodule Jido.Connect.GmailTest do
                Gmail.Message.new!(%{
                  message_id: "msg123",
                  thread_id: "thread123",
-                 label_ids: ["INBOX", "UNREAD"]
+                 label_ids: ["INBOX"]
                })
              ]
            }
@@ -1846,7 +1848,8 @@ defmodule Jido.Connect.GmailTest do
     {context, lease} = context_and_lease()
 
     # The added messages carry no history ID, so each signal takes its
-    # record's ID, and no snippet, so the signals have none.
+    # record's ID, and no snippet, so the signals have none. Of the two
+    # msg123 entries the first stays, so its labels keep UNREAD.
     assert {:ok,
             %{
               signals:
