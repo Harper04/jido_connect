@@ -220,6 +220,45 @@ defmodule Jido.Connect.Google.Drive.ChangeFeedTest do
       assert file.owners == owners
       assert file.permissions == []
     end
+
+    # No recording holds a file's `permissions`; the live polls did not ask
+    # for them. The page is the recorded one with the recorded owner added as
+    # a permission in the fields of `Fields.permission_metadata/0`. Drive
+    # names a user's permission by the user's `permissionId`.
+    test "returns a file's permissions as plain maps that encode as JSON" do
+      page =
+        :google_drive
+        |> LiveSmoke.fixture!("collection_changes_added.2")
+        |> Map.update!("changes", fn changes ->
+          Enum.map(changes, fn
+            %{"fileId" => @added, "file" => %{"owners" => [owner]}} = change ->
+              put_in(change, ["file", "permissions"], [owner_permission(owner)])
+
+            change ->
+              change
+          end)
+        end)
+
+      Req.Test.expect(__MODULE__, fn conn ->
+        assert conn.query_params["pageToken"] == @checkpoint
+        Req.Test.json(conn, page)
+      end)
+
+      assert {:ok, %{signals: signals}} = poll("google.drive.file.changed", %{})
+      assert %{file: %{permissions: [permission]}} = file_signal(signals, @added)
+
+      refute is_struct(permission)
+
+      assert %{
+               permission_id: "permissionId-1",
+               type: "user",
+               role: "owner",
+               email_address: "person-1@example.com",
+               display_name: "Person 1"
+             } = permission
+
+      assert {:ok, _json} = Jason.encode(signals)
+    end
   end
 
   # Both recordings read the change log from a checkpoint taken before the
@@ -354,6 +393,16 @@ defmodule Jido.Connect.Google.Drive.ChangeFeedTest do
     |> LiveSmoke.fixture!(fixture)
     |> Map.fetch!("changes")
     |> Enum.find(&(&1["fileId"] == file_id))
+  end
+
+  defp owner_permission(owner) do
+    %{
+      "id" => owner["permissionId"],
+      "type" => "user",
+      "role" => "owner",
+      "emailAddress" => owner["emailAddress"],
+      "displayName" => owner["displayName"]
+    }
   end
 
   defp file_signal(signals, file_id), do: Enum.find(signals, &(&1[:file_id] == file_id))

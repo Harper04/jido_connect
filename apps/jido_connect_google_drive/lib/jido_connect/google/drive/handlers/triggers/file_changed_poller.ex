@@ -130,7 +130,7 @@ defmodule Jido.Connect.Google.Drive.Handlers.Triggers.FileChangedPoller do
 
   defp public_map(map) when is_map(map) do
     Map.new(map, fn
-      {key, value} when key in [:owners, :permissions] -> {key, public_map(value)}
+      {:permissions, permissions} -> {:permissions, public_map(permissions)}
       entry -> entry
     end)
   end
