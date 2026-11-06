@@ -2,7 +2,23 @@ defmodule Jido.Connect.Google.Meet.Normalizer do
   @moduledoc "Normalizes Google Meet API payloads into stable package structs."
 
   alias Jido.Connect.Data
-  alias Jido.Connect.Google.Meet.{ConferenceRecord, Recording, Space, Transcript, TranscriptEntry}
+
+  alias Jido.Connect.Google.Meet.{
+    ConferenceRecord,
+    Participant,
+    Recording,
+    Space,
+    Transcript,
+    TranscriptEntry
+  }
+
+  # A participant carries exactly one of these user kinds: payload key,
+  # `user_type` value and struct field.
+  @participant_user_kinds [
+    {"signedinUser", "signed_in_user", :signed_in_user},
+    {"anonymousUser", "anonymous_user", :anonymous_user},
+    {"phoneUser", "phone_user", :phone_user}
+  ]
 
   @doc "Normalizes a Google Meet space payload."
   @spec space(map()) :: {:ok, Space.t()} | {:error, term()}
@@ -37,6 +53,49 @@ defmodule Jido.Connect.Google.Meet.Normalizer do
   end
 
   def conference_record(_payload), do: {:error, :invalid_conference_record_payload}
+
+  @doc """
+  Normalizes a Google Meet conference participant payload.
+
+  The user kind present in the payload sets `user_type`, `display_name` and,
+  for a signed-in user, `user`. A payload without a user kind, as under a
+  `fields` projection, leaves them `nil`; a payload with more than one is
+  rejected.
+  """
+  @spec participant(map()) :: {:ok, Participant.t()} | {:error, term()}
+  def participant(payload) when is_map(payload) do
+    case Enum.filter(@participant_user_kinds, fn {key, _type, _field} ->
+           Data.get(payload, key) != nil
+         end) do
+      [] -> build_participant(payload, %{})
+      [kind] -> build_participant(payload, participant_user(payload, kind))
+      _several -> {:error, :ambiguous_participant_user}
+    end
+  end
+
+  def participant(_payload), do: {:error, :invalid_participant_payload}
+
+  defp build_participant(payload, user_attrs) do
+    %{
+      participant_name: Data.get(payload, "name"),
+      earliest_start_time: Data.get(payload, "earliestStartTime"),
+      latest_end_time: Data.get(payload, "latestEndTime")
+    }
+    |> Map.merge(user_attrs)
+    |> Data.compact()
+    |> Participant.new()
+  end
+
+  defp participant_user(payload, {key, user_type, field}) do
+    user = Data.get(payload, key)
+
+    %{
+      field => user,
+      user_type: user_type,
+      user: Data.get(user, "user"),
+      display_name: Data.get(user, "displayName")
+    }
+  end
 
   @doc "Normalizes Google Meet recording metadata."
   @spec recording(map()) :: {:ok, Recording.t()} | {:error, term()}
