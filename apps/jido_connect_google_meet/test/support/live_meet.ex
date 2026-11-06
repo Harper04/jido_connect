@@ -49,7 +49,7 @@ defmodule Jido.Connect.Google.Meet.TestSupport.LiveMeet do
   Google's message. A run that asked Google prints it as the harness prints
   `env!/1` skips:
 
-      live_smoke skip test/jido_connect/google/meet/live_smoke_test.exs:62: GOOGLE_MEET_TRANSCRIPT, prepared on 2026-10-30, has expired: Google answered 404 NOT_FOUND TRANSCRIPT_NOT_FOUND; see "Prepared Meet data" in docs/live_smoke_tests.md
+      live_smoke skip test/jido_connect/google/meet/live_smoke_test.exs:70: GOOGLE_MEET_CONFERENCE_RECORD, prepared on 2026-10-30, has expired: Google answered 403 PERMISSION_DENIED "Permission denied on resource Conference (or it might not exist)"; see "Prepared Meet data" in docs/live_smoke_tests.md
 
   With fresh meeting data, change `@prepared_on`; "Prepared Meet data" in
   `docs/live_smoke_tests.md` lists what else changes with it.
