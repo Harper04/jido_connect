@@ -17,9 +17,8 @@ defmodule Jido.Connect.Slack.AppManifestLiveSmokeTest do
   Slack's `tooling.tokens.rotate` and `SLACK_CONFIG_REFRESH_TOKEN` outside
   the tests; each rotation also replaces the refresh token.
 
-  With `JIDO_CONNECT_RECORD=1` Slack's answers go to
-  `test/fixtures/slack/recorded/apps_manifest_validate_*.json`. No offline
-  test uses them, so they are not committed.
+  The tests record nothing, also with `JIDO_CONNECT_RECORD=1`, since no
+  offline test replays Slack's answers.
   """
 
   use ExUnit.Case, async: false
@@ -54,7 +53,6 @@ defmodule Jido.Connect.Slack.AppManifestLiveSmokeTest do
     manifest = manifest!(env, tmp_dir, [])
     refute Map.has_key?(manifest["settings"], "event_subscriptions")
 
-    LiveSlack.record("apps_manifest_validate_default")
     LiveSlack.validate_manifest!(env["SLACK_CONFIG_TOKEN"], manifest)
   end
 
@@ -64,7 +62,6 @@ defmodule Jido.Connect.Slack.AppManifestLiveSmokeTest do
     manifest = manifest!(env, tmp_dir, ["--events", "--interactivity"])
     refute "scope_denied" in manifest["settings"]["event_subscriptions"]["bot_events"]
 
-    LiveSlack.record("apps_manifest_validate_events")
     LiveSlack.validate_manifest!(env["SLACK_CONFIG_TOKEN"], manifest)
   end
 
@@ -79,7 +76,6 @@ defmodule Jido.Connect.Slack.AppManifestLiveSmokeTest do
     assert %{"user_events" => ["message.channels" | _rest]} =
              manifest["settings"]["event_subscriptions"]
 
-    LiveSlack.record("apps_manifest_validate_user_view")
     LiveSlack.validate_manifest!(env["SLACK_CONFIG_TOKEN"], manifest)
   end
 

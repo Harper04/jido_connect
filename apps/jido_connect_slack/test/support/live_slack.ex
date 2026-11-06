@@ -149,10 +149,10 @@ defmodule Jido.Connect.Slack.TestSupport.LiveSlack do
   Checks `manifest` with Slack's `apps.manifest.validate` and the app
   configuration token `token`.
 
-  The call goes through the package's transport and Req options, so
-  `record/2` can record Slack's answer. It passes no `app_id`, so Slack
-  only checks the manifest. A rejection fails the test with the HTTP status,
-  Slack's error code and the pointer and message of each manifest error.
+  The call goes through the package's transport, with its Slack API base
+  URL and without retries. It passes no `app_id`, so Slack only checks the
+  manifest. A rejection fails the test with the HTTP status, Slack's error
+  code and the pointer and message of each manifest error.
   """
   def validate_manifest!(token, manifest) do
     response =
