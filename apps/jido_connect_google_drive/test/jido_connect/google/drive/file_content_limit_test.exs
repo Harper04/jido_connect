@@ -290,31 +290,10 @@ defmodule Jido.Connect.Google.Drive.FileContentLimitTest do
     # waits. The client closes the connection at the limit instead of
     # waiting for the rest.
     test "stops reading from the connection at the limit" do
-      {:ok, listener} = :gen_tcp.listen(0, [:binary, active: false, reuseaddr: true])
-      {:ok, port} = :inet.port(listener)
-      test = self()
-
-      spawn_link(fn ->
-        {:ok, socket} = :gen_tcp.accept(listener, 5_000)
-        {:ok, _request} = :gen_tcp.recv(socket, 0, 5_000)
-
-        :ok =
-          :gen_tcp.send(
-            socket,
-            "HTTP/1.1 200 OK\r\ncontent-type: text/plain\r\ntransfer-encoding: chunked\r\n\r\n" <>
-              "10\r\n0123456789abcdef\r\n"
-          )
-
-        send(test, {:server, :gen_tcp.recv(socket, 0, 5_000)})
-      end)
-
-      Application.put_env(
-        :jido_connect_google_drive,
-        :google_drive_api_base_url,
-        "http://127.0.0.1:#{port}/drive"
+      serve_and_wait(
+        "HTTP/1.1 200 OK\r\ncontent-type: text/plain\r\ntransfer-encoding: chunked\r\n\r\n" <>
+          "10\r\n0123456789abcdef\r\n"
       )
-
-      Application.put_env(:jido_connect_google, :google_req_options, retry: false)
 
       assert {:error, %Error.ProviderError{reason: :limit_exceeded}} =
                Client.export_file(
@@ -324,6 +303,50 @@ defmodule Jido.Connect.Google.Drive.FileContentLimitTest do
 
       assert_receive {:server, {:error, :closed}}, 5_000
     end
+
+    # Drive sent the recorded export with `content-length: 77`. Here the
+    # server sends the first 16 of 77 declared bytes and then waits: the
+    # client stops at that chunk, although the chunk alone is within the
+    # limit, instead of reading up to max_bytes.
+    test "stops at the first chunk when content-length declares more than max_bytes" do
+      serve_and_wait(
+        "HTTP/1.1 200 OK\r\ncontent-type: text/plain\r\ncontent-length: #{@export_bytes}\r\n\r\n" <>
+          "0123456789abcdef"
+      )
+
+      assert {:error, %Error.ProviderError{reason: :limit_exceeded} = error} =
+               Client.export_file(
+                 %{file_id: "file123", mime_type: "text/plain", max_bytes: @export_bytes - 1},
+                 "token"
+               )
+
+      assert error.details.max_bytes == @export_bytes - 1
+      assert_receive {:server, {:error, :closed}}, 5_000
+    end
+  end
+
+  # Serves one request on a local port: sends `response` and then waits up to
+  # five seconds for more from the client, which it reports to the test as
+  # `{:server, result}`. Drive's base URL points to that port, without retry.
+  defp serve_and_wait(response) do
+    {:ok, listener} = :gen_tcp.listen(0, [:binary, active: false, reuseaddr: true])
+    {:ok, port} = :inet.port(listener)
+    test = self()
+
+    spawn_link(fn ->
+      {:ok, socket} = :gen_tcp.accept(listener, 5_000)
+      {:ok, _request} = :gen_tcp.recv(socket, 0, 5_000)
+      :ok = :gen_tcp.send(socket, response)
+      send(test, {:server, :gen_tcp.recv(socket, 0, 5_000)})
+    end)
+
+    Application.put_env(
+      :jido_connect_google_drive,
+      :google_drive_api_base_url,
+      "http://127.0.0.1:#{port}/drive"
+    )
+
+    Application.put_env(:jido_connect_google, :google_req_options, retry: false)
   end
 
   # The whole recording: the replay needs its status and headers.
