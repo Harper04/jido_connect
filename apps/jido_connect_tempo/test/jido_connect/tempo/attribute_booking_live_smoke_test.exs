@@ -40,8 +40,12 @@ defmodule Jido.Connect.Tempo.AttributeBookingLiveSmokeTest do
     7200 to 5400 seconds; the check expects both again.
   - The OAuth booking through `prepare/4` and `commit/4` with the OAuth
     access token, on a connection whose labels are
-    `ScopeResolver.granted_labels/1` of the `scope` that the stored token
-    pair came with, as recorded in `oauth_refresh.json`.
+    `ScopeResolver.granted_labels/1` of the `scope` recorded in
+    `oauth_refresh.json`. Before it writes, the check fails unless that
+    scope grants `worklogs:manage` and not `write`, and unless
+    `TEMPO_OAUTH_ACCESS_TOKEN_EXPIRES_AT` lies within 10 seconds of the
+    response's `date` plus its `expires_in`, which shows that this response
+    issued the stored token pair.
 
   The booking with an unknown account key must create nothing; if Tempo
   accepts it, the check stops at once and names the new ID. On 2026-11-06
@@ -55,12 +59,13 @@ defmodule Jido.Connect.Tempo.AttributeBookingLiveSmokeTest do
   pass through `LiveTempo.site_data/2`, which leaves out values of the
   site's other attributes.
 
-  Every provider call of a check runs before its first assertion, so a
-  failed assertion never needs another booking to learn the rest. The
-  checks print the IDs of the worklogs they created and what they observed;
-  they never print Tempo's error text or an account ID. ExUnit prints the
-  arguments of a failing call, so checks that involve a token or the test
-  user's account ID compute a boolean first and fail with a fixed message.
+  Apart from the checks that stop it before it writes, every provider call
+  of a check runs before its first assertion, so a failed assertion never
+  needs another booking to learn the rest. The checks print the IDs of the
+  worklogs they created and what they observed; they never print Tempo's
+  error text or an account ID. ExUnit prints the arguments of a failing
+  call, so checks that involve a token or the test user's account ID
+  compute a boolean first and fail with a fixed message.
   """
 
   use ExUnit.Case, async: false
@@ -80,7 +85,7 @@ defmodule Jido.Connect.Tempo.AttributeBookingLiveSmokeTest do
     ]
 
   alias Jido.Connect.{Error, Scope}
-  alias Jido.Connect.Tempo.ScopeResolver
+  alias Jido.Connect.Tempo.{Fixture, ScopeResolver}
 
   @recorder {:jido_connect_tempo, :tempo_req_options}
   @jira ["JIRA_SITE", "JIRA_EMAIL", "JIRA_API_TOKEN"]
@@ -101,6 +106,7 @@ defmodule Jido.Connect.Tempo.AttributeBookingLiveSmokeTest do
   @seed_marker "JCL live estimate seed"
   @invalid_marker "JCL live invalid attribute"
   @oauth_marker "JCL live OAuth booking"
+  @months ~w(Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec)
   # More than 700 bytes with umlauts, so the recording shows that Tempo
   # keeps a long description whole.
   @description "JCL live attribute booking. " <>
@@ -244,13 +250,20 @@ defmodule Jido.Connect.Tempo.AttributeBookingLiveSmokeTest do
     assert none?, "a worklog with the unknown account key exists on #{@day}"
   end
 
-  @tag env!(["TEMPO_OAUTH_ACCESS_TOKEN" | @env])
+  @tag env!(["TEMPO_OAUTH_ACCESS_TOKEN", "TEMPO_OAUTH_ACCESS_TOKEN_EXPIRES_AT" | @env])
   @tag write!(:tempo)
   test "books the required attributes through the OAuth write grant", %{env: env} do
     required!(env)
     token = env["TEMPO_OAUTH_ACCESS_TOKEN"]
-    scope = LiveSmoke.fixture!(:tempo, "oauth_refresh")["scope"]
+    scope = recorded_scope!(env)
+    grants = Scope.parse(scope)
     labels = ScopeResolver.granted_labels(scope)
+
+    # The stored pair's grant names worklogs:manage, never the coarse write.
+    assert "worklogs:manage" in grants
+    refute "write" in grants
+    assert "tempo.worklogs.write" in labels
+
     context = context!(env, :oauth2_user, labels)
     account_id = context.connection.subject.account_id
     issue_id = String.to_integer(env["TEMPO_JIRA_ISSUE_ID"])
@@ -273,18 +286,7 @@ defmodule Jido.Connect.Tempo.AttributeBookingLiveSmokeTest do
 
     create = commit(context, :oauth2_user, token, input)
     read = invoke(context, :oauth2_user, token, %{from: @day, to: @day})
-
-    grants = Scope.parse(scope)
-
-    IO.puts("""
-    OAuth booking: #{summary(create)}; recorded scope holds worklogs:manage \
-    #{"worklogs:manage" in grants}, write #{"write" in grants}\
-    """)
-
-    # The stored pair's grant names worklogs:manage, never the coarse write.
-    assert "tempo.worklogs.write" in labels
-    assert "worklogs:manage" in grants
-    refute "write" in grants
+    IO.puts("OAuth booking: #{summary(create)}")
 
     %{worklog: created} = ok!(create, "the OAuth booking")
 
@@ -313,6 +315,40 @@ defmodule Jido.Connect.Tempo.AttributeBookingLiveSmokeTest do
   defp required!(env) do
     unless env["TEMPO_WORK_ATTRIBUTES"] == "required",
       do: flunk("these checks need TEMPO_WORK_ATTRIBUTES=required and a required window")
+  end
+
+  # The scope recorded in oauth_refresh.json. It names the stored pair's
+  # grant only if that refresh issued the pair, so the pair's expiry, which
+  # the exchange test writes as TEMPO_OAUTH_ACCESS_TOKEN_EXPIRES_AT from its
+  # clock before the request, must lie within 10 seconds of the response's
+  # `date` plus its `expires_in`. A pair rotated without recording stops the
+  # check here, before a write, instead of at Tempo's 403.
+  defp recorded_scope!(env) do
+    %{"body" => %{"scope" => scope, "expires_in" => seconds}, "headers" => %{"date" => [date]}} =
+      Fixture.recorded!("oauth_refresh")
+
+    with {:ok, expires_at, 0} <- DateTime.from_iso8601(env["TEMPO_OAUTH_ACCESS_TOKEN_EXPIRES_AT"]),
+         {:ok, issued} <- http_date(date),
+         true <- abs(DateTime.diff(expires_at, DateTime.add(issued, seconds))) <= 10 do
+      scope
+    else
+      _mismatch ->
+        flunk(
+          "TEMPO_OAUTH_ACCESS_TOKEN_EXPIRES_AT does not match oauth_refresh.json, so the " <>
+            "recorded scope is not the stored pair's; record the exchange of the next pair"
+        )
+    end
+  end
+
+  # An HTTP date such as `Mon, 02 Nov 2026 14:26:19 GMT`.
+  defp http_date(text) do
+    with [_text, day, month, year, time] <-
+           Regex.run(~r/^\w{3}, (\d{2}) (\w{3}) (\d{4}) (\d{2}:\d{2}:\d{2}) GMT$/, text),
+         index when is_integer(index) <- Enum.find_index(@months, &(&1 == month)),
+         {:ok, date} <- Date.new(String.to_integer(year), index + 1, String.to_integer(day)),
+         {:ok, time} <- Time.from_iso8601(time) do
+      DateTime.new(date, time)
+    end
   end
 
   # The four required values, read through the booking lookup actions with
