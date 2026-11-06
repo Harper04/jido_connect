@@ -37,7 +37,9 @@ defmodule Jido.Connect.Google.Meet.LiveMeetingLookupTest do
 
   The space and recording responses are recorded, and so are the field
   projections of the prepared record and recording that leave their times
-  out. The offline tests expect those times as `nil`. The conference record
+  out. The offline tests expect those times as `nil`. One more space read
+  goes through the meeting code with the projection of the offline space
+  test; it needs no prepared conference data. The conference record
   lists and the transcript have the shapes of `conference_records_window.json`
   and `transcripts.json` and are not.
   """
@@ -125,6 +127,37 @@ defmodule Jido.Connect.Google.Meet.LiveMeetingLookupTest do
 
       assert named.space_name == record.space
       assert {named.meeting_code, named.meeting_uri} == {nil, nil}
+    end
+  end
+
+  describe "google.meet.space.get by meeting code" do
+    # The event's conference ID is the meeting code of its space, and
+    # spaces.get accepts `spaces/<meeting code>` for the space. The answer
+    # names the space by its own ID. Google keeps the space after the
+    # prepared conference records expire, so this test reads no prepared
+    # data and carries no LiveMeet.prepared!/1 tag.
+    @tag env!(["GOOGLE_ACCESS_TOKEN", "GOOGLE_CALENDAR_CONFERENCE_ID"])
+    test "reads the event's space through its meeting code under a field projection", %{
+      env: env
+    } do
+      conference_id = env["GOOGLE_CALENDAR_CONFERENCE_ID"]
+
+      LiveSmoke.record(@req_options, :google_meet, "space_get_by_meeting_code", @space_masked)
+
+      assert {:ok, %{space: space}} =
+               invoke(
+                 "google.meet.space.get",
+                 %{
+                   space_name: "spaces/" <> conference_id,
+                   fields: "name,meetingUri,meetingCode"
+                 },
+                 env["GOOGLE_ACCESS_TOKEN"]
+               )
+
+      assert space.meeting_code == conference_id
+      assert space.meeting_uri == "https://meet.google.com/" <> conference_id
+      assert "spaces/" <> space_id = space.space_name
+      refute space_id == conference_id
     end
   end
 
