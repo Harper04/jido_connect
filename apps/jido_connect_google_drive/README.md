@@ -364,9 +364,12 @@ with reason `:upload_too_large` before any request. Its message names the
 limit and contains no file content. Larger files are not supported, because
 the package has no resumable upload. The action also does not convert uploads
 into native Google formats such as Google Docs or Sheets. `mime_type` takes the
-media type of the bytes; Google Workspace types
-(`application/vnd.google-apps.*`) are not supported values. The action does
-not reject them before the request, and how Drive handles them is untested.
+media type of the bytes. A Google Workspace type
+(`application/vnd.google-apps.*`, in any case) returns a `ValidationError`
+with reason `:unsupported_mime_type` before any request. In the live check of
+2026-11-06, Drive answered uploads typed as a Google Docs document, a Sheets
+spreadsheet or Apps Script JSON with 400 and turned one typed as a folder into
+an empty folder without the bytes.
 
 The scope resolver requires `drive.file` unless the connection holds `drive`.
 According to Google, `drive.file` reaches only files and folders that the app

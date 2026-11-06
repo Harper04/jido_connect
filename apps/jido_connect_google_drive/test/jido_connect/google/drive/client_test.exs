@@ -482,6 +482,22 @@ defmodule Jido.Connect.Google.Drive.ClientTest do
              )
   end
 
+  test "rejects Google Workspace upload MIME types before sending a request" do
+    assert {:error,
+            %Jido.Connect.Error.ValidationError{
+              reason: :unsupported_mime_type,
+              subject: :mime_type
+            }} =
+             Client.upload_file(
+               %{
+                 name: "report",
+                 content: "hello",
+                 mime_type: "application/vnd.google-apps.document"
+               },
+               "token"
+             )
+  end
+
   test "creates folders" do
     Req.Test.stub(__MODULE__, fn conn ->
       assert conn.method == "POST"

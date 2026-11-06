@@ -13,6 +13,7 @@ defmodule Jido.Connect.Google.Drive.LiveSmokeTest do
   alias Jido.Connect
   alias Jido.Connect.Google.Drive
   alias Jido.Connect.Google.Drive.{Client, Link}
+  alias Jido.Connect.Google.Drive.Client.Params
 
   @req_options {:jido_connect_google, :google_req_options}
   @drive_scope "https://www.googleapis.com/auth/drive"
@@ -91,6 +92,9 @@ defmodule Jido.Connect.Google.Drive.LiveSmokeTest do
   @change_fields_without_name "nextPageToken,newStartPageToken," <>
                                 "changes(fileId,removed,time,changeType,driveId," <>
                                 "file(id,mimeType,parents,trashed))"
+
+  @google_sheet_mime_type "application/vnd.google-apps.spreadsheet"
+  @upload_api "https://www.googleapis.com/upload/drive/v3"
 
   @tag env!(["GOOGLE_ACCESS_TOKEN"])
   test "reads the Drive about resource", %{env: env} do
@@ -749,6 +753,42 @@ defmodule Jido.Connect.Google.Drive.LiveSmokeTest do
     assert %{name: nil, parents: [^folder_id]} = folder
   end
 
+  # Drive refuses most of these types and turns a folder-typed upload into an
+  # empty folder, so the upload action rejects every one of them before the
+  # request. The checks below send the multipart body the package builds,
+  # outside the action, to watch what Drive does with it.
+  @tag env!(["GOOGLE_ACCESS_TOKEN", "GOOGLE_DRIVE_UPLOAD_FOLDER_ID"])
+  @tag write!(:google)
+  test "rejects uploads typed as Google Workspace types, which Drive refuses or empties",
+       %{env: env} do
+    token = env["GOOGLE_ACCESS_TOKEN"]
+    folder_id = env["GOOGLE_DRIVE_UPLOAD_FOLDER_ID"]
+    run = Base.encode16(:crypto.strong_rand_bytes(6), case: :lower)
+    content = "jcl-live typed upload #{run}\n"
+
+    for mime_type <- [@google_doc_mime_type, @google_sheet_mime_type, @folder_mime_type] do
+      name = "jcl-live typed upload #{run} #{mime_type}"
+      on_exit(fn -> delete_uploads_named(token, folder_id, name) end)
+
+      upload = %{name: name, content: content, mime_type: mime_type, parents: [folder_id]}
+
+      assert {:error,
+              %Connect.Error.ValidationError{reason: :unsupported_mime_type, subject: :mime_type}} =
+               invoke("google.drive.file.upload", upload, token)
+
+      case {mime_type, external_upload(token, upload)} do
+        {@folder_mime_type, %{status: 200, body: %{"id" => id} = created}} ->
+          on_exit(fn -> delete_leftover(token, "/files/#{id}") end)
+
+          assert %{"mimeType" => @folder_mime_type, "quotaBytesUsed" => "0"} = created
+          refute Map.has_key?(created, "size")
+
+        {_document_type, response} ->
+          assert %{status: 400, body: %{"error" => %{"message" => "Bad Request"}}} = response
+      end
+    end
+  end
+
   # Every byte value, 20,480 times: exactly the multipart limit.
   defp upload_limit_content, do: :binary.copy(:binary.list_to_bin(Enum.to_list(0..255)), 20_480)
 
@@ -907,6 +947,24 @@ defmodule Jido.Connect.Google.Drive.LiveSmokeTest do
     Req.request!(
       [method: method, url: @drive_api <> path, auth: {:bearer, access_token}, retry: false] ++
         opts
+    )
+  end
+
+  # The multipart body the upload action builds, sent outside the action.
+  defp external_upload(access_token, upload) do
+    {body, content_type} = Params.file_upload_multipart_body(upload)
+    post_upload(access_token, body, content_type)
+  end
+
+  defp post_upload(access_token, body, content_type) do
+    Req.request!(
+      method: :post,
+      url: @upload_api <> "/files",
+      params: [uploadType: "multipart", fields: "id,mimeType,parents,size,quotaBytesUsed"],
+      headers: [{"content-type", content_type}],
+      body: body,
+      auth: {:bearer, access_token},
+      retry: false
     )
   end
 
