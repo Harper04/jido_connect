@@ -12,6 +12,9 @@ defmodule Jido.Connect.Google.Drive.FileContentLimitTest do
   @export_bytes 77
   @download_bytes 20
 
+  @resource_key "0-AbCdEf_GhIjKl12345"
+  @resource_key_header "x-goog-drive-resource-keys"
+
   setup {Req.Test, :verify_on_exit!}
 
   setup do
@@ -154,6 +157,44 @@ defmodule Jido.Connect.Google.Drive.FileContentLimitTest do
                encoding: "utf-8",
                binary: false
              }
+    end
+
+    # Without the resource key of a link-shared file, or without
+    # supportsAllDrives for a file in a shared drive, Drive answers the size
+    # read with 404, so it needs both just like the download.
+    test "sends the resource key and supports_all_drives on the size read as on the download" do
+      size_read = recording!("file_download_max_bytes")
+      download = recording!("file_download_max_bytes.2")
+      file_id = download_file_id(size_read)
+
+      Req.Test.expect(__MODULE__, fn conn ->
+        assert conn.request_path == "/v3/files/#{file_id}"
+        assert conn.query_params == %{"fields" => "size,mimeType", "supportsAllDrives" => "true"}
+
+        assert Plug.Conn.get_req_header(conn, @resource_key_header) == [
+                 "#{file_id}/#{@resource_key}"
+               ]
+
+        replay(conn, size_read)
+      end)
+
+      Req.Test.expect(__MODULE__, fn conn ->
+        assert conn.query_params == %{"alt" => "media", "supportsAllDrives" => "true"}
+
+        assert Plug.Conn.get_req_header(conn, @resource_key_header) == [
+                 "#{file_id}/#{@resource_key}"
+               ]
+
+        replay(conn, download)
+      end)
+
+      assert {:ok, %{file_content: %{file_id: ^file_id, size: @download_bytes}}} =
+               invoke("google.drive.file.download", %{
+                 file_id: file_id,
+                 resource_key: @resource_key,
+                 supports_all_drives: true,
+                 max_bytes: @download_bytes
+               })
     end
 
     # The recorded size read declares 20 bytes; the content sent is the
