@@ -3159,10 +3159,13 @@ defmodule Jido.Connect.SlackTest do
 
   # Legacy private channels carry G IDs. Slack's answer does not name the
   # channel, so the recorded first page of the private channel's thread
-  # stands in for the answer from such a channel.
+  # stands in for the answer from such a channel. The stub stands before the
+  # denied read, so a read that the scope check let through would fail at
+  # the stub instead of reaching Slack.
   test "get thread replies resolves history scopes from conversation type" do
     {context, lease} = context_and_lease()
     lease = without_fake_client(lease)
+    stub_slack_api()
     parent = "1793975621.272189"
 
     assert {:error,
@@ -3183,7 +3186,6 @@ defmodule Jido.Connect.SlackTest do
         }
     }
 
-    stub_slack_api()
     expect_thread_page("thread_replies_private_channel", "G123", parent)
 
     assert {:ok, %{channel: "G123", thread_ts: ^parent, messages: [%{ts: ^parent} | _replies]}} =
