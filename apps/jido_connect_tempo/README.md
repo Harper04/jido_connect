@@ -884,14 +884,20 @@ four, read first through `tempo.work_attribute.list` and
 | the same values with the unknown account key `JCL-UNKNOWN` get the 404 `Account not found`, `:not_found` with `delivery: :rejected`, and no worklog | action, API token | `worklog_create_invalid_attribute` |
 | book 900 seconds at 10:30 on 2026-10-27 on a connection whose labels are `ScopeResolver.granted_labels/1` of the `scope` recorded in `oauth_refresh`, and read it back | action, OAuth access token | `worklog_create_oauth`, the read-back as `.2` |
 
-The first check posts the seed worklog itself, outside the connector and
-the recorder, with `remainingEstimateSeconds` 7200, and reads the issue's
-worklog total and remaining estimate from Jira before the seed, after it
-and after the booking. Each run leaves three worklogs of the test user on
-2026-10-27, the seed and the two bookings, and changes the remaining
-estimate of `TEMPO_JIRA_ISSUE_ID`. Run the file only inside a required
-work-attribute window and nothing else while the window is open; see the
-Tempo section of `docs/live_smoke_tests.md`.
+The first check posts the seed worklog itself, through the client
+transport, outside the actions and before the recording starts, with
+`remainingEstimateSeconds` 7200, and reads the issue's worklog total and
+remaining estimate from Jira before the seed, after it and after the
+booking. The OAuth check fails before it writes unless
+`TEMPO_OAUTH_ACCESS_TOKEN_EXPIRES_AT` lies within 10 seconds of the `date`
+of `oauth_refresh` plus its `expires_in`, so that the recorded scope
+belongs to the stored pair, and it ends only once Jira lists its booking, so the
+first check never starts while that booking is on its way to Jira. Each
+run leaves three worklogs of the test user on 2026-10-27, the seed and the
+two bookings, and changes the remaining estimate of
+`TEMPO_JIRA_ISSUE_ID`. Run the file only inside a required work-attribute
+window; while the window is open, run nothing but this file and the
+booking lookup checks. See the Tempo section of `docs/live_smoke_tests.md`.
 
 The successful code exchange and refresh are recorded in
 `oauth_exchange.json` and `oauth_refresh.json`, the rejections in

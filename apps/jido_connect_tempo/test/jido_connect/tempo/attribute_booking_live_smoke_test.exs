@@ -14,9 +14,10 @@ defmodule Jido.Connect.Tempo.AttributeBookingLiveSmokeTest do
   `_JclHours_` (INPUT_NUMERIC) and `_JclAccount_` (ACCOUNT) required, the
   free-text `_JclNote_` optional. They exist on the shared site only around
   a run, `tempo_attributes.py up` creates them and `down` deletes them; see
-  `docs/live_smoke_tests.md`. Run only this file while they exist. Each
-  check fails before it writes unless `TEMPO_WORK_ATTRIBUTES` is `required`
-  and Tempo lists the four as required.
+  `docs/live_smoke_tests.md`. While they exist, run only this file and the
+  booking lookup checks. Each check fails before it writes unless
+  `TEMPO_WORK_ATTRIBUTES` is `required` and Tempo lists the four as
+  required.
 
   Every booking carries a value for each of the four, read before the first
   write through the booking lookup actions, which are not recorded: the

@@ -511,7 +511,8 @@ The Tempo attribute booking checks are in
 `TEMPO_WORK_ATTRIBUTES=required` and `TEMPO_LIVE_DESTRUCTIVE=true`, and each
 fails before its first write unless Tempo lists `_JclPhase_`,
 `_JclBillable_`, `_JclHours_` and `_JclAccount_` as required, so they never
-write outside a required window. Run the file on its own inside one:
+write outside a required window. Run the file inside one, as a command of
+its own:
 
 ```sh
 MIX_ENV=test TEMPO_WORK_ATTRIBUTES=required TEMPO_LIVE_DESTRUCTIVE=true \
@@ -524,17 +525,31 @@ Every booking carries a value for each of the four, read first through
 stored value of the label build, `"true"`, `"1.5"` and the key of
 `TEMPO_ACCOUNT_ID`. Each run leaves three worklogs of the test user on
 `TEMPO_JIRA_ISSUE_ID` on 2026-10-27, in the open October period: a seed
-worklog of 60 seconds, which the first check posts outside the connector
-and the recorder with `remainingEstimateSeconds` 7200; the booking of 1800
-seconds through `prepare/4` and `commit/4` with the API token; and the
-booking of 900 seconds with the OAuth access token. The OAuth check takes
-its connection's labels from the `scope` recorded in `oauth_refresh.json`,
-the response that issued the stored token pair. A further check books the
-same values with the unknown account key `JCL-UNKNOWN`, which Tempo
-rejects with a 404; if Tempo accepted it, the check would stop at once and
-name the new ID. Each run also changes the Jira remaining estimate of
-`TEMPO_JIRA_ISSUE_ID`: the seed sets it to 7200 seconds, and each booking
-lowers it by its time, which the first check reads from Jira and expects.
+worklog of 60 seconds, which the first check posts through the client
+transport, outside the actions and before the recording starts, with
+`remainingEstimateSeconds` 7200; the booking of 1800 seconds through
+`prepare/4` and `commit/4` with the API token; and the booking of 900
+seconds with the OAuth access token. The OAuth check takes its
+connection's labels from the `scope` recorded in `oauth_refresh.json`.
+Before it writes, it fails unless that scope grants `worklogs:manage` and
+not `write`, and unless `TEMPO_OAUTH_ACCESS_TOKEN_EXPIRES_AT` lies within
+10 seconds of that response's `date` plus its `expires_in`, which shows
+that the recorded response issued the stored pair. A pair rotated without
+recording therefore stops the check with a message that names the
+variable, not with Tempo's 403. A further check books the same values with
+the unknown account key `JCL-UNKNOWN`, which Tempo rejects with a 404; if
+Tempo accepted it, the check would stop at once and name the new ID. Each
+run also changes the Jira remaining estimate of `TEMPO_JIRA_ISSUE_ID`: the
+seed sets it to 7200 seconds, and each booking lowers it by its time, which
+the first check reads from Jira and expects.
+
+The first check waits for Jira after the seed and after its booking, the
+OAuth check after its booking, each time until Jira lists the new worklog,
+at most 30 reads 2 seconds apart; the file allows each check 5 minutes.
+Since the OAuth check ends only once Jira lists its booking, the first
+check starts with no worklog of the run still on its way to Jira, in
+whichever order ExUnit runs the checks. Each check prints a worklog's ID as
+soon as Tempo returns it, before it waits.
 The recording run on 2026-11-06 created 79266 (seed), 79267 and 79268; the
 proof run after it created 79269, 79270 and 79271.
 
