@@ -849,6 +849,10 @@ defmodule Jido.Connect.Google.Drive.LiveSmokeTest do
 
     metadata = %{name: name, mimeType: @apps_script_mime_type, parents: [folder_id]}
 
+    # The cleanup by name in My Drive covers an import whose response is lost
+    # and that returns no ID.
+    on_exit(fn -> delete_uploads_named(token, "root", name) end)
+
     assert %{status: 200, body: %{"id" => file_id, "parents" => [import_parent]}} =
              external_import(token, metadata, @apps_script_json, project)
 
