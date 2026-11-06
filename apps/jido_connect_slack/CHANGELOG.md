@@ -110,11 +110,11 @@
 - `mix jido.connect.slack.app.manifest_url` takes `--user-scopes` and
   `--user-events`, each a comma-separated list, for the user view.
   `--user-events` without `--events` ends in a Mix error.
-- `slack.conversation.open` takes `conversation_type`, `im` or `mpim`. It
-  selects `im:write` or `mpim:write` and is not sent to Slack, so a group
-  DM resumed by its `C` ID with `conversation_type: "mpim"` needs
-  `mpim:write`. Other values fail input validation; without the field the
-  type is inferred as before.
+- `slack.conversation.open` takes `conversation_type`, `im` or `mpim`,
+  for the scope check; it is not sent to Slack. A group DM resumed by its
+  `C` ID with `conversation_type: "mpim"` needs `mpim:write`. The field can
+  only raise the check: with `im`, several users or a `G` ID still need
+  `mpim:write`, as without the field. Other values fail input validation.
 
 ## 0.1.0
 

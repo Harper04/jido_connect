@@ -254,16 +254,16 @@ no `blocks` key.
 `slack.conversation.open` sends `users` to Slack `conversations.open` as a
 comma-separated list and returns the conversation ID as `channel`, the target
 for `slack.message.post`. One user opens the DM with the bot and needs
-`im:write`; several users open a group DM and need `mpim:write`. To resume a
-conversation by `channel`, pass `conversation_type`, `im` or `mpim`: it
-selects `im:write` or `mpim:write` and is not sent to Slack. The ID does not
-tell the two apart, since Slack gives group DMs `C` IDs too, like the one in
-this package's recordings. Without `conversation_type` the scope check infers
-the type: several `users` or a `G` ID need `mpim:write`, everything else
-`im:write`, so a group DM resumed by its `C` ID is then checked against
-`im:write`. The action takes its client from a context `provider_client`, then
-from the lease's `slack_client`, then `Jido.Connect.Slack.Client`, so a lease
-with only an `access_token` works.
+`im:write`; several users open a group DM and need `mpim:write`. A
+conversation resumed by `channel` needs `mpim:write` for a `G` ID and
+`im:write` for any other ID. Slack gives group DMs `C` IDs too, like the one
+in this package's recordings, so resume such a group DM with
+`conversation_type: "mpim"`, which needs `mpim:write`. `conversation_type`
+takes `im` or `mpim`, is not sent to Slack and can only raise the check:
+with `im`, several `users` or a `G` ID still need `mpim:write`. The action
+takes its client from a context `provider_client`, then from the lease's
+`slack_client`, then `Jido.Connect.Slack.Client`, so a lease with only an
+`access_token` works.
 
 The package makes no delivery guarantee beyond Slack's answer:
 
