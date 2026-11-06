@@ -231,6 +231,13 @@ defmodule Jido.Connect.Google.Meet.NormalizerTest do
     assert {participant.earliest_start_time, participant.latest_end_time} == {nil, nil}
   end
 
+  test "rejects another Meet resource in place of a participant" do
+    for fixture <- ["participant_get_transcript_entry", "conference_record_get_start_only"] do
+      assert {:error, :not_a_participant} =
+               Normalizer.participant(LiveSmoke.fixture!(:google_meet, fixture))
+    end
+  end
+
   test "rejects malformed Meet participant payloads" do
     recorded = LiveSmoke.fixture!(:google_meet, "participant_get")
 

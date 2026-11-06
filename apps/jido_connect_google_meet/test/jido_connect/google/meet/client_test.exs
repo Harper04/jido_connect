@@ -683,6 +683,19 @@ defmodule Jido.Connect.Google.Meet.ClientTest do
                )
     end
 
+    test "returns a provider error when a transcript entry name stands in for its speaker" do
+      # Recorded for the entry name of the prepared transcript's first entry.
+      entry = LiveSmoke.fixture!(:google_meet, "participant_get_transcript_entry")
+
+      Req.Test.stub(__MODULE__, fn conn ->
+        assert conn.request_path == "/v2/" <> entry["name"]
+        Req.Test.json(conn, entry)
+      end)
+
+      assert {:error, %ProviderError{provider: :google, reason: :invalid_response, status: nil}} =
+               Client.get_participant(%{participant_name: entry["name"]}, "token")
+    end
+
     test "returns a provider error for a missing participant" do
       not_found = LiveSmoke.fixture!(:google_meet, "participant_not_found")
       respond_with_recorded_error(not_found)

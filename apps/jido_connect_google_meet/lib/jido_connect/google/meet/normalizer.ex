@@ -60,20 +60,33 @@ defmodule Jido.Connect.Google.Meet.Normalizer do
   The user kind present in the payload sets `user_type`, `display_name` and,
   for a signed-in user, `user`. A payload without a user kind, as under a
   `fields` projection, leaves them `nil`; a payload with more than one is
-  rejected.
+  rejected. A payload whose `name` is no participant resource name
+  `conferenceRecords/<record>/participants/<participant>` is rejected as
+  `:not_a_participant`: Google answers the name of another resource, such as
+  a transcript entry, with that resource.
   """
   @spec participant(map()) :: {:ok, Participant.t()} | {:error, term()}
   def participant(payload) when is_map(payload) do
-    case Enum.filter(@participant_user_kinds, fn {key, _type, _field} ->
-           Data.get(payload, key) != nil
-         end) do
-      [] -> build_participant(payload, %{})
-      [kind] -> build_participant(payload, participant_user(payload, kind))
-      _several -> {:error, :ambiguous_participant_user}
+    with :ok <- participant_name(Data.get(payload, "name")) do
+      case Enum.filter(@participant_user_kinds, fn {key, _type, _field} ->
+             Data.get(payload, key) != nil
+           end) do
+        [] -> build_participant(payload, %{})
+        [kind] -> build_participant(payload, participant_user(payload, kind))
+        _several -> {:error, :ambiguous_participant_user}
+      end
     end
   end
 
   def participant(_payload), do: {:error, :invalid_participant_payload}
+
+  defp participant_name(name) when is_binary(name) do
+    if name =~ ~r{\AconferenceRecords/[^/]+/participants/[^/]+\z},
+      do: :ok,
+      else: {:error, :not_a_participant}
+  end
+
+  defp participant_name(_name), do: {:error, :not_a_participant}
 
   defp build_participant(payload, user_attrs) do
     %{

@@ -82,9 +82,12 @@ when someone has edited that document.
 
 `google.meet.participant.get` resolves the speaker of an entry: it takes the
 entry's `participant` as `participant_name` and returns the participant with
-its display name and user identity. `google.meet.participant.list` returns all
-participants of a conference record, paged with `page_size` (default 10) and
-`page_token`; both actions take `fields`. Each participant carries:
+its display name and user identity. Google answers the name of another
+resource, such as the entry's own `entry_name`, with that resource, and the
+action returns a provider error with reason `:invalid_response` for it.
+`google.meet.participant.list` returns all participants of a conference
+record, paged with `page_size` (default 10) and `page_token`; both actions
+take `fields`. Each participant carries:
 
 - `participant_name`, the resource name that transcript entries use
 - `user_type`: `signed_in_user`, `anonymous_user` or `phone_user`, after the

@@ -145,6 +145,22 @@ defmodule Jido.Connect.Google.Meet.ParticipantsLiveSmokeTest do
              )
   end
 
+  @tag env!(["GOOGLE_ACCESS_TOKEN", "GOOGLE_MEET_CONFERENCE_RECORD", "GOOGLE_MEET_TRANSCRIPT"])
+  @tag LiveMeet.prepared!(["GOOGLE_MEET_CONFERENCE_RECORD", "GOOGLE_MEET_TRANSCRIPT"])
+  test "rejects a transcript entry name in place of its speaker", %{env: env} do
+    token = env["GOOGLE_ACCESS_TOKEN"]
+    params = %{transcript_name: env["GOOGLE_MEET_TRANSCRIPT"], page_size: 1}
+    assert {:ok, %{transcript_entries: [entry]}} = Client.list_transcript_entries(params, token)
+
+    # Google answers an entry's own name with the entry, not with a participant.
+    LiveSmoke.record(@req_options, :google_meet, "participant_get_transcript_entry",
+      fields: ["text"]
+    )
+
+    assert {:error, %ProviderError{provider: :google, reason: :invalid_response, status: nil}} =
+             invoke("google.meet.participant.get", %{participant_name: entry.entry_name}, token)
+  end
+
   @tag env!(["GOOGLE_ACCESS_TOKEN"])
   test "rejects the participants of an invalid conference record", %{env: env} do
     LiveSmoke.record(@req_options, :google_meet, "participants_invalid_record")
