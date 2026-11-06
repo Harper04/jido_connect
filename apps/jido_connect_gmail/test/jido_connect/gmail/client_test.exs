@@ -355,8 +355,14 @@ defmodule Jido.Connect.Gmail.ClientTest do
   test "handles Gmail draft lifecycle endpoints" do
     # No drafts.get was recorded. Gmail answers it with the draft ID and the
     # draft's message in the form messages.get returns for the same format
-    # and headers, so the draft here wraps the recorded metadata read of an
-    # inbox message; a real draft's message carries the DRAFT label instead.
+    # and headers, so the draft here wraps message_metadata_subject, the
+    # metadata read of an inbox message. That read ran under gmail.metadata,
+    # which ScopeResolver never grants drafts.get; it asks for gmail.compose,
+    # gmail.modify, gmail.readonly or the full mail scope. Under such a grant
+    # Gmail's format=metadata answer also carries a snippet and a payload
+    # mimeType and no empty partId, as message_metadata_archived shows, and a
+    # real draft's message carries the DRAFT label. The test asserts none of
+    # these fields.
     %{"id" => draft_message_id} =
       draft_message = LiveSmoke.fixture!(:gmail, "message_metadata_subject")
 
