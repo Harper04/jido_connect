@@ -67,7 +67,8 @@ history, then advance checkpoints through `nextPageToken` or
 change log it reads; `google.drive.collection.changes` returns file changes
 with their relation to one folder, as described in
 [Listing Folder Contents](#listing-folder-contents) and
-[Added Files](#added-files).
+[Added Files](#added-files). Drive can log a change late, in the live checks
+up to about 150 s after it happened; see [Change Log Delay](#change-log-delay).
 
 The push triggers normalize Google Drive `X-Goog-*` channel headers.
 `google.drive.file.changed.push` covers notifications of channels created with
@@ -348,6 +349,20 @@ names no file. Drive marks it with `changeType: "drive"` and sends it only when
 `google.drive.file.changed` returns it with `change_type: "drive"`, `drive_id`,
 `removed` and `time`, without `file_id` and `file`.
 `google.drive.collection.changes` leaves drive-level changes out.
+
+## Change Log Delay
+
+Drive writes a change to its change log with a delay. In the live checks of
+2026-11-02, edits through the Google Docs API appeared between 3 and about
+150 s after the edit. A poll in that window returns no signal for the change;
+a later poll from the returned checkpoint does.
+
+A host that waits for the signal of a change it made can match it only by
+`file_id`. The signal names the file, not the edit: Drive merges a file's
+changes between two polls into one, and it does not advance `modifiedTime`
+for every Docs edit, so a change that Drive logs late for an earlier edit
+looks the same. To see the content after a given edit, the host reads the
+file again, for example with `google.drive.file.export`.
 
 ## Uploading Files
 
