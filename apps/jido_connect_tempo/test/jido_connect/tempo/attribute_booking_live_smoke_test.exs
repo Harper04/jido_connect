@@ -27,9 +27,11 @@ defmodule Jido.Connect.Tempo.AttributeBookingLiveSmokeTest do
   on 2026-10-27, in the open October period. They stay on the site; the
   connector has no delete.
 
-  - The estimate seed: one POST outside the connector and the recorder with
+  - The estimate seed: one POST through `Transport.post/3`, outside the
+    actions and before the recording starts, with
     `remainingEstimateSeconds` 7200, so the issue has a remaining estimate
-    that the next booking can change. The connector never sends that field.
+    that the next booking can change. The create action never sends that
+    field.
   - The attribute booking through `prepare/4` and `commit/4` with the API
     token, without start time and without remaining estimate, with a long
     description; read back with `tempo.worklogs.list_own`. Before the seed,
@@ -80,12 +82,14 @@ defmodule Jido.Connect.Tempo.AttributeBookingLiveSmokeTest do
       invoke: 5,
       ok!: 2,
       raw_worklogs!: 3,
+      request!: 3,
       site_data: 2,
       stop_if_created!: 2
     ]
 
   alias Jido.Connect.{Error, Scope}
   alias Jido.Connect.Tempo.{Fixture, ScopeResolver}
+  alias Jido.Connect.Tempo.Client.Transport
 
   @recorder {:jido_connect_tempo, :tempo_req_options}
   @jira ["JIRA_SITE", "JIRA_EMAIL", "JIRA_API_TOKEN"]
@@ -126,6 +130,7 @@ defmodule Jido.Connect.Tempo.AttributeBookingLiveSmokeTest do
     account_id = context.connection.subject.account_id
     issue_id = String.to_integer(env["TEMPO_JIRA_ISSUE_ID"])
     attributes = attributes!(env, context, :api_token, token)
+    seeder = request!(env, :api_token, token)
 
     input = %{
       author_account_id: account_id,
@@ -137,7 +142,7 @@ defmodule Jido.Connect.Tempo.AttributeBookingLiveSmokeTest do
     }
 
     initial = jira(env, issue_id, 0)
-    seed = raw_create(env, token, seed_body(account_id, issue_id, attributes))
+    seed = post_seed(seeder, seed_body(account_id, issue_id, attributes))
     seeded = after_write(seed, env, issue_id, initial, 1)
 
     LiveSmoke.record(@recorder, :tempo, "worklog_create_attributes",
@@ -152,7 +157,7 @@ defmodule Jido.Connect.Tempo.AttributeBookingLiveSmokeTest do
       after_write(create, env, issue_id, initial, if(match?({:ok, _}, seed), do: 2, else: 1))
 
     IO.puts("""
-    attribute booking: estimate seed #{inspect(seed)}, booking #{summary(create)}
+    attribute booking: estimate seed #{seed_summary(seed)}, booking #{summary(create)}
     Jira worklog total and remaining estimate: before #{inspect(initial)}, \
     after the seed #{inspect(seeded)}, after the booking #{inspect(booked)}\
     """)
@@ -160,7 +165,7 @@ defmodule Jido.Connect.Tempo.AttributeBookingLiveSmokeTest do
     seed_id =
       case seed do
         {:ok, id} -> id
-        {:error, status} -> flunk("the estimate seed got status #{inspect(status)}")
+        other -> flunk("the estimate seed got #{summary(other)}")
       end
 
     %{worklog: created} = ok!(create, "the attribute booking")
@@ -234,11 +239,15 @@ defmodule Jido.Connect.Tempo.AttributeBookingLiveSmokeTest do
 
     # Tempo answers an unknown account key with 404 `Account not found`
     # (recorded 2026-11-06), which quotes no input.
-    assert {:error,
-            %Error.ProviderError{reason: :not_found, status: 404, delivery: :rejected} = error} =
+    assert match?(
+             {:error, %Error.ProviderError{reason: :not_found, status: 404, delivery: :rejected}},
              result
+           ),
+           "the unknown account key got #{summary(result)}"
 
-    assert error.details.message == "Account not found"
+    {:error, error} = result
+    known? = match?(%{details: %{message: "Account not found"}}, error)
+    assert known?, "Tempo's 404 names another message than Account not found"
     assert Error.retry_guidance(error) == :do_not_retry
 
     hidden? =
@@ -393,7 +402,7 @@ defmodule Jido.Connect.Tempo.AttributeBookingLiveSmokeTest do
   end
 
   # The body of the estimate seed: the booking day, the required values and
-  # a remaining estimate, which the connector never sends.
+  # a remaining estimate, which the create action never sends.
   defp seed_body(account_id, issue_id, attributes) do
     %{
       "authorAccountId" => account_id,
@@ -407,17 +416,16 @@ defmodule Jido.Connect.Tempo.AttributeBookingLiveSmokeTest do
     }
   end
 
-  # One POST /4/worklogs outside the connector and the recorder. Returns the
-  # new ID or the status, never the body, which names the account ID.
-  defp raw_create(env, token, body) do
-    case Req.post(env["TEMPO_API_ORIGIN"] <> "/4/worklogs",
-           auth: {:bearer, token},
-           json: body,
-           retry: false
-         ) do
-      {:ok, %{status: 200, body: %{"tempoWorklogId" => id}}} when is_integer(id) -> {:ok, id}
-      {:ok, %{status: status}} -> {:error, status}
-      _other -> {:error, nil}
+  # One POST /4/worklogs through the client transport, which sends it once
+  # and reports a timeout as :sent_outcome_unknown. The check sends it
+  # before LiveSmoke.record/4, so the recorder is not yet the adapter.
+  # Returns the new ID or the error, never the body, which names the
+  # account ID.
+  defp post_seed(request, body) do
+    case Transport.post(request, "/4/worklogs", json: body) do
+      {:ok, %{"tempoWorklogId" => id}} when is_integer(id) -> {:ok, id}
+      {:ok, _body} -> :no_worklog_id
+      {:error, _error} = error -> error
     end
   end
 
@@ -470,6 +478,9 @@ defmodule Jido.Connect.Tempo.AttributeBookingLiveSmokeTest do
       _other -> :error
     end
   end
+
+  defp seed_summary({:ok, id}), do: "worklog #{id}"
+  defp seed_summary(result), do: summary(result)
 
   # The Tempo ID, booking day, start time, UTC start and seconds of a
   # booking, or the reason, status and delivery of its error.
