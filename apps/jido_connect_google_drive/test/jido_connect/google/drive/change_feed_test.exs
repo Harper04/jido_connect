@@ -207,6 +207,81 @@ defmodule Jido.Connect.Google.Drive.ChangeFeedTest do
                change_type: "drive"
              }
     end
+
+    test "returns a file's metadata without a nested file key" do
+      expect_change_page("collection_changes_added.2", @checkpoint)
+
+      %{"file" => %{"owners" => owners}} =
+        recorded_change("collection_changes_added.2", @added)
+
+      assert {:ok, %{signals: signals}} = poll("google.drive.file.changed", %{})
+      assert %{file: file} = file_signal(signals, @added)
+
+      refute Map.has_key?(file, :file)
+      assert file.owners == owners
+      assert file.permissions == []
+    end
+  end
+
+  # Both recordings read the change log from a checkpoint taken before the
+  # file was created. Drive merged the file's changes in each range into one:
+  # the first poll, before the deletion, read its creation; the second, after
+  # it, read the removal with the creation's `time`.
+  describe "dedupe keys of an update and a removal with the same time" do
+    test "differ for google.drive.file.changed across polls" do
+      expect_change_page("collection_changes_added.2", @checkpoint)
+      expect_change_page("file_changed_removed", @checkpoint)
+
+      assert {:ok, %{signals: before_deletion}} = poll("google.drive.file.changed", %{})
+      assert {:ok, %{signals: after_deletion}} = poll("google.drive.file.changed", %{})
+
+      assert %{removed: false, time: time} = update = file_signal(before_deletion, @added)
+      assert %{removed: true, time: ^time} = removal = file_signal(after_deletion, @added)
+
+      refute dedupe_key("google.drive.file.changed", update) ==
+               dedupe_key("google.drive.file.changed", removal)
+    end
+
+    # The two recorded pages as one poll: the first page's
+    # `newStartPageToken` stands in as its `nextPageToken`.
+    test "differ for google.drive.file.changed within one poll" do
+      {next_page_token, first_page} =
+        :google_drive
+        |> LiveSmoke.fixture!("collection_changes_added.2")
+        |> Map.pop!("newStartPageToken")
+
+      Req.Test.expect(__MODULE__, fn conn ->
+        assert conn.query_params["pageToken"] == @checkpoint
+        Req.Test.json(conn, Map.put(first_page, "nextPageToken", next_page_token))
+      end)
+
+      expect_change_page("file_changed_removed", next_page_token)
+
+      assert {:ok, %{signals: signals}} = poll("google.drive.file.changed", %{})
+
+      assert [%{removed: false, time: time}, %{removed: true, time: time}] =
+               Enum.filter(signals, &(&1[:file_id] == @added))
+    end
+
+    test "differ for google.drive.collection.changes across polls" do
+      expect_folder_lookup("collection_changes_added")
+      expect_change_page("collection_changes_added.2", @checkpoint)
+      expect_folder_lookup("collection_changes_added")
+      expect_change_page("file_changed_removed", @checkpoint)
+
+      watch = %{collection_id: @watch_folder}
+      assert {:ok, %{signals: before_deletion}} = poll("google.drive.collection.changes", watch)
+      assert {:ok, %{signals: after_deletion}} = poll("google.drive.collection.changes", watch)
+
+      assert %{removed?: false, changed_at: time} =
+               update = record_signal(before_deletion, @added)
+
+      assert %{removed?: true, changed_at: ^time} =
+               removal = record_signal(after_deletion, @added)
+
+      refute dedupe_key("google.drive.collection.changes", update) ==
+               dedupe_key("google.drive.collection.changes", removal)
+    end
   end
 
   defp poll(trigger_id, config, checkpoint \\ @checkpoint) do
@@ -267,6 +342,19 @@ defmodule Jido.Connect.Google.Drive.ChangeFeedTest do
       assert Map.take(conn.query_params, Map.keys(params)) == params
       Req.Test.json(conn, LiveSmoke.fixture!(:google_drive, fixture))
     end)
+  end
+
+  # The key a host builds from the dedupe fields the trigger declares.
+  defp dedupe_key(trigger_id, signal) do
+    {:ok, %{dedupe: %{key: fields}}} = Connect.trigger(Drive.integration(), trigger_id)
+    Enum.map(fields, &Map.get(signal, &1))
+  end
+
+  defp recorded_change(fixture, file_id) do
+    :google_drive
+    |> LiveSmoke.fixture!(fixture)
+    |> Map.fetch!("changes")
+    |> Enum.find(&(&1["fileId"] == file_id))
   end
 
   defp file_signal(signals, file_id), do: Enum.find(signals, &(&1[:file_id] == file_id))

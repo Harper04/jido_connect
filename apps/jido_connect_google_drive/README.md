@@ -301,11 +301,13 @@ every folder view that holds it.
 
 When a poll repeats a checkpoint, Drive merges a file's changes in that range
 into one, so a removal can carry the `time` of an update the host already
-received. The declared dedupe key of `google.drive.file.changed`,
-`[:change_type, :file_id, :drive_id, :time]`, is then the same for both
-signals. A host that deduplicates its signals across polls includes `removed`
-in the key. `google.drive.collection.changes` tells the two apart by
-`change_type`.
+received. The declared dedupe key of `google.drive.file.changed` is
+`[:change_type, :file_id, :drive_id, :removed, :time]`; `removed` keeps such a
+removal apart from the update, so a host that deduplicates its signals across
+polls by that key does not drop it. `change_type` there is Drive's `"file"` or
+`"drive"`. The key of `google.drive.collection.changes`,
+`[:collection_id, :change_type, :provider_record_id, :changed_at]`, tells the
+two apart by `change_type`, `"updated"` or `"deleted"`.
 
 `google.drive.collection.changes` reads the folder in `collection_id` before
 it reads the change log. Once that folder is deleted for good or the user can
