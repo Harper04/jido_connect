@@ -24,18 +24,30 @@ request carries Google's `includeTabsContent` only when the input sets it.
   and its nested tabs, in the same shape, in `child_tabs`.
 - `include_tabs_content: false` returns only the first tab, in the legacy
   `document.body`, and `document.tabs` is empty.
+- Without `include_tabs_content`, the result is the same as with `false`.
+
+Google's reference describes only `true` and `false`. A live check on
+2026-11-06 read a document with two top-level tabs and one nested tab
+without the parameter and got the same top-level fields and the same legacy
+body as with `false`.
 
 The action result holds plain maps, not structs. `Client.get_document/2`
 returns the same fields as a `Document` struct whose tabs and child tabs are
-`Tab` structs.
-
-Google's reference describes only `true` and `false`; the result for an
-omitted value is not verified here. Other `documentTab` parts, such as
-headers, footers, lists and inline objects, are not part of `Tab`.
+`Tab` structs. Other `documentTab` parts, such as headers, footers, lists and
+inline objects, are not part of `Tab`.
 
 A tab at any depth that is not a map, or whose fields do not have Google's
 shape, makes the action return a `Jido.Connect.Error.ProviderError` with
 reason `:invalid_response`.
+
+### Plain Text Export
+
+A Drive export as `text/plain`, through `google.drive.file.export`, holds
+the text of every tab, nested tabs included, in document order. The live
+check of 2026-11-06 exported the same document: the text starts with a byte
+order mark, ends lines with CRLF, and puts empty lines between the tabs.
+Nothing in it names a tab or marks where one begins; read the document with
+`include_tabs_content: true` to tell tabs apart.
 
 ## Batch Update
 
@@ -132,6 +144,13 @@ scopes:
 Read-only operations should use `documents.readonly` when possible. Document
 creation and mutation should require `documents`.
 
+A connection that holds `drive` can also read documents. On 2026-11-06
+Google returned a multi-tab document to an access token that held only
+`drive`, and the scope resolver accepts it for reads. The provider does not
+declare `drive`; a host that reads documents through a Drive grant requests
+the scope itself. `drive.readonly` and `drive.file` are not accepted and were
+not checked live. Finer Drive grants are left to the host.
+
 ## Data Classification
 
 Every Docs action declares a data classification:
@@ -148,14 +167,15 @@ The Docs scope resolver maps operations to least-privilege scopes:
 
 | Operation | Default Scope | Notes |
 |---|---|---|
-| `google.docs.document.get` | `documents.readonly` | Read-only access; accepts an existing `documents` grant |
+| `google.docs.document.get` | `documents.readonly` | Read-only access; accepts an existing `documents` or `drive` grant |
 | `google.docs.document.create` | `documents` | Write required |
 | `google.docs.document.batch_update` | `documents` | Write required |
 
-A read requires `documents` instead of `documents.readonly` only when the
-connection holds `documents` and not `documents.readonly`. Write operations
-always require `documents`. The readonly scope never satisfies write
-operations.
+A read requires the first of `documents.readonly`, `documents` and `drive`
+that the connection holds, and `documents.readonly` when it holds none of
+them. Write operations always require `documents`; neither the readonly
+scope nor `drive` satisfies them. `drive.readonly` and `drive.file` satisfy
+no Docs operation.
 
 ## API Boundaries
 
@@ -252,9 +272,11 @@ Drive-powered workflows:
   `google.drive.file.changed.push` to detect when a Docs document is modified.
   The trigger payload includes the Drive file ID, which maps directly to the
   Docs document ID for follow-up reads via `google.docs.document.get`.
-- **Drive scopes**. Export and Drive metadata require Drive scopes in addition
-  to Docs scopes. Grant `drive.readonly` for export and metadata reads, or
-  `drive.file` for app-managed files.
+- **Drive scopes**. Export needs `drive`, `drive.readonly`, or `drive.file`
+  for app-managed files; Drive metadata reads also take
+  `drive.metadata.readonly`. A Docs read needs `documents.readonly` or
+  `documents` besides, unless the connection holds `drive`, which covers
+  export, metadata and Docs reads on its own.
 
 Example: export a Docs document to PDF after a Drive change trigger:
 

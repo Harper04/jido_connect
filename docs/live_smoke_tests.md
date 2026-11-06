@@ -29,8 +29,11 @@ need `GOOGLE_DRIVE_ONLY_ACCESS_TOKEN`. A refresh of `GOOGLE_REFRESH_TOKEN`
 that adds `scope=https://www.googleapis.com/auth/drive` to the token request
 returns a token narrowed to that scope; Google reports the granted scopes in
 the `scope` field of the response, and a run uses the token only when that
-field is exactly the Drive scope. The Docs check asks Google's `tokeninfo`
-endpoint again before it reads, so a run with a broader token fails.
+field is exactly the Drive scope. These checks, in
+`apps/jido_connect_google_docs/test/jido_connect/google/docs/live_smoke_test.exs`
+and `apps/jido_connect_google_drive/test/jido_connect/google/drive/live_tabbed_export_test.exs`,
+ask Google's `tokeninfo` endpoint again before they read, so a run with a
+broader token fails.
 
 The Slack, Jira, Confluence and Tempo packages declare `plug` as a test-only
 dependency, which conflicts with a transitive dependency when Mix runs inside
