@@ -306,6 +306,16 @@ live_smoke skip test/jido_connect/google/meet/live_smoke_test.exs:72: GOOGLE_MEE
 live_smoke skip test/jido_connect/google/meet/live_smoke_test.exs:152: conferenceRecords/6EMiOc40YJH2mjvfx8U6DxIUOBEQAjIGCIoCIAAYAwg, the earlier conference prepared on 2026-10-30 in the space of GOOGLE_MEET_CONFERENCE_RECORD, has expired: Google answered 403 PERMISSION_DENIED "Permission denied on resource Conference (or it might not exist)"; see "Prepared Meet data" in docs/live_smoke_tests.md
 ```
 
+Neither answer is unique to expired data. Google gives the 403 also for a
+record that exists but that the account of `GOOGLE_ACCESS_TOKEN` cannot see,
+and the 404 also for a transcript ID that never existed, as in
+`transcript_entries_not_found`. A skip before 2026-11-29 therefore points at
+the configuration, such as a wrong ID or a token of another account; the skip
+line prints Google's answer for the check that skipped. The 404 rule still
+holds for `GOOGLE_MEET_TRANSCRIPT`: a transcript that the variable names and
+that no longer exists is gone data, and Google deletes transcript entries 30
+days after the conference ends.
+
 Another Meet live test that reads prepared data adopts the tag with the
 prepared items it reads. Anything under the conference record, such as a
 recording or participants, counts as `GOOGLE_MEET_CONFERENCE_RECORD`; other
@@ -333,7 +343,14 @@ recorded, transcribed meeting with Gemini notes in the Meet space of
 `GOOGLE_CALENDAR_EVENT_ID`. Its last stage, `seed.py meet-collect`, rewrites
 `GOOGLE_MEET_CONFERENCE_RECORD`, `GOOGLE_MEET_TRANSCRIPT` and
 `GOOGLE_MEET_RECORDING`; set `GOOGLE_MEET_RECORDING_FILE_ID` and
-`GOOGLE_MEET_NOTES_DOCUMENT_ID` by hand. With the new meeting, change the
+`GOOGLE_MEET_NOTES_DOCUMENT_ID` by hand. The wizard walks through one
+meeting, but three checks assume two conferences in the prepared space: the
+window and transcript list checks in the Meet `live_smoke_test.exs` expect
+exactly two in the window, and the meeting code check in
+`live_meeting_lookup_test.exs` at least two in the space
+(`assert length(names) >= 2`). With one fresh conference these checks fail.
+Fresh data therefore needs a second, earlier conference in the same space and
+window, or these checks change with it. With the new meetings, change the
 preparation date `@prepared_on` and the earlier record
 `@earlier_conference_record` in `LiveMeet`, the window
 `@prepared_window_start` and `@prepared_window_end` in the Meet

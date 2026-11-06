@@ -57,10 +57,22 @@ defmodule Jido.Connect.Google.Meet.TestSupport.LiveMeet do
   resource might not exist, Google's answer for a conference record that does
   not exist. Every other answer, among them success, 401, a 403 with
   `ACCESS_TOKEN_SCOPE_INSUFFICIENT`, 400, 5xx and transport errors, leaves the
-  test to run and fail. The skip reason names the variable, or the earlier
-  record as such, `@prepared_on`, the status, Google's `error.status` and the
-  ErrorInfo reason or else Google's message. A run that asked Google prints
-  it as the harness prints `env!/1` skips:
+  test to run and fail.
+
+  Neither answer is unique to expired data. Google gives the 403 also for a
+  record that exists but that the account of `GOOGLE_ACCESS_TOKEN` cannot
+  see, and the 404 also for a transcript ID that never existed. A skip before
+  the prepared data expires, 30 days after `@prepared_on`, therefore points
+  at the configuration, such as a wrong ID or a token of another account. The
+  404 rule still holds for `GOOGLE_MEET_TRANSCRIPT`: a transcript that the
+  variable names and that no longer exists is gone data, and Google deletes
+  transcript entries 30 days after the conference ends.
+
+  The skip reason names the variable, or the earlier record as such,
+  `@prepared_on`, the status, Google's `error.status` and the ErrorInfo
+  reason or else Google's message, so the skip line shows Google's answer for
+  the check that skipped. A run that asked Google prints it as the harness
+  prints `env!/1` skips:
 
       live_smoke skip test/jido_connect/google/meet/live_smoke_test.exs:72: GOOGLE_MEET_CONFERENCE_RECORD, prepared on 2026-10-30, has expired: Google answered 403 PERMISSION_DENIED "Permission denied on resource Conference (or it might not exist)"; see "Prepared Meet data" in docs/live_smoke_tests.md
       live_smoke skip test/jido_connect/google/meet/live_smoke_test.exs:152: conferenceRecords/6EMiOc40YJH2mjvfx8U6DxIUOBEQAjIGCIoCIAAYAwg, the earlier conference prepared on 2026-10-30 in the space of GOOGLE_MEET_CONFERENCE_RECORD, has expired: Google answered 403 PERMISSION_DENIED "Permission denied on resource Conference (or it might not exist)"; see "Prepared Meet data" in docs/live_smoke_tests.md
