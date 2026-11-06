@@ -17,10 +17,11 @@ schemas, normalized structs, and tests in this package.
   [Uploading Files](#uploading-files)
 - `google.drive.file.copy`
 - `google.drive.file.update`
-- `google.drive.file.export`, see
+- `google.drive.file.export`, the converted bytes unparsed, see
+  [Downloading and Exporting Files](#downloading-and-exporting-files) and
   [Limiting Content Bytes](#limiting-content-bytes)
 - `google.drive.file.download`, the stored bytes unparsed, see
-  [Downloading Files](#downloading-files) and
+  [Downloading and Exporting Files](#downloading-and-exporting-files) and
   [Limiting Content Bytes](#limiting-content-bytes)
 - `google.drive.file.delete`
 - `google.drive.permissions.list`
@@ -389,7 +390,7 @@ its execution claim and looks for the file in the folder before it prepares a
 new upload. Claims and replay rules are described under "Replay And Retry
 Safety" in the `jido_connect` README.
 
-## Downloading Files
+## Downloading and Exporting Files
 
 `google.drive.file.download` returns the bytes Drive stores for a file that is
 not a Google Workspace document, as `file_content`. The package does not parse
@@ -400,6 +401,17 @@ map or a list. Valid UTF-8 without NUL bytes comes back as `content` with
 `mime_type` is the media type of the response without parameters, such as
 `application/json`. Google Workspace documents need
 `google.drive.file.export`, which converts them to a requested format.
+
+`google.drive.file.export` returns the converted bytes in the same form,
+unparsed, with the requested format as `mime_type`. An Apps Script project
+exported as `application/vnd.google-apps.script+json` comes back as its JSON
+text in `content`.
+
+A failed download or export returns a `Jido.Connect.Error.ProviderError` with
+the response status. When the error's media type is `application/json` or ends
+in `+json`, in any case, its `details` carry Google's message. Any other error
+body, including one that does not decode and one typed
+`application/x-ndjson`, is summarized as raw bytes in `details.body_summary`.
 
 ## Limiting Content Bytes
 

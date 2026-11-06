@@ -94,6 +94,8 @@ defmodule Jido.Connect.Google.Drive.LiveSmokeTest do
                                 "file(id,mimeType,parents,trashed))"
 
   @google_sheet_mime_type "application/vnd.google-apps.spreadsheet"
+  @apps_script_mime_type "application/vnd.google-apps.script"
+  @apps_script_json "application/vnd.google-apps.script+json"
   @upload_api "https://www.googleapis.com/upload/drive/v3"
 
   @tag env!(["GOOGLE_ACCESS_TOKEN"])
@@ -683,6 +685,20 @@ defmodule Jido.Connect.Google.Drive.LiveSmokeTest do
     assert error.details.message == "File not found: #{@missing_file_id}."
   end
 
+  @tag env!(["GOOGLE_ACCESS_TOKEN"])
+  test "a missing file's export error carries Google's message", %{env: env} do
+    LiveSmoke.record(@req_options, :google_drive, "file_export_not_found", @masked)
+
+    assert {:error, %Connect.Error.ProviderError{status: 404} = error} =
+             invoke(
+               "google.drive.file.export",
+               %{file_id: @missing_file_id, mime_type: "text/plain"},
+               env["GOOGLE_ACCESS_TOKEN"]
+             )
+
+    assert error.details.message == "File not found: #{@missing_file_id}."
+  end
+
   @tag env!(["GOOGLE_ACCESS_TOKEN", "GOOGLE_DRIVE_STARRED_FILE_ID"])
   test "reads a file with caller fields that leave out name", %{env: env} do
     file_id = env["GOOGLE_DRIVE_STARRED_FILE_ID"]
@@ -787,6 +803,71 @@ defmodule Jido.Connect.Google.Drive.LiveSmokeTest do
           assert %{status: 400, body: %{"error" => %{"message" => "Bad Request"}}} = response
       end
     end
+  end
+
+  # Drive imports an Apps Script project from its JSON form into My Drive,
+  # whatever `parents` names, so the test moves it into the upload folder
+  # right away.
+  @tag env!(["GOOGLE_ACCESS_TOKEN", "GOOGLE_DRIVE_UPLOAD_FOLDER_ID"])
+  @tag write!(:google)
+  test "exports an Apps Script project as the JSON bytes Drive sends", %{env: env} do
+    token = env["GOOGLE_ACCESS_TOKEN"]
+    folder_id = env["GOOGLE_DRIVE_UPLOAD_FOLDER_ID"]
+    run = Base.encode16(:crypto.strong_rand_bytes(6), case: :lower)
+    name = "jcl-live script #{run}"
+
+    project =
+      Jason.encode!(%{
+        files: [
+          %{
+            name: "Code",
+            type: "server_js",
+            source: "function jclLive() {\n  return \"#{run}\";\n}\n"
+          },
+          %{name: "appsscript", type: "json", source: ~S({"exceptionLogging":"STACKDRIVER"})}
+        ]
+      })
+
+    metadata = %{name: name, mimeType: @apps_script_mime_type, parents: [folder_id]}
+
+    assert %{status: 200, body: %{"id" => file_id, "parents" => [import_parent]}} =
+             external_import(token, metadata, @apps_script_json, project)
+
+    on_exit(fn -> delete_leftover(token, "/files/#{file_id}") end)
+
+    assert %{status: 200, body: %{"parents" => [^folder_id]}} =
+             external(:patch, "/files/#{file_id}", token,
+               params: [addParents: folder_id, removeParents: import_parent, fields: "parents"],
+               json: %{}
+             )
+
+    # The bytes Drive sends, read outside the package without decoding.
+    assert %{status: 200, body: sent} =
+             external(:get, "/files/#{file_id}/export", token,
+               params: [mimeType: @apps_script_json],
+               decode_body: false
+             )
+
+    assert String.contains?(sent, run)
+
+    LiveSmoke.record(@req_options, :google_drive, "file_export_apps_script", @masked)
+
+    assert {:ok, %{file_content: exported}} =
+             invoke(
+               "google.drive.file.export",
+               %{file_id: file_id, mime_type: @apps_script_json},
+               token
+             )
+
+    assert %{
+             file_id: ^file_id,
+             mime_type: @apps_script_json,
+             encoding: "utf-8",
+             binary: false
+           } = exported
+
+    assert exported.size == byte_size(sent)
+    assert hex_digest(:sha256, exported.content) == hex_digest(:sha256, sent)
   end
 
   # Every byte value, 20,480 times: exactly the multipart limit.
@@ -954,6 +1035,23 @@ defmodule Jido.Connect.Google.Drive.LiveSmokeTest do
   defp external_upload(access_token, upload) do
     {body, content_type} = Params.file_upload_multipart_body(upload)
     post_upload(access_token, body, content_type)
+  end
+
+  # A multipart upload whose metadata and media name different types, the
+  # form of an import into a Google Workspace type.
+  defp external_import(access_token, metadata, media_type, content) do
+    boundary = "jcl-live-" <> Base.encode16(:crypto.strong_rand_bytes(6), case: :lower)
+
+    body =
+      IO.iodata_to_binary([
+        "--#{boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n",
+        Jason.encode!(metadata),
+        "\r\n--#{boundary}\r\nContent-Type: #{media_type}\r\n\r\n",
+        content,
+        "\r\n--#{boundary}--\r\n"
+      ])
+
+    post_upload(access_token, body, "multipart/related; boundary=#{boundary}")
   end
 
   defp post_upload(access_token, body, content_type) do

@@ -612,6 +612,36 @@ defmodule Jido.Connect.Google.Drive.ClientTest do
     assert content.binary == false
   end
 
+  # Drive sends an Apps Script project's JSON export as
+  # application/vnd.google-apps.script+json, a type Req would decode into a
+  # map.
+  test "exports an Apps Script project as the bytes Drive sent" do
+    recorded = recorded_download!("file_export_apps_script")
+    body = recorded["body"]
+
+    Req.Test.stub(__MODULE__, fn conn ->
+      assert conn.request_path == "/v3/files/file123/export"
+      assert conn.query_params["mimeType"] == "application/vnd.google-apps.script+json"
+
+      replay_download(conn, recorded, body)
+    end)
+
+    assert {:ok, content} =
+             Client.export_file(
+               %{file_id: "file123", mime_type: "application/vnd.google-apps.script+json"},
+               "token"
+             )
+
+    assert content == %{
+             file_id: "file123",
+             mime_type: "application/vnd.google-apps.script+json",
+             size: byte_size(body),
+             content: body,
+             encoding: "utf-8",
+             binary: false
+           }
+  end
+
   test "normalizes parsed row payload for exported files" do
     rows = [
       ["Domaines", "Problemes"],
@@ -829,6 +859,83 @@ defmodule Jido.Connect.Google.Drive.ClientTest do
 
     assert error.details.message == message
   end
+
+  # The recorded 404s of a download and of an export with only their content
+  # type changed, so the body stays Google's valid JSON error and the media
+  # type alone decides whether the error keeps Google's message. Media types
+  # ignore case. A type is JSON as application/json or with a +json suffix;
+  # application/x-ndjson ends in json without one.
+  content_type_cases = [
+    {"an upper-case JSON content type", "APPLICATION/JSON; charset=UTF-8", :message},
+    {"an upper-case +json content type", "Application/Problem+JSON", :message},
+    {"an application/x-ndjson content type", "application/x-ndjson", :raw}
+  ]
+
+  # The cases the download tests above cover, for an export.
+  export_cases = [
+    {"its recorded JSON content type", "application/json; charset=UTF-8", :message},
+    {"a +json content type", "application/problem+json", :message},
+    {"a text/plain content type", "text/plain; charset=UTF-8", :raw},
+    {"no content type", nil, :raw}
+  ]
+
+  for {operation, cases} <- [
+        download: content_type_cases,
+        export: export_cases ++ content_type_cases
+      ],
+      {label, content_type, outcome} <- cases do
+    kept = if outcome == :message, do: "Google's error message", else: "the raw body"
+
+    test "a failed #{operation} with #{label} keeps #{kept}" do
+      recorded =
+        unquote(operation)
+        |> not_found_recording()
+        |> with_content_type(unquote(content_type))
+
+      body = Jason.encode!(recorded["body"])
+
+      Req.Test.stub(__MODULE__, fn conn ->
+        replay_download(conn, recorded, body)
+      end)
+
+      assert {:error, %Jido.Connect.Error.ProviderError{provider: :google, status: 404} = error} =
+               request_content(unquote(operation))
+
+      case unquote(outcome) do
+        :message ->
+          assert error.details.message == recorded["body"]["error"]["message"]
+
+        :raw ->
+          assert error.details.body_summary == %{type: :binary, bytes: byte_size(body)}
+      end
+    end
+  end
+
+  # The recorded export error cut off after half its bytes.
+  test "a failed export with a truncated JSON error body keeps the raw body" do
+    recorded = not_found_recording(:export)
+    encoded = Jason.encode!(recorded["body"])
+    truncated = binary_part(encoded, 0, div(byte_size(encoded), 2))
+
+    assert {:error, %Jason.DecodeError{}} = Jason.decode(truncated)
+
+    Req.Test.stub(__MODULE__, fn conn ->
+      replay_download(conn, recorded, truncated)
+    end)
+
+    assert {:error, %Jido.Connect.Error.ProviderError{provider: :google, status: 404} = error} =
+             request_content(:export)
+
+    assert error.details.body_summary == %{type: :binary, bytes: byte_size(truncated)}
+  end
+
+  defp not_found_recording(:download), do: recorded_download!("file_download_not_found")
+  defp not_found_recording(:export), do: recorded_download!("file_export_not_found")
+
+  defp request_content(:download), do: Client.download_file(%{file_id: "file123"}, "token")
+
+  defp request_content(:export),
+    do: Client.export_file(%{file_id: "file123", mime_type: "text/plain"}, "token")
 
   # The replay needs the recorded status and headers, which
   # `LiveSmoke.fixture!/2` leaves out, so this loads the whole recording.
