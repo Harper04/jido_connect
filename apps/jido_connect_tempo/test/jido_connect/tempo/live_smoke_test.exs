@@ -55,24 +55,26 @@ defmodule Jido.Connect.Tempo.LiveSmokeTest do
   import Jido.Connect.Tempo.TestSupport.LiveTempo,
     only: [
       account_id!: 1,
+      commit: 4,
       context!: 2,
       context!: 3,
+      error_summary: 1,
       invoke: 4,
       invoke: 5,
       ok!: 2,
       raw_worklogs!: 3,
       request!: 3,
-      request!: 4
+      request!: 4,
+      stop_if_created!: 2
     ]
 
-  alias Jido.Connect.{Context, CredentialLease, Error}
+  alias Jido.Connect.Error
   alias Jido.Connect.Tempo
   alias Jido.Connect.Tempo.Client.{Pagination, Transport}
   alias Jido.Connect.Tempo.{Client, OAuth, ScopeResolver}
 
   @recorder {:jido_connect_tempo, :tempo_req_options}
   @oauth_recorder {:jido_connect_tempo, :tempo_oauth_req_options}
-  @create "tempo.worklog.create"
   @create_marker "JCL live create test"
   @oauth ["TEMPO_OAUTH_CLIENT_ID", "TEMPO_OAUTH_CLIENT_SECRET", "TEMPO_OAUTH_REDIRECT_URI"]
   @october [params: [from: "2026-10-01", to: "2026-10-31"]]
@@ -727,51 +729,6 @@ defmodule Jido.Connect.Tempo.LiveSmokeTest do
 
     refute leaked?, "the normalized error contains the token"
   end
-
-  # Prepares and commits the worklog create with direct calls denied. The
-  # host evidence names the prepared action, and the validator accepts only
-  # that one.
-  defp commit(%Context{connection: connection} = context, :api_token, token, input) do
-    lease =
-      CredentialLease.from_connection!(connection, %{api_token: token},
-        expires_at: DateTime.add(DateTime.utc_now(), 300, :second)
-      )
-
-    opts = [context: context, credential_lease: lease, direct_mutation_mode: :deny]
-
-    with {:ok, prepared} <- Jido.Connect.prepare(Tempo, @create, input, opts) do
-      Jido.Connect.commit(
-        Tempo,
-        prepared,
-        input,
-        opts ++
-          [
-            execution_authorization: %{prepared_action_id: prepared.id},
-            authorization_validator: fn evidence, prepared, _context ->
-              evidence.prepared_action_id == prepared.id
-            end
-          ]
-      )
-    end
-  end
-
-  # A booking that Tempo should have refused but created: report its ID and
-  # stop, so the test sends nothing more.
-  defp stop_if_created!({:ok, %{worklog: %{tempo_worklog_id: id}}}, what),
-    do: flunk("STOP: Tempo created worklog #{id} for #{what}")
-
-  defp stop_if_created!({:ok, %{"tempoWorklogId" => id}}, what),
-    do: flunk("STOP: Tempo created worklog #{id} for #{what}")
-
-  defp stop_if_created!(_result, _what), do: :ok
-
-  # Reason and status only, since Tempo's error text may quote the
-  # booking, including the test user's account ID.
-  defp error_summary({:error, error}),
-    do: "reason #{inspect(Map.get(error, :reason))}, status #{inspect(Map.get(error, :status))}"
-
-  defp error_summary({:ok, _value}), do: "a success"
-  defp error_summary(_other), do: "an unexpected result"
 
   # The compared fields, without the author, whose account ID the output
   # of a failing comparison would show. A description that Tempo left out
