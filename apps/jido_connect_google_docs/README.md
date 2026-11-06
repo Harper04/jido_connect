@@ -43,11 +43,20 @@ reason `:invalid_response`.
 ### Plain Text Export
 
 A Drive export as `text/plain`, through `google.drive.file.export`, holds
-the text of every tab, nested tabs included, in document order. The live
-check of 2026-11-06 exported the same document: the text starts with a byte
-order mark, ends lines with CRLF, and puts empty lines between the tabs.
-Nothing in it names a tab or marks where one begins; read the document with
-`include_tabs_content: true` to tell tabs apart.
+the text of every tab, nested tabs included. The live check of 2026-11-06
+exported the same document, with the top-level tabs First and Second and the
+tab Nested under Second, and got their text in the order First, Second,
+Nested. Nested is also the document's last tab, so the check does not show
+whether a nested tab comes before a later sibling of its parent tab; that
+order is unchecked.
+
+The text starts with a byte order mark and ends lines with CRLF. Two empty
+lines stand between the texts of consecutive tabs. Each tab of that
+document ends with an empty paragraph, so the check does not tell which of
+these line breaks come from the tabs' own paragraphs and whether Google
+adds any between tabs. Nothing in the export names a tab or marks where one
+begins; read the document with `include_tabs_content: true` to tell tabs
+apart.
 
 ## Batch Update
 
