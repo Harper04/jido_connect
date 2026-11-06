@@ -71,6 +71,11 @@
 - Keep `comment_body: ""` on webhook comment signals whose body projects to
   an empty text, so an empty comment stays apart from a delivery without a
   body, as `Comment` keeps `body: ""`.
+- `Jido.Connect.WebhookDelivery.to_public_map/1` keeps the `from`,
+  `from_string`, `to` and `to_string` values of changelog items in
+  `normalized_signal`, cut at 512 bytes, instead of replacing them with
+  `"[truncated]"`. The raw `payload` of the public map still shows them as
+  `"[truncated]"`.
 
 ## 0.1.0
 

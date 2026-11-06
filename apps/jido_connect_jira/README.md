@@ -330,10 +330,13 @@ with empty details, and other event names return
 delivery without a normalized signal.
 
 The signal keeps full values. `Jido.Connect.WebhookDelivery.to_public_map/1`
-sanitizes `normalized_signal` like any transport payload: it cuts strings
-such as a long `comment_body` at 512 bytes and replaces values nested deeper
-than four levels, such as the values of changelog items, with
-`"[truncated]"`.
+sanitizes `normalized_signal` for transport and keeps the values of
+changelog items: `field`, `field_id`, `field_type`, `from`, `from_string`,
+`to` and `to_string`. It cuts strings, such as a long `comment_body` or a
+long changelog value, at 512 bytes, and lists, such as `changelog.items`,
+at 50 entries. The raw `payload` in the same map keeps one level less, so it
+shows the values of changelog items as `"[truncated]"`; read them from
+`normalized_signal`.
 
 ## Catalog Packs
 

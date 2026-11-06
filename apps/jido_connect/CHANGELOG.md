@@ -25,6 +25,12 @@
   for the supported legacy lookup, search, and pack adapters.
 - Remove the unpublished `jido_connect_mcp` application after its replacement
   tests and behavior moved into this package.
+- Keep one nesting level more of `normalized_signal` in
+  `WebhookDelivery.to_public_map/1`: signal values on level 4, such as the
+  fields of an item in a list of the signal, stay instead of becoming
+  `"[truncated]"`. `headers`, `payload` and `metadata` keep four levels. The
+  512-byte and 50-entry limits and the redaction of sensitive keys apply on
+  every level.
 
 ## 0.1.0
 
