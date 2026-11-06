@@ -491,6 +491,13 @@ Recordings and captures pass through the same sanitizer, also available as
 - The Google project number, the numeric prefix of `GOOGLE_CLIENT_ID`, becomes
   `000000000000` wherever it appears as a whole number, as in the `Received`
   headers of Gmail messages.
+- Google user IDs become `user-<n>` wherever they appear as a whole number,
+  in values, map keys and the request path. They are taken from values such as
+  `users/<id>`, as in a Meet participant's `signedinUser.user`, and from the
+  participant segment of `conferenceRecords/<record>/participants/<id>`, as
+  in a participant's or a transcript entry's resource name. Only a segment of
+  eight or more digits counts, so `users/me` and a participant segment such as
+  a UUID stay as they are.
 - Display names become `Person <n>`. They are taken from keys such as
   `displayName`, `real_name`, `publicName` and `username`, and from address
   lists such as `Ada Lovelace <ada@example.org>, bob@example.org`. Once known,
@@ -505,7 +512,8 @@ Recordings and captures pass through the same sanitizer, also available as
   sanitizer raises `LiveSmoke.LeakError`. The same holds for the hosts above,
   for the Google project number, also inside a longer number, for email
   addresses in listed settings and in variables ending in `_EMAIL`, and for
-  every tenant host and account ID the sanitizer replaced elsewhere.
+  every tenant host, account ID and Google user ID the sanitizer replaced
+  elsewhere; a Google user ID also inside a longer number.
   The message names the variable or the kind of value, not the value, and
   nothing is written.
 
