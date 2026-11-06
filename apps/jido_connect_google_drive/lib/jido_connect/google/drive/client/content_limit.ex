@@ -2,12 +2,25 @@ defmodule Jido.Connect.Google.Drive.Client.ContentLimit do
   @moduledoc """
   The optional byte limit `max_bytes` of Drive file content reads.
 
-  `export_file/2` and `download_file/2` hold the whole body in memory. With
-  `max_bytes`, they count the body's bytes while they arrive, through Req's
-  `:into` option, and stop reading before they collect the byte that would
-  exceed the limit. A `content-length` above the limit stops the read at the
+  `Jido.Connect.Google.Drive.Client.export_file/2` and
+  `Jido.Connect.Google.Drive.Client.download_file/2` hold the whole body in
+  memory. This module gives both reads a count of the bytes received and
+  gives the download a check of the declared size.
+
+  The count runs while the body arrives. `receive_options/1` hands Req an
+  `:into` callback that stops reading before it collects the byte that would
+  exceed the limit, and `check_received/1` turns the stopped response into
+  the limit error. A `content-length` above the limit stops the read at the
   first chunk. A body of exactly `max_bytes` bytes passes and is returned as
   without a limit.
+
+  Before a download, `check_declared_size/2` compares the `size` from Drive's
+  `files.get` with `max_bytes`. A file declared larger than the limit fails
+  without a content request. A Google Workspace document passes, because
+  Drive reports a `size` for it but refuses its download, and so does a file
+  without a `size` or with one that is not a whole number. The count still
+  applies to their content. An export has no such check, because Drive's
+  `size` does not describe an export.
 
   A read stopped at the limit returns a `Jido.Connect.Error.ProviderError`
   with reason `:limit_exceeded` and `details.max_bytes`. It carries none of
