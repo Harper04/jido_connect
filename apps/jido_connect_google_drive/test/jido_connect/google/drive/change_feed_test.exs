@@ -22,8 +22,7 @@ defmodule Jido.Connect.Google.Drive.ChangeFeedTest do
   @checkpoint "stored-checkpoint"
 
   # The projection of the folder lookup the recordings were made with. Drive
-  # returns only the requested fields, and a file without `name` does not
-  # normalize.
+  # returns only the requested fields.
   @folder_lookup_fields "id,name,mimeType,driveId"
 
   setup {Req.Test, :verify_on_exit!}

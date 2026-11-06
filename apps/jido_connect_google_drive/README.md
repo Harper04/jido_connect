@@ -184,6 +184,16 @@ file. It identifies neither the editor nor an immutable revision. Drive can
 leave `modifiedTime` unchanged after a Google Docs edit, so different contents
 can carry the same value.
 
+## Caller-Supplied Fields Without Name
+
+`name` is optional in `Jido.Connect.Google.Drive.File` and
+`Jido.Connect.Google.Drive.Folder`. Drive returns only the fields a request
+names, so a caller-supplied `fields` that leaves out `name` returns the file
+or folder with `name: nil`, for example from `google.drive.file.get`, in the
+`file` of a `google.drive.file.changed` signal whose `fields` leaves `name`
+out of `file(...)`, and from `google.drive.folder.create`. That `nil` says
+nothing about the file's name. The default projections request `name`.
+
 ## Listing Folder Contents
 
 `google.drive.files.list` sends `query` to Drive as `q`. A query such as

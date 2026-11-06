@@ -86,6 +86,12 @@ defmodule Jido.Connect.Google.Drive.LiveSmokeTest do
   # up to 5 minutes.
   @docs_change_log_reads 150
 
+  # Caller projections without `name`, for a file and for a change page.
+  @fields_without_name "id,mimeType,parents,starred,modifiedTime"
+  @change_fields_without_name "nextPageToken,newStartPageToken," <>
+                                "changes(fileId,removed,time,changeType,driveId," <>
+                                "file(id,mimeType,parents,trashed))"
+
   @tag env!(["GOOGLE_ACCESS_TOKEN"])
   test "reads the Drive about resource", %{env: env} do
     LiveSmoke.record(@req_options, :google_drive, "about")
@@ -671,6 +677,76 @@ defmodule Jido.Connect.Google.Drive.LiveSmokeTest do
              )
 
     assert error.details.message == "File not found: #{@missing_file_id}."
+  end
+
+  @tag env!(["GOOGLE_ACCESS_TOKEN", "GOOGLE_DRIVE_STARRED_FILE_ID"])
+  test "reads a file with caller fields that leave out name", %{env: env} do
+    file_id = env["GOOGLE_DRIVE_STARRED_FILE_ID"]
+
+    LiveSmoke.record(@req_options, :google_drive, "file_get_without_name", @masked)
+
+    assert {:ok, %{file: file}} =
+             invoke(
+               "google.drive.file.get",
+               %{file_id: file_id, fields: @fields_without_name},
+               env["GOOGLE_ACCESS_TOKEN"]
+             )
+
+    assert %{file_id: ^file_id, name: nil, starred?: true, parents: [_folder_id]} = file
+  end
+
+  @tag env!(["GOOGLE_ACCESS_TOKEN", "GOOGLE_DRIVE_UPLOAD_FOLDER_ID"])
+  @tag write!(:google)
+  test "polls a change with caller fields that leave out name", %{env: env} do
+    token = env["GOOGLE_ACCESS_TOKEN"]
+    folder_id = env["GOOGLE_DRIVE_UPLOAD_FOLDER_ID"]
+    run = Base.encode16(:crypto.strong_rand_bytes(6), case: :lower)
+
+    assert {:ok, %{signals: [], checkpoint: checkpoint}} =
+             poll("google.drive.file.changed", %{}, nil, token)
+
+    file_id = create_externally(token, "jcl-live unnamed #{run}.txt", "text/plain", folder_id)
+
+    await_change_log(token, checkpoint, [], &change_for(&1, file_id))
+
+    LiveSmoke.record(@req_options, :google_drive, "file_changed_without_name", @masked)
+
+    assert {:ok, %{signals: signals}} =
+             poll(
+               "google.drive.file.changed",
+               %{fields: @change_fields_without_name},
+               checkpoint,
+               token
+             )
+
+    assert %{removed: false, change_type: "file", file: file} = file_signal(signals, file_id)
+    assert %{file_id: ^file_id, name: nil, parents: [^folder_id]} = file
+  end
+
+  @tag env!(["GOOGLE_ACCESS_TOKEN", "GOOGLE_DRIVE_UPLOAD_FOLDER_ID"])
+  @tag write!(:google)
+  test "creates a folder with caller fields that leave out name", %{env: env} do
+    token = env["GOOGLE_ACCESS_TOKEN"]
+    folder_id = env["GOOGLE_DRIVE_UPLOAD_FOLDER_ID"]
+
+    # The response leaves the name out; the cleanup finds the folder by it
+    # when the response is lost.
+    name = "jcl-live unnamed folder #{Base.encode16(:crypto.strong_rand_bytes(6), case: :lower)}"
+    on_exit(fn -> delete_uploads_named(token, folder_id, name) end)
+
+    LiveSmoke.record(@req_options, :google_drive, "folder_create_without_name", @masked)
+
+    assert {:ok, %{folder: folder}} =
+             invoke(
+               "google.drive.folder.create",
+               %{name: name, parents: [folder_id], fields: "id,mimeType,parents"},
+               token
+             )
+
+    created_id = folder.folder_id
+    on_exit(fn -> delete_leftover(token, "/files/#{created_id}") end)
+
+    assert %{name: nil, parents: [^folder_id]} = folder
   end
 
   # Every byte value, 20,480 times: exactly the multipart limit.

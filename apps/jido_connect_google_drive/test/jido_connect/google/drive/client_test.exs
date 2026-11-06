@@ -149,7 +149,7 @@ defmodule Jido.Connect.Google.Drive.ClientTest do
 
       Req.Test.json(conn, %{
         "files" => [
-          %{"id" => "file123"}
+          %{"name" => "Budget.pdf"}
         ]
       })
     end)
@@ -245,7 +245,7 @@ defmodule Jido.Connect.Google.Drive.ClientTest do
       assert conn.request_path == "/v3/files/file123"
 
       Req.Test.json(conn, %{
-        "id" => "file123"
+        "name" => "Budget.pdf"
       })
     end)
 
