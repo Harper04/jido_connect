@@ -103,10 +103,11 @@ The Meet checks read the meeting data prepared on 2026-10-30, which Google
 deletes 30 days after the conferences ended, on 2026-11-29. The participant
 checks in
 `apps/jido_connect_google_meet/test/jido_connect/google/meet/participants_live_smoke_test.exs`
-carry a `LiveMeet.prepared!/1` tag from `test/support/live_meet.ex` after
-their `env!/1` tag. In a run that can include them, through
-`--only live_smoke`, `--include live_smoke` or a location in the file, it
-asks Google with `GOOGLE_ACCESS_TOKEN` while the file compiles:
+that read this data carry a `LiveMeet.prepared!/1` tag from
+`test/support/live_meet.ex` after their `env!/1` tag. In a run that can
+include them, through `--only live_smoke`, `--include live_smoke` or a
+location in the file, it asks Google with `GOOGLE_ACCESS_TOKEN` while the
+file compiles:
 `conferenceRecords.get` with `fields=name` for
 `GOOGLE_MEET_CONFERENCE_RECORD`, and one transcript entry name without text
 for `GOOGLE_MEET_TRANSCRIPT`. Two answers skip the test:
@@ -123,14 +124,14 @@ for `GOOGLE_MEET_TRANSCRIPT`. Two answers skip the test:
 
 The skip reason names the variable, the preparation date, the status,
 Google's `error.status` and the ErrorInfo reason or else Google's message.
-Every other answer lets the test run and fail, among them a 403 with the
+Every other answer lets the test run, so it fails on a 403 with the
 ErrorInfo reason `ACCESS_TOKEN_SCOPE_INSUFFICIENT`, recorded as
-`conference_record_scope_insufficient`, 401, 400 for an ID Google cannot
-parse, and 5xx. Google gives the two skipping answers also for a well-formed
-ID that never named data of the test user, such as a mistyped transcript ID,
-so such an ID is skipped as expired instead of failing. Google's page token
-for participants encodes the next participant's user ID in Base64, so
-`participants.json` keeps the placeholder `nextPageToken-1`.
+`conference_record_scope_insufficient`, on 401, on 400 for an ID Google
+cannot parse, and on 5xx. Google gives the two skipping answers also for a
+well-formed ID that never named data of the test user, such as a mistyped
+transcript ID, so such an ID is skipped as expired instead of failing.
+Google's page token for participants encodes the next participant's user ID
+in Base64, so `participants.json` keeps the placeholder `nextPageToken-1`.
 
 ## Writing a Live Test
 

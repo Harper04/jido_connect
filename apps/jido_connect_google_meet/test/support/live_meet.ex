@@ -27,7 +27,7 @@ defmodule Jido.Connect.Google.Meet.TestSupport.LiveMeet do
   # conference record that does not exist. Google gives the same answers for a
   # well-formed ID that never named data the test user can see, so a wrong ID
   # of that kind is skipped as expired too. Every other answer leaves the test
-  # to run and fail: success, 401, a 403 with `ACCESS_TOKEN_SCOPE_INSUFFICIENT`,
+  # to run, so it fails on 401, a 403 with `ACCESS_TOKEN_SCOPE_INSUFFICIENT`,
   # 400 for an ID Google cannot parse, 5xx and transport errors.
 
   alias Jido.Connect.Google.Meet.Client.Transport
