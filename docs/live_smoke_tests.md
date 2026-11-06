@@ -272,7 +272,9 @@ token responses to `oauth_exchange.json` and `oauth_refresh.json`, with the
 token fields redacted, and deletes a file that still holds a token or the
 code.
 
-The Tempo own worklog checks rely only on the test user's seeded worklogs.
+The Tempo own worklog checks are the five tests that record `worklogs_own`,
+`worklogs_own_small_page`, `worklogs_own_day`, `worklogs_own_empty` and
+`worklogs_own_jira`. They rely only on the test user's seeded worklogs.
 Each read except the empty July range is compared with a direct Tempo read,
 so further own worklogs from August to October do not break them; the July
 read must return no worklogs. Three recordings also hold worklogs that the
