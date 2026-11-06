@@ -99,39 +99,11 @@ message right after sending it, so `LiveGmail.delete_message!/2` and
 record as `message_content_sent` and `message_content_draft`, which no offline
 test uses and which are not committed.
 
-The Meet checks read the meeting data prepared on 2026-10-30, which Google
-deletes 30 days after the conferences ended, on 2026-11-29. The participant
-checks in
-`apps/jido_connect_google_meet/test/jido_connect/google/meet/participants_live_smoke_test.exs`
-that read this data carry a `LiveMeet.prepared!/1` tag from
-`test/support/live_meet.ex` after their `env!/1` tag. In a run that can
-include them, through `--only live_smoke`, `--include live_smoke` or a
-location in the file, it asks Google with `GOOGLE_ACCESS_TOKEN` while the
-file compiles:
-`conferenceRecords.get` with `fields=name` for
-`GOOGLE_MEET_CONFERENCE_RECORD`, and one transcript entry name without text
-for `GOOGLE_MEET_TRANSCRIPT`. Two answers skip the test:
-
-- 404 with `error.status` `NOT_FOUND`, Google's answer for a missing
-  transcript, recorded as `transcript_entries_not_found`;
-- 403 with `error.status` `PERMISSION_DENIED`, no ErrorInfo reason and the
-  message `Permission denied on resource Conference (or it might not exist)`,
-  Google's answer for a conference record that does not exist. The answer
-  for the prepared record cannot be seen before Google deletes it, so the
-  recording `conference_record_unknown` stands in: it was taken on 2026-11-06
-  for a well-formed record ID that names no conference the test user can
-  see.
-
-The skip reason names the variable, the preparation date, the status,
-Google's `error.status` and the ErrorInfo reason or else Google's message.
-Every other answer lets the test run, so it fails on a 403 with the
-ErrorInfo reason `ACCESS_TOKEN_SCOPE_INSUFFICIENT`, recorded as
-`conference_record_scope_insufficient`, on 401, on 400 for an ID Google
-cannot parse, and on 5xx. Google gives the two skipping answers also for a
-well-formed ID that never named data of the test user, such as a mistyped
-transcript ID, so such an ID is skipped as expired instead of failing.
-Google's page token for participants encodes the next participant's user ID
-in Base64, so `participants.json` keeps the placeholder `nextPageToken-1`.
+The Meet checks read meeting data prepared on 2026-10-30, which Google
+deletes on 2026-11-29; "Prepared Meet data" under Google Workspace says how
+they are skipped from then on. Google's page token for participants encodes
+the next participant's user ID in Base64, so `participants.json` keeps the
+placeholder `nextPageToken-1`.
 
 ## Writing a Live Test
 
@@ -250,10 +222,11 @@ as seed input belong to the scripts that create the test data.
 The Meet live tests read a meeting held on 2026-10-30 in the Meet space of
 `GOOGLE_CALENDAR_EVENT_ID`: its conference record
 `GOOGLE_MEET_CONFERENCE_RECORD`, its transcript `GOOGLE_MEET_TRANSCRIPT` and
-its recording `GOOGLE_MEET_RECORDING`. The window, transcript list and
-meeting code checks also expect the conference held a few minutes earlier in
-the same space, `conferenceRecords/6EMiOc40YJH2mjvfx8U6DxIUOBEQAjIGCIoCIAAYAwg`;
-no variable names it. Google deletes a conference record 30 days after the
+its recording `GOOGLE_MEET_RECORDING`. The window, transcript list, meeting
+code and earlier participants checks also expect the conference that began
+about 26 minutes earlier in the same space,
+`conferenceRecords/6EMiOc40YJH2mjvfx8U6DxIUOBEQAjIGCIoCIAAYAwg`; no variable
+names it. Google deletes a conference record 30 days after the
 conference ends
 ([`expireTime`](https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords)),
 and transcript entries after the same 30 days
@@ -344,8 +317,9 @@ recorded, transcribed meeting with Gemini notes in the Meet space of
 `GOOGLE_MEET_CONFERENCE_RECORD`, `GOOGLE_MEET_TRANSCRIPT` and
 `GOOGLE_MEET_RECORDING`; set `GOOGLE_MEET_RECORDING_FILE_ID` and
 `GOOGLE_MEET_NOTES_DOCUMENT_ID` by hand. The wizard walks through one
-meeting, but three checks assume two conferences in the prepared space: the
-window and transcript list checks in the Meet `live_smoke_test.exs` expect
+meeting, but four checks assume two conferences in the prepared space: the
+window and transcript list checks in the Meet `live_smoke_test.exs` and the
+earlier participants check in `participants_live_smoke_test.exs` expect
 exactly two in the window, and the meeting code check in
 `live_meeting_lookup_test.exs` at least two in the space
 (`assert length(names) >= 2`). With one fresh conference these checks fail.

@@ -88,9 +88,9 @@ defmodule Jido.Connect.Google.Meet.TestSupport.LiveMeet do
   @prepared_on ~D[2026-10-30]
 
   # The earlier conference prepared on @prepared_on in the space of
-  # GOOGLE_MEET_CONFERENCE_RECORD, which the window, transcript list and
-  # meeting code checks expect. No variable names it. Change it with fresh
-  # data.
+  # GOOGLE_MEET_CONFERENCE_RECORD, which the window, transcript list, meeting
+  # code and earlier participants checks expect. No variable names it. Change
+  # it with fresh data.
   @earlier_conference_record "conferenceRecords/6EMiOc40YJH2mjvfx8U6DxIUOBEQAjIGCIoCIAAYAwg"
 
   @variables ~w(GOOGLE_MEET_CONFERENCE_RECORD GOOGLE_MEET_TRANSCRIPT)
