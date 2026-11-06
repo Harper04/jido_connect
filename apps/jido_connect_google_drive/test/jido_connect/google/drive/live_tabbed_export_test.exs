@@ -29,7 +29,7 @@ defmodule Jido.Connect.Google.Drive.LiveTabbedExportTest do
   @markers ["jcl-marker-tab-first", "jcl-marker-tab-second", "jcl-marker-tab-nested"]
 
   @tag env!(["GOOGLE_DRIVE_ONLY_ACCESS_TOKEN", "GOOGLE_DOCS_TABBED_DOCUMENT_ID"])
-  test "a plain text export holds every tab, the nested one included, in document order", %{
+  test "a plain text export holds the markers of First, Second and Nested in that order", %{
     env: env
   } do
     token = env["GOOGLE_DRIVE_ONLY_ACCESS_TOKEN"]

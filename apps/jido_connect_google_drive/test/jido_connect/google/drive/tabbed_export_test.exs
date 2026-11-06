@@ -28,7 +28,7 @@ defmodule Jido.Connect.Google.Drive.TabbedExportTest do
     end)
   end
 
-  test "a plain text export of a multi-tab document holds every tab in document order" do
+  test "a plain text export of the tabbed document holds First, Second and Nested in that order" do
     recorded = LiveSmoke.fixture!(:google_drive, "file_export_tabbed_document")
 
     Req.Test.expect(__MODULE__, fn conn ->
@@ -43,8 +43,10 @@ defmodule Jido.Connect.Google.Drive.TabbedExportTest do
     assert {:ok, %{file_content: content}} =
              invoke(%{file_id: @document_id, mime_type: "text/plain"})
 
-    # A byte order mark, then each tab's text, the nested tab last, separated
-    # by empty CRLF lines and without tab titles.
+    # A byte order mark, then the markers of First, Second and Nested with two
+    # empty CRLF lines between them and without tab titles. Each tab ends with
+    # an empty paragraph, so the empty lines do not show whether Google adds
+    # a separator between tabs.
     assert content.content ==
              "\uFEFFjcl-marker-tab-first\r\n\r\n\r\n" <>
                "jcl-marker-tab-second\r\n\r\n\r\n" <>
