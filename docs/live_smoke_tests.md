@@ -830,6 +830,30 @@ Remaining limits:
 
 Review every recording and capture before committing it.
 
+### What the committed fixtures still reveal
+
+On 2026-11-06 the committed recordings and captures were read as an outsider
+would read them: Base64 and embedded JSON decoded, and the provider pages they
+point to requested without signing in. Three findings remain:
+
+- Commit metadata links the fixtures to a person regardless of their content:
+  every commit carries its author's name and email address. Contributors who
+  record fixtures and want to stay unlinked commit with their GitHub noreply
+  address.
+- A Drive file shared with "Anyone with the link", such as the one behind
+  `GOOGLE_DRIVE_SHARED_LINK_URL`, opens without signing in through its file
+  ID, which recordings such as `file_download.json` contain, and so does a
+  shortcut that targets it. The Drive page served for it names the owner's
+  email address. Share such test files within the test domain only, or let an
+  account own them whose address may be public. The live checks read them
+  with the test user's token and do not need public access.
+- Provider IDs stay real: Slack team, user, bot, app and channel IDs, Gmail
+  message and thread IDs, Drive and Docs file IDs, Meet conference records,
+  spaces and meeting codes, and Confluence page IDs. Without access to the
+  account they grant nothing, with one exception: a Meet meeting code lets
+  anyone ask to join while its space exists. Dial-in PINs and entry point
+  URIs are replaced.
+
 ## Capturing Inbound Deliveries
 
 The demo host in `dev/demo` has a capture mode for provider deliveries. When
