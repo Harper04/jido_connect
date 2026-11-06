@@ -18,11 +18,13 @@ defmodule Jido.Connect.Google.Meet.LiveMeetingLookupTest do
   and the scheduled window excludes the conference. The window is the host's
   choice; a host that needs every conference of an event widens it or allows
   a tolerance around the scheduled times. Google deletes a conference record
-  30 days after the conference ended; every check here reads the prepared
-  record or its transcript and carries `LiveMeet.prepared!/1`, which skips it
-  with a reason once Google answers that the data is gone. The meeting code
-  check expects the earlier conference among the space's records and lists
-  it as `:earlier_conference_record`. See "Prepared Meet data" in
+  30 days after the conference ended. Every check here that reads the
+  prepared record or its transcript carries `LiveMeet.prepared!/1`, which
+  skips it with a reason once Google answers that the data is gone. The
+  record lookup by meeting code expects the earlier conference among the
+  space's records and lists it as `:earlier_conference_record`. The space
+  read by meeting code reads neither and stays untagged, because Google
+  keeps the space after the records expire. See "Prepared Meet data" in
   `docs/live_smoke_tests.md`.
 
   The Drive live tests download `GOOGLE_MEET_RECORDING_FILE_ID` and export
@@ -37,11 +39,10 @@ defmodule Jido.Connect.Google.Meet.LiveMeetingLookupTest do
 
   The space and recording responses are recorded, and so are the field
   projections of the prepared record and recording that leave their times
-  out. The offline tests expect those times as `nil`. One more space read
-  goes through the meeting code with the projection of the offline space
-  test; it needs no prepared conference data. The conference record
-  lists and the transcript have the shapes of `conference_records_window.json`
-  and `transcripts.json` and are not.
+  out. The offline tests expect those times as `nil`. The space read by
+  meeting code is recorded with the projection of the offline space test.
+  The conference record lists and the transcript have the shapes of
+  `conference_records_window.json` and `transcripts.json` and are not.
   """
 
   use ExUnit.Case, async: false
