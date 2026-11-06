@@ -197,6 +197,29 @@ defmodule Jido.Connect.Google.Drive.FileContentLimitTest do
                })
     end
 
+    # Drive leaves `size` out for some files. Such a file, and one whose
+    # `size` is not a whole number, goes on to the content request, where
+    # the count applies.
+    test "a size read without a usable size goes on to the download" do
+      size_read = recording!("file_download_max_bytes")
+      download = recording!("file_download_max_bytes.2")
+      file_id = download_file_id(size_read)
+
+      for metadata <- [
+            Map.delete(size_read["body"], "size"),
+            Map.put(size_read["body"], "size", "unknown")
+          ] do
+        Req.Test.expect(__MODULE__, &replay(&1, %{size_read | "body" => metadata}))
+        Req.Test.expect(__MODULE__, &replay(&1, download))
+
+        assert {:ok, %{file_content: %{file_id: ^file_id, size: @download_bytes}}} =
+                 invoke("google.drive.file.download", %{
+                   file_id: file_id,
+                   max_bytes: @download_bytes
+                 })
+      end
+    end
+
     # The recorded size read declares 20 bytes; the content sent is the
     # recorded body and one byte more, in chunks without `content-length`.
     test "counts the bytes when Drive sends more than it declared" do
