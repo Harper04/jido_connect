@@ -202,7 +202,7 @@ as seed input belong to the scripts that create the test data.
 | `GOOGLE_MEET_RECORDING_FILE_ID` | setting | Drive file of that recording, also attached to `GOOGLE_CALENDAR_EVENT_ID` |
 | `GOOGLE_MEET_NOTES_DOCUMENT_ID` | setting | Gemini notes document of that meeting, attached to `GOOGLE_CALENDAR_EVENT_ID`; in the test tenant Meet writes the transcript as a tab of it, so it is also the transcript's document. Where transcript and notes are separate documents, the Drive export test needs the notes document |
 | `GOOGLE_MEET_POLL_EVENT_ID` | setting | Calendar event of the fresh meeting for the poll check |
-| `GOOGLE_DRIVE_SHARED_LINK_URL` | setting | Link-shared file with a resource key |
+| `GOOGLE_DRIVE_SHARED_LINK_URL` | setting | Link to a link-shared file. The file in the test tenant has no resource key, so the live checks send the resource-key header only with a made-up key, for a missing file |
 | `GOOGLE_DRIVE_SHORTCUT_ID` | setting | Shortcut to that file |
 | `GOOGLE_DOCS_TABBED_DOCUMENT_ID` | setting | Document with nested tabs |
 | `GOOGLE_DRIVE_STARRED_FILE_ID` | setting | Starred file; its folder also holds exactly one unstarred file named `jcl-live unstarred.txt` |
