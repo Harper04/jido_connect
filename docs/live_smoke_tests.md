@@ -99,6 +99,19 @@ message right after sending it, so `LiveGmail.delete_message!/2` and
 record as `message_content_sent` and `message_content_draft`, which no offline
 test uses and which are not committed.
 
+The Meet checks read the meeting data prepared on 2026-10-30, which Google
+deletes 30 days after the conferences ended. The participant checks in
+`apps/jido_connect_google_meet/test/jido_connect/google/meet/participants_live_smoke_test.exs`
+take their tags from `LiveMeet.prepared!/1` in `test/support/live_meet.ex`
+instead of `env!/1`. When the run includes the live tests, through
+`--only live_smoke` or a location in the file, it asks Google for
+`GOOGLE_MEET_CONFERENCE_RECORD` and `GOOGLE_MEET_TRANSCRIPT` while the file
+compiles. A 404 with status `NOT_FOUND` skips the test with a reason that
+names the variable, the preparation date and the reason Google sent; any
+other answer lets the test run. Google's page token for participants encodes
+the next participant's user ID in Base64, so `participants.json` keeps the
+placeholder `nextPageToken-1`.
+
 ## Writing a Live Test
 
 ```elixir
