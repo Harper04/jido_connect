@@ -115,6 +115,22 @@ defmodule Jido.Connect.Jira.Client.IssueReadTest do
              } = missing
     end
 
+    test "keeps an image-only description as an empty text and lists mediaSingle" do
+      # Derived: the recorded JCL-1 read with the body of the recorded image
+      # comment 42675 (`comment_list`) as its description, reduced to the
+      # body's `mediaSingle` node.
+      image_only = with_image_only_description("issue_context.2")
+      Req.Test.expect(__MODULE__, &Req.Test.json(&1, image_only))
+
+      assert {:ok, issue} = Client.get_issue("JCL-1", api_token_request(), fields: @fields)
+
+      assert %{
+               description: "",
+               description_unsupported_nodes: ["mediaSingle"],
+               missing_fields: ["parent"]
+             } = issue
+    end
+
     test "lists a requested context field that the payload leaves out" do
       # The test site cannot hide a system field without an administrator
       # change, so this response is the recorded JCL-3 read with `duedate`
@@ -269,6 +285,18 @@ defmodule Jido.Connect.Jira.Client.IssueReadTest do
 
   defp with_empty_description(fixture) do
     put_in(LiveSmoke.fixture!(:jira, fixture), ["fields", "description", "content"], [])
+  end
+
+  defp with_image_only_description(fixture) do
+    %{"comments" => comments} = LiveSmoke.fixture!(:jira, "comment_list")
+    %{"body" => %{"content" => content} = body} = Enum.find(comments, &(&1["id"] == "42675"))
+    [image] = Enum.filter(content, &(&1["type"] == "mediaSingle"))
+
+    put_in(
+      LiveSmoke.fixture!(:jira, fixture),
+      ["fields", "description"],
+      %{body | "content" => [image]}
+    )
   end
 
   defp expect_issue(path, fixture, check \\ fn _conn -> :ok end) do
