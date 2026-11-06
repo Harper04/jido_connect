@@ -30,7 +30,10 @@
   fields of an item in a list of the signal, stay instead of becoming
   `"[truncated]"`. `headers`, `payload` and `metadata` keep four levels. The
   512-byte and 50-entry limits and the redaction of sensitive keys apply on
-  every level.
+  every level. The extra level applies to the signals of all providers: a
+  GitHub push signal, for example, now shows the name and email of the author
+  and committer of each commit and the `added`, `modified` and `removed` file
+  lists, which a host that stores or logs the public map keeps too.
 
 ## 0.1.0
 

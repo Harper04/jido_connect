@@ -100,6 +100,12 @@ defmodule Jido.Connect.WebhookDelivery do
   and values under sensitive keys are `"[redacted]"`. A provider value that
   the signal keeps on level 4 still appears as `"[truncated]"` where the raw
   payload holds it on level 4 or deeper.
+
+  The extra level applies to the normalized signal of every provider. In a
+  GitHub push signal, for example, the public map shows the name and email of
+  the author and committer of each commit and the commit's `added`,
+  `modified` and `removed` file lists. A host that stores or logs the public
+  map stores these values too.
   """
   @spec to_public_map(t()) :: map()
   def to_public_map(%__MODULE__{} = delivery) do
