@@ -207,6 +207,12 @@ defmodule Jido.Connect.GmailTest do
        })}
     end
 
+    # The messagesAdded entries carry only the ID, the thread and the labels,
+    # as Gmail sent them in the live poll of message_received_history.json,
+    # so their messages have no snippet and no history ID. The pages, the
+    # repeated message and the page token loop are derived: the recorded
+    # polls returned one page of distinct messages. runtime_test.exs polls
+    # the recorded page through the real client.
     def list_history(
           %{
             start_history_id: "123",
@@ -226,16 +232,12 @@ defmodule Jido.Connect.GmailTest do
                Gmail.Message.new!(%{
                  message_id: "msg123",
                  thread_id: "thread123",
-                 label_ids: ["INBOX", "UNREAD"],
-                 snippet: "Budget update",
-                 history_id: "124"
+                 label_ids: ["INBOX", "UNREAD"]
                }),
                Gmail.Message.new!(%{
                  message_id: "msg123",
                  thread_id: "thread123",
-                 label_ids: ["INBOX", "UNREAD"],
-                 snippet: "Budget update duplicate",
-                 history_id: "124"
+                 label_ids: ["INBOX", "UNREAD"]
                })
              ]
            }
@@ -264,9 +266,7 @@ defmodule Jido.Connect.GmailTest do
                Gmail.Message.new!(%{
                  message_id: "msg456",
                  thread_id: "thread456",
-                 label_ids: ["INBOX"],
-                 snippet: "Next update",
-                 history_id: "125"
+                 label_ids: ["INBOX"]
                })
              ]
            }
@@ -1845,25 +1845,26 @@ defmodule Jido.Connect.GmailTest do
   test "message received poll drains history pages, dedupes messages, and advances checkpoint" do
     {context, lease} = context_and_lease()
 
+    # The added messages carry no history ID, so each signal takes its
+    # record's ID, and no snippet, so the signals have none.
     assert {:ok,
             %{
-              signals: [
-                %{
-                  message_id: "msg123",
-                  thread_id: "thread123",
-                  history_id: "124",
-                  label_ids: ["INBOX", "UNREAD"],
-                  snippet: "Budget update",
-                  message: %{message_id: "msg123", snippet: "Budget update"}
-                },
-                %{
-                  message_id: "msg456",
-                  thread_id: "thread456",
-                  history_id: "125",
-                  label_ids: ["INBOX"],
-                  snippet: "Next update"
-                }
-              ],
+              signals:
+                [
+                  %{
+                    message_id: "msg123",
+                    thread_id: "thread123",
+                    history_id: "124",
+                    label_ids: ["INBOX", "UNREAD"],
+                    message: %{message_id: "msg123", snippet: nil}
+                  },
+                  %{
+                    message_id: "msg456",
+                    thread_id: "thread456",
+                    history_id: "125",
+                    label_ids: ["INBOX"]
+                  }
+                ] = signals,
               checkpoint: "126"
             }} =
              Connect.poll(
@@ -1874,6 +1875,8 @@ defmodule Jido.Connect.GmailTest do
                credential_lease: lease,
                checkpoint: "123"
              )
+
+    refute Enum.any?(signals, &Map.has_key?(&1, :snippet))
   end
 
   test "message received poll emits no duplicates after checkpoint advances" do
