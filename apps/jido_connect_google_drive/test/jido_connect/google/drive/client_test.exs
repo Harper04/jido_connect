@@ -909,8 +909,9 @@ defmodule Jido.Connect.Google.Drive.ClientTest do
   defp request_content(:export),
     do: Client.export_file(%{file_id: "file123", mime_type: "text/plain"}, "token")
 
-  # The replay needs the recorded status and headers, which
-  # `LiveSmoke.fixture!/2` leaves out, so this loads the whole recording.
+  # The replay needs the recorded status and headers, and the change test the
+  # recorded request path, which `LiveSmoke.fixture!/2` leaves out, so this
+  # loads the whole recording.
   defp recorded_download!(name) do
     Jido.Connect.Google.TestSupport.ConnectorContracts.google_fixture!(
       :google_drive,
@@ -1585,12 +1586,17 @@ defmodule Jido.Connect.Google.Drive.ClientTest do
   end
 
   test "lists file changes" do
-    # The live change of the edited Google Doc under the client's default
-    # change fields, with the file's full metadata.
-    %{
-      "changes" => [%{"fileId" => file_id, "file" => recorded_file}],
-      "newStartPageToken" => new_start_page_token
-    } = page = LiveSmoke.fixture!(:google_drive, "file_changed_edited")
+    # The live change log after an edit of a Google Doc, under the client's
+    # default change fields, with each file's full metadata. Drive may log
+    # other changes on the same page; the live test finds the edited document
+    # among them and exports it next, so the export's recorded path names it.
+    %{"request" => %{"path" => export_path}} = recorded_download!("file_export_edited")
+    ["", "drive", "v3", "files", file_id, "export"] = String.split(export_path, "/")
+
+    %{"changes" => recorded_changes, "newStartPageToken" => new_start_page_token} =
+      page = LiveSmoke.fixture!(:google_drive, "file_changed_edited")
+
+    %{"file" => recorded_file} = Enum.find(recorded_changes, &(&1["fileId"] == file_id))
 
     Req.Test.stub(__MODULE__, fn conn ->
       assert conn.method == "GET"
@@ -1604,7 +1610,7 @@ defmodule Jido.Connect.Google.Drive.ClientTest do
       Req.Test.json(conn, page)
     end)
 
-    assert {:ok, %{changes: [%Change{} = change], new_start_page_token: ^new_start_page_token}} =
+    assert {:ok, %{changes: changes, new_start_page_token: ^new_start_page_token}} =
              Client.list_changes(
                %{
                  page_token: "start-token",
@@ -1614,7 +1620,8 @@ defmodule Jido.Connect.Google.Drive.ClientTest do
                "token"
              )
 
-    assert change.file_id == file_id
+    assert length(changes) == length(recorded_changes)
+    assert %Change{} = change = Enum.find(changes, &(&1.file_id == file_id))
     assert change.file.file_id == file_id
     assert change.file.mime_type == recorded_file["mimeType"]
     assert change.file.modified_time == recorded_file["modifiedTime"]
