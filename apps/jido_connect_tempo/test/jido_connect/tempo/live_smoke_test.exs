@@ -42,7 +42,9 @@ defmodule Jido.Connect.Tempo.LiveSmokeTest do
   which stays on the site, and books the same input into the approved August
   period, which Tempo rejects. The invalid start time test posts one booking
   into the approved August period that Tempo cannot accept. Neither depends
-  on worklogs outside the seed except the one the create just made.
+  on worklogs outside the seed except the one the create just made. Both
+  send no work attribute values, so they fail before they send anything
+  while `TEMPO_WORK_ATTRIBUTES` is set.
 
   ExUnit prints the arguments of a failing call, so checks that involve a real
   token or the test user's account ID compute a boolean first and fail with
@@ -425,6 +427,7 @@ defmodule Jido.Connect.Tempo.LiveSmokeTest do
   @tag write!(:tempo)
   test "creates one own worklog in the open period, reads it back and sees the approved period reject a booking",
        %{env: env} do
+    outside_window!()
     token = env["TEMPO_API_TOKEN"]
     context = context!(env, :api_token, ["tempo.worklogs.read", "tempo.worklogs.write"])
     account_id = context.connection.subject.account_id
@@ -493,6 +496,7 @@ defmodule Jido.Connect.Tempo.LiveSmokeTest do
   @tag env!(["TEMPO_API_TOKEN", "TEMPO_API_ORIGIN", "TEMPO_JIRA_ISSUE_ID" | @jira])
   @tag write!(:tempo)
   test "a booking with an invalid start time gets a 400 that is not a period lock", %{env: env} do
+    outside_window!()
     token = env["TEMPO_API_TOKEN"]
     request = request!(env, :api_token, token)
     LiveSmoke.record(@recorder, :tempo, "worklog_create_invalid_time")
@@ -615,6 +619,18 @@ defmodule Jido.Connect.Tempo.LiveSmokeTest do
 
     assert match?({:error, %Error.ProviderError{reason: :unauthorized, status: 401}}, stale),
            "the exchanged access token did not get a 401 after the refresh"
+  end
+
+  # The two writes above send no attribute values. How Tempo answers them
+  # while the test work attributes are required was not tried, so they fail
+  # before they send anything while TEMPO_WORK_ATTRIBUTES names a window.
+  defp outside_window! do
+    unless System.get_env("TEMPO_WORK_ATTRIBUTES") in [nil, ""],
+      do:
+        flunk(
+          "TEMPO_WORK_ATTRIBUTES is set: this write sends no attribute values and runs " <>
+            "only outside a work-attribute window; unset it after down"
+        )
   end
 
   # The helpers below take token maps. Each has a clause for any argument, so

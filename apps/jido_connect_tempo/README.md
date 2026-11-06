@@ -848,7 +848,9 @@ Two tests of `live_smoke_test.exs` write and run only with
 Each run of the first test leaves one worklog of the test user on
 2026-10-29; the package cannot delete it. The approved-period booking and
 the invalid start time cannot create one; if Tempo accepted either, the test
-stops at once and names the new ID. The 401 of a create with an invented
+stops at once and names the new ID. Both tests send no work attribute
+values, so each fails before it sends anything while
+`TEMPO_WORK_ATTRIBUTES` is set. The 401 of a create with an invented
 token is recorded in `worklog_create_unauthorized` without the write gate,
 since that token cannot create anything.
 

@@ -500,9 +500,11 @@ While the test attributes exist, run only the booking lookup checks and,
 in a required run, the attribute booking checks, and run `down` at once
 after them, also when a check fails or the run is interrupted. In a
 required run Tempo lists four of them as required, for the whole site. The
-worklog create check of `live_smoke_test.exs` sends no attribute values;
-how Tempo answers it inside a required window was not tried, so do not run
-it there. Run the rest of the Tempo suite after `down`.
+two write checks of `live_smoke_test.exs`, the worklog create and the
+invalid start time, send no attribute values; how Tempo answers them inside
+a required window was not tried, so each fails before it sends anything
+while `TEMPO_WORK_ATTRIBUTES` is set. Run the rest of the Tempo suite after
+`down`, with `TEMPO_WORK_ATTRIBUTES` unset.
 
 The Tempo attribute booking checks are in
 `attribute_booking_live_smoke_test.exs`. They need
