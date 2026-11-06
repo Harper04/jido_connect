@@ -272,10 +272,11 @@ token responses to `oauth_exchange.json` and `oauth_refresh.json`, with the
 token fields redacted, and deletes a file that still holds a token or the
 code.
 
-The Tempo own worklog checks rely only on the test user's seeded worklogs
-and compare each read with a direct Tempo read, so further own worklogs do
-not break them. Three recordings also hold worklogs that the test user
-created on JCL-2 on 2026-11-02, outside the seeded data:
+The Tempo own worklog checks rely only on the test user's seeded worklogs.
+Each read except the empty July range is compared with a direct Tempo read,
+so further own worklogs from August to October do not break them; the July
+read must return no worklogs. Three recordings also hold worklogs that the
+test user created on JCL-2 on 2026-11-02, outside the seeded data:
 `worklogs_own.2.json` and `worklogs_own_day.json` hold 79166, booked at
 00:30 Europe/Berlin on 2026-10-31 with a description of 778 bytes, and
 `worklogs_own_jira.json` holds 79167 and 79168, created through Jira's
@@ -338,10 +339,10 @@ offline tests match the stored value in `work_attribute_values` against
 
 While the test attributes exist, run only the booking lookup checks, and
 run `down` at once after them, also when a check fails or the run is
-interrupted. In a required run Tempo rejects every new worklog without a
-value for each required attribute, so the worklog create check fails
-there, and every other user of the site must fill them in for as long as
-they stay. Run the rest of the Tempo suite after `down`.
+interrupted. In a required run Tempo lists four of them as required, for
+the whole site. The worklog create check sends no attribute values; how
+Tempo answers it inside a required window was not tried, so do not run it
+there. Run the rest of the Tempo suite after `down`.
 
 The site is shared with real users, and Tempo returns their data in the
 same responses: every work attribute of the site and every global account

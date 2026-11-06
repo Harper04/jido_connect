@@ -16,9 +16,10 @@ defmodule Jido.Connect.Tempo.LiveSmokeTest do
   on October 1, among them two that differ only in their IDs and one with
   zero billable seconds; and fillers across October, among them one on
   October 28 and one on October 30. The test user has no worklog in July
-  2026. Each read compares every worklog with a direct Tempo read and
-  counts only minimums, so further own worklogs from August to October do
-  not break the checks.
+  2026. Each read except the empty July range compares every worklog with
+  a direct Tempo read and counts only minimums, so further own worklogs
+  from August to October do not break the checks; the July read must
+  return no worklogs.
 
   Three recordings also hold worklogs that the seeded data lacks. The test
   user created them on JCL-2 on 2026-11-02: 79166, booked at 00:30
