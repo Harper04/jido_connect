@@ -161,7 +161,7 @@ defmodule Jido.Connect.Slack.ConversationHistoryTest do
     end
   end
 
-  test "the scope resolver maps the declared type in both operation-ID forms" do
+  test "without a channel, the scope resolver maps the declared type in both operation-ID forms" do
     for {type, scope} <- @history_scopes, key <- [:id, :action_id] do
       assert ScopeResolver.required_scopes(%{key => @action_id}, %{conversation_type: type}, nil) ==
                [scope]
@@ -176,6 +176,21 @@ defmodule Jido.Connect.Slack.ConversationHistoryTest do
     # Availability checks run without input: without a connection, the static
     # scope applies.
     assert ScopeResolver.required_scopes(%{id: @action_id}, %{}, nil) == ["channels:history"]
+  end
+
+  test "a declared type does not change the scope that a G or D channel ID needs" do
+    input = %{channel: "D0CD4G48UFR", conversation_type: "public_channel"}
+
+    assert {:error,
+            %Connect.Error.AuthError{reason: :missing_scopes, missing_scopes: ["im:history"]}} =
+             Connect.invoke(
+               Jido.Connect.Slack,
+               @action_id,
+               input,
+               runtime(:bot, ["channels:history"])
+             )
+
+    refute_received {:slack_request, _query}
   end
 
   test "any held history scope is enough only without a channel and a type" do

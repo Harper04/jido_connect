@@ -184,7 +184,8 @@ without `ts` or with a wrongly typed field makes the call fail with
 
 `channel` and `conversation_type` repeat the input. Slack returns no
 conversation type, so `conversation_type` is the caller's unchecked
-declaration and only selects the scope check. A group DM declared as
+declaration and only selects the scope check where the channel ID leaves the
+type open. A group DM declared as
 `public_channel` passes that check with `channels:history`; if the token also
 holds `mpim:history`, which Slack requires, the read succeeds and its messages
 say `public_channel`. Do not base visibility, indexing or policies on this
@@ -258,15 +259,16 @@ no `blocks` key.
 `slack.conversation.open` sends `users` to Slack `conversations.open` as a
 comma-separated list and returns the conversation ID as `channel`, the target
 for `slack.message.post`. One user opens the DM with the bot and needs
-`im:write`; several users open a group DM and need `mpim:write`. A
-conversation resumed by `channel` needs `mpim:write` for a `G` ID,
-`im:write` for a `D` ID and `im:write` for any other ID unless
+`im:write`; several users open a group DM and need `mpim:write`. Slack
+resumes `channel` when it is given, also next to `users`. A conversation
+resumed by `channel` needs `mpim:write` for a `G` ID, `im:write` for a `D` ID
+and, for any other ID, `im:write` unless several users are passed or
 `conversation_type` is `mpim`. Slack gives group DMs `C` IDs too, like the one
 in this package's recordings, so resume such a group DM with
 `conversation_type: "mpim"`, which needs `mpim:write`. `conversation_type`
 takes `im` or `mpim`, is not sent to Slack and cannot override the users or
-the channel ID: several `users` or a `G` ID need `mpim:write`, one user or a
-`D` ID `im:write`, whatever the type. The action
+the channel ID: a `G` ID or several users need `mpim:write`, a `D` ID or one
+user without a channel `im:write`, whatever the type. The action
 takes its client from a context `provider_client`, then from the lease's
 `slack_client`, then `Jido.Connect.Slack.Client`, so a lease with only an
 `access_token` works.

@@ -188,6 +188,8 @@ defmodule Jido.Connect.Slack.DeliveryTest do
     test "conversation_type does not change the scope that the users or the channel ID need" do
       cases = [
         {%{users: [@authorizing_user, @second_user], conversation_type: "im"}, "mpim:write"},
+        {%{users: ["#{@authorizing_user},#{@second_user}"], conversation_type: "im"},
+         "mpim:write"},
         {%{channel: "G0CDELYPYKF", conversation_type: "im"}, "mpim:write"},
         {%{channel: "G0CDELYPYKF"}, "mpim:write"},
         {%{users: [@authorizing_user], conversation_type: "im"}, "im:write"},
