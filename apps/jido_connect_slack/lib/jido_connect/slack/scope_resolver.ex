@@ -174,14 +174,19 @@ defmodule Jido.Connect.Slack.ScopeResolver do
     required_scopes(%{id: "slack.thread.replies"}, input, connection)
   end
 
-  # History takes its scope from the declared conversation type only. Private
-  # channels and group DMs can carry C IDs, so the channel prefix says nothing.
-  # Without a type, as in availability checks, any one history scope of the
-  # connection is enough; a connection without one needs `channels:history`.
+  # Without a channel and a type, as in availability checks, any one history
+  # scope of the connection is enough; a connection without one needs
+  # `channels:history`.
   def required_scopes(%{id: "slack.conversation.history"}, input, connection) do
-    case Map.get(input, :conversation_type, Map.get(input, "conversation_type")) do
-      nil -> [held_history_scope(connection)]
-      type -> [Map.get(@conversation_history_scopes, type, "channels:history")]
+    case {Map.get(input, :channel, Map.get(input, "channel")), supplied_conversation_type(input)} do
+      {nil, nil} ->
+        [held_history_scope(connection)]
+
+      _channel_or_type ->
+        input
+        |> requested_conversation_type()
+        |> then(&Map.get(@conversation_history_scopes, &1, "channels:history"))
+        |> List.wrap()
     end
   end
 
