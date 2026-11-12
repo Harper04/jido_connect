@@ -178,7 +178,7 @@ defmodule Jido.Connect.Slack.ScopeResolver do
   # scope of the connection is enough; a connection without one needs
   # `channels:history`.
   def required_scopes(%{id: "slack.conversation.history"}, input, connection) do
-    case {Map.get(input, :channel, Map.get(input, "channel")), supplied_conversation_type(input)} do
+    case {channel(input), supplied_conversation_type(input)} do
       {nil, nil} ->
         [held_history_scope(connection)]
 

@@ -267,8 +267,10 @@ and, for any other ID, `im:write` unless several users are passed or
 in this package's recordings, so resume such a group DM with
 `conversation_type: "mpim"`, which needs `mpim:write`. `conversation_type`
 takes `im` or `mpim`, is not sent to Slack and cannot override the users or
-the channel ID: a `G` ID or several users need `mpim:write`, a `D` ID or one
-user without a channel `im:write`, whatever the type. The action
+the channel ID: a `G` ID needs `mpim:write` and a `D` ID `im:write` whatever
+the users, and otherwise several users need `mpim:write` and one user without
+a channel `im:write`, whatever the type. An empty `channel` counts as none.
+The action
 takes its client from a context `provider_client`, then from the lease's
 `slack_client`, then `Jido.Connect.Slack.Client`, so a lease with only an
 `access_token` works.

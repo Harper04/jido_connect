@@ -354,7 +354,7 @@ defmodule Jido.Connect.Slack.Actions.Conversations do
         field :conversation_type, :string,
           enum: ["im", "mpim"],
           description:
-            "Slack conversation type to open or resume, for the scope check only; not sent to Slack. mpim needs mpim:write for a C channel ID. A G channel ID or several users need mpim:write, a D channel ID or one user without a channel im:write, whatever the type."
+            "Slack conversation type to open or resume, for the scope check only; not sent to Slack. A G channel ID needs mpim:write and a D channel ID im:write, whatever the users and the type. Otherwise several users need mpim:write and one user without a channel im:write; for a C channel ID or no target, mpim needs mpim:write."
 
         field :return_im, :boolean, default: false
         field :prevent_creation, :boolean, default: false

@@ -194,6 +194,7 @@ defmodule Jido.Connect.Slack.DeliveryTest do
         {%{channel: "G0CDELYPYKF"}, "mpim:write"},
         {%{users: [@authorizing_user], conversation_type: "im"}, "im:write"},
         {%{users: [@authorizing_user], conversation_type: "mpim"}, "im:write"},
+        {%{channel: "", users: [@authorizing_user], conversation_type: "mpim"}, "im:write"},
         {%{channel: @dm, conversation_type: "mpim"}, "im:write"},
         {%{channel: @mpim}, "im:write"}
       ]
