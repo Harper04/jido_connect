@@ -1477,6 +1477,29 @@ defmodule Jido.Connect.TestSupport.LiveSmokeTest do
       assert LiveSmoke.fixture!(:stub, "scalar.2", root: tmp) == 42
     end
 
+    test "a transform that skips every response can start again under one name", %{tmp: tmp} do
+      # How provider helpers keep setup calls out of the fixtures: recording
+      # never replaces a file, and a skipped response writes none.
+      base_url = start_stub([{200, %{"page" => 1}}, {200, %{"page" => 2}}])
+      skip = fn _path, _body -> :skip end
+
+      with_env(%{"JIDO_CONNECT_RECORD" => "1"}, fn ->
+        put_req_options(retry: false)
+
+        for page <- [1, 2] do
+          :ok =
+            LiveSmoke.record({:jido_connect, @req_key}, :stub, "setup",
+              root: tmp,
+              transform: skip
+            )
+
+          assert {:ok, %Req.Response{body: %{"page" => ^page}}} = get(base_url, "/v1/setup")
+        end
+      end)
+
+      assert Path.wildcard(Path.join(tmp, "**/*.json")) == []
+    end
+
     test "stores size and digest instead of a body that is not UTF-8", %{tmp: tmp} do
       bytes = <<0xFF, 0xD8, 0xFF, 0x00>>
       base_url = start_stub([{200, {:raw, "image/jpeg", bytes}}])
